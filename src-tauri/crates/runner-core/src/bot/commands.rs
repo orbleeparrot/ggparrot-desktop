@@ -28,6 +28,9 @@ impl Bot {
             &context,
         );
         let uncertain_before = self.position_uncertain;
+        let funds_before = self.funds_short;
+        self.order_error_code.clear();
+        self.order_no_funds = false;
         // 이 명령에서 생긴 체결만 ack에 실음.
         self.last_fill_qty = 0.0;
         self.last_fill_price = 0.0;
@@ -115,10 +118,16 @@ impl Bot {
                 ack.insert("fill_price".into(), json!(self.last_fill_price));
                 ack.insert("outcome".into(), json!("partially_executed"));
             }
-            let raw = format!("  ⚠ 명령 실행 실패: {exc}");
+            // 오류 코드는 문장(ack·활동 설명)에 넣지 않고 원문 줄·자세히 보기·실행 기록 세부에만 남김.
+            let raw = with_error_code(&format!("  ⚠ 명령 실행 실패: {exc}"), &self.order_error_code);
             self.log(&raw);
             if self.last_fill_qty > 0.0 {
                 self.logger.activity("error", "주문이 일부만 체결됐어요", exc.clone(), raw, "warn");
+            } else if self.order_no_funds {
+                // 잔고 부족이 이어지는 동안 OS 알림(위험 줄)은 처음 한 번만 — 다음부터는 주의 줄로만 남김.
+                let tone = if funds_before { "warn" } else { "danger" };
+                let detail = format!("{exc} 다음 신호에서 다시 주문해요.");
+                self.logger.activity("error", "잔고가 모자라 주문하지 못했어요", detail, raw, tone);
             } else {
                 self.logger.activity("error", "주문이 처리되지 않았어요", exc.clone(), raw, "danger");
             }
@@ -131,6 +140,9 @@ impl Bot {
         d.insert("status".into(), json!(if ok { "reported_ok" } else { "reported_failed" }));
         for k in ["executed_qty", "fill_price", "error", "outcome"] {
             d.insert(k.into(), ack[k].clone());
+        }
+        if !ok && !self.order_error_code.is_empty() {
+            d.insert("error_code".into(), json!(self.order_error_code));
         }
         d.insert("verification".into(), json!("runner_reported_not_exchange_verified"));
         self.logger.telemetry(

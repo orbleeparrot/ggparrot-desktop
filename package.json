@@ -10,7 +10,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install webkit chromium",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "lint": "oxlint --max-warnings 0 .",
     "tauri": "tauri",
     "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml --all",
@@ -29,6 +31,7 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tauri-apps/cli": "^2.12.2",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",

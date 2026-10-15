@@ -11,8 +11,8 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Notify};
 
 use crate::brokers::{
-    fee_inclusive, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker, OrderSide,
-    SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
+    fee_inclusive, with_error_code, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker,
+    OrderSide, SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
 };
 use crate::clock::unix_ms;
 use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
@@ -113,6 +113,8 @@ pub struct RunHealth {
     pub price_stale_since: u64,
     /// 손절·강제 청산 주문이 연달아 실패한 횟수(이만큼 남은 포지션을 정리하지 못함).
     pub close_failures: u32,
+    /// 진입 주문이 잔고(증거금) 부족으로 거절된 뒤 아직 진입 주문이 체결되지 않음. 다음 신호도 같은 이유로 막힐 수 있음.
+    pub funds_short: bool,
 }
 
 /// 활동 기록 한 줄. kind: start·signal·buy·sell·stop_loss·blocked·connection·error·stop·info.
@@ -273,6 +275,12 @@ pub struct Bot {
     pub pending_acks: Vec<Value>,
     /// 손절·강제 청산 주문이 연달아 실패한 수 — 다음 틱에 다시 시도하다 너무 많으면 멈춤.
     close_failures: u32,
+    /// 진입 주문이 잔고 부족으로 거절됨(→ [`RunHealth::funds_short`]). 다음 진입 체결에 풀림. 매매 동작은 바꾸지 않음.
+    pub(crate) funds_short: bool,
+    /// 마지막 주문을 거래소가 받지 않았을 때의 오류 코드(지원용). 주문마다 새로 씀. 코드가 없으면 "".
+    pub(crate) order_error_code: String,
+    /// 마지막 주문이 잔고 부족으로 거절된 진입 주문인지 여부. 주문마다 새로 씀.
+    pub(crate) order_no_funds: bool,
     /// 회원 키 거절(401·403)을 한 번만 알림.
     auth_noticed: bool,
     offline_logged: bool,
@@ -434,6 +442,9 @@ impl Bot {
             done_command_ids: VecDeque::with_capacity(200),
             pending_acks: vec![],
             close_failures: 0,
+            funds_short: false,
+            order_error_code: String::new(),
+            order_no_funds: false,
             auth_noticed: false,
             offline_logged: false,
             price_failing: false,

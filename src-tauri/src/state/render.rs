@@ -67,6 +67,8 @@ impl Core {
         let running = self.running_count();
         // 확인이 필요한 실행(실행 중 심각한 저하·오류로 끝남)과 잠깐 불안정한 실행을 따로 셈.
         let attention = self.runs.iter().filter(|r| r.needs_attention()).count();
+        // 머리줄 색은 가장 심각한 것 — 잔고 부족만이면 노랑(주문만 못 함, 손절·정리는 됨).
+        let urgent = self.runs.iter().any(|r| r.attention_tone() == Some("danger"));
         let shaky = self.runs.iter().filter(|r| r.degraded().is_some_and(|(_, tone)| tone == "warn")).count();
         let mut parts = vec![];
         if running > 0 {
@@ -77,9 +79,9 @@ impl Core {
         } else if shaky > 0 {
             parts.push("연결 다시 시도하는 중".to_string());
         }
-        let tone = if attention > 0 {
+        let tone = if urgent {
             "danger"
-        } else if shaky > 0 || self.claim_busy {
+        } else if attention > 0 || shaky > 0 || self.claim_busy {
             "warn"
         } else if !parts.is_empty() {
             "ok"
@@ -484,6 +486,7 @@ pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {
         offline_since: d.health.offline_since as i64,
         price_stale_since: d.health.price_stale_since as i64,
         close_failures: d.health.close_failures,
+        funds_short: d.health.funds_short,
         updated_at: d.updated_at,
         price,
         in_position,
@@ -631,6 +634,8 @@ pub(crate) struct RunStatusDto {
     offline_since: i64,
     price_stale_since: i64,
     close_failures: u32,
+    /// 진입 주문이 잔고(증거금) 부족으로 거절된 뒤 아직 진입 주문이 체결되지 않음 — 목록 카드·상태 카드·머리줄이 알림.
+    funds_short: bool,
     updated_at: i64,
     price: f64,
     in_position: bool,

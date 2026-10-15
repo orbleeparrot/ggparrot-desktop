@@ -39,6 +39,24 @@ describe("실행 상태 카드", () => {
     expect(screen.getByText(/마지막 확인 가격/)).toBeTruthy();
   });
 
+  it("잔고 부족이면 할 일을 주의 색 띠로 알린다(코드는 띠에 없음)", () => {
+    render(
+      <StatusCard
+        run={makeRun({ fundsShort: true })}
+        macro={upbitMacro}
+        phase="running"
+        status={{ text: "실행 중 · 잔고 부족 · 주문 못 함", tone: "warn" }}
+        prices={[]}
+      />,
+    );
+    const banner = screen.getByRole("alert");
+    expect(banner.textContent).toBe(
+      "업비트 원화 잔고가 모자라 주문하지 못했어요. 잔고를 채우거나 투자 금액을 줄이세요. 다음 신호에서 다시 주문해요.",
+    );
+    expect(banner.className).toContain("is-warn");
+    expect(screen.getByText("실행 중 · 잔고 부족 · 주문 못 함")).toBeTruthy();
+  });
+
   it("첫 상태를 받기 전에는 현재가 0 대신 —, 서버는 확인 중", () => {
     render(<StatusCard run={makeRun({ updatedAt: 0 })} macro={binanceMacro} phase="running" status={ok} prices={[]} />);
     expect(screen.getByText(/서버 확인 중/)).toBeTruthy();

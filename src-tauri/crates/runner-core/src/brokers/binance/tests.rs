@@ -559,11 +559,10 @@ async fn access_code_points_at_ip_on_live_and_at_the_key_on_practice() {
     let b = make_live(&server, Market::Spot);
     let (ok_, reason) = b.rehearse(10.0, None).await;
     assert!(!ok_);
-    assert_eq!(
-        reason,
-        format!("바이낸스에서 키를 거절했어요(APIError(code=-2015): {msg}). 키 · 허용 IP · 권한 설정을 확인하세요.")
-    );
+    // 문장에는 오류 코드를 넣지 않고 코드는 따로 들고 있음(자세히 보기·원문 로그용).
+    assert_eq!(reason, "바이낸스에서 키를 거절했어요. 키 · 허용 IP · 권한 설정을 확인하세요.");
     assert_eq!(b.last_error_name(), "binance_access");
+    assert_eq!(b.last_error_code(), "-2015");
 
     let (practice, _) = make(&server, Market::Spot, 1);
     let (ok_, reason) = practice.rehearse(10.0, None).await;
@@ -580,11 +579,9 @@ async fn format_signature_and_unknown_key_codes_are_key_errors() {
             let (b, _) = make_in(&server, Market::Spot, 1, testnet);
             let (ok_, reason) = b.rehearse(10.0, None).await;
             assert!(!ok_);
-            assert_eq!(
-                reason,
-                format!("바이낸스에서 키를 받지 않았어요(APIError(code={code}): bad key). API Key · Secret Key를 다시 복사해 넣으세요.")
-            );
+            assert_eq!(reason, "바이낸스에서 키를 받지 않았어요. API Key · Secret Key를 다시 복사해 넣으세요.");
             assert_eq!(b.last_error_name(), "binance_key", "{code}");
+            assert_eq!(b.last_error_code(), code.to_string());
         }
     }
 }
@@ -653,8 +650,10 @@ async fn other_failures_and_unknown_symbols_fail() {
     let server = MockServer::start().await;
     mount(&server, "GET", "/api/v3/account", api_err(-1000, "boom")).await;
     let (b, _) = make(&server, Market::Spot, 1);
-    assert_eq!(b.rehearse(10.0, None).await, (false, "바이낸스 확인에 실패했어요: APIError(code=-1000): boom".into()));
+    // 모르는 오류는 거래소 설명을 그대로 두고 코드는 문장 밖으로.
+    assert_eq!(b.rehearse(10.0, None).await, (false, "바이낸스 확인에 실패했어요: boom".into()));
     assert_eq!(b.last_error_name(), "");
+    assert_eq!(b.last_error_code(), "-1000");
 
     let server = MockServer::start().await;
     mount(&server, "GET", "/api/v3/account", ok(json!({"balances": []}))).await;

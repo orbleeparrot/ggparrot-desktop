@@ -613,6 +613,8 @@ pub struct PreflightResult {
     /// 확인한 벽시계 시각(유닉스 초) — [`wall_within`].
     pub checked_wall: f64,
     pub error_name: String,
+    /// 거래소가 돌려준 오류 코드(`Broker::last_error_code`) — 지원용, 이유 문장에는 넣지 않음. 없으면 "".
+    pub error_code: String,
     pub broker: Option<Arc<dyn Broker>>,
     /// 확인하며 읽은 잔고 한 줄(`Broker::balance_note`). 읽지 않았으면 "".
     pub balance: String,
@@ -627,6 +629,7 @@ impl PreflightResult {
             checked_at: Instant::now(),
             checked_wall: unix_secs(),
             error_name: String::new(),
+            error_code: String::new(),
             broker: None,
             balance: String::new(),
         }

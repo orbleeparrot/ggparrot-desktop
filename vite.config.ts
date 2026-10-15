@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // @types/node 없이 타입 검사가 통과하도록 쓰는 만큼만 선언함.
@@ -26,5 +26,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    // e2e/는 Playwright가 실제 브라우저로 돌림(`npm run test:e2e`).
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
 });

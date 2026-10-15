@@ -92,8 +92,10 @@ function statusOf(m: Model, r: MockRun): RunSlot["status"] {
     case "stopping":
       return { text: "종료 처리 중", tone: "warn" };
     case "running":
-      if (r.run && !r.run.online) return { text: "실행 중 · 서버 재시도 중", tone: "warn" };
+      // Rust degraded()와 같은 차례 — 결과 모름 → 잔고 부족 → 서버 재시도.
       if (r.run?.uncertain) return { text: "포지션 확인 필요", tone: "danger" };
+      if (r.run?.fundsShort) return { text: "실행 중 · 잔고 부족 · 주문 못 함", tone: "warn" };
+      if (r.run && !r.run.online) return { text: "실행 중 · 서버 재시도 중", tone: "warn" };
       return { text: "실행 중", tone: "ok" };
     default: {
       if (r.run?.finished)
@@ -181,11 +183,15 @@ function syncWizard(m: Model): WizardState | null {
 export function snapshot(m: Model): AppState {
   const active = m.runs.filter(isActive);
   const offline = active.some((r) => r.run && !r.run.online);
+  // 잔고 부족은 기다려도 풀리지 않음 — Rust처럼 '확인 필요'로 셈(모의는 빼고).
+  const attention = active.filter((r) => r.run?.fundsShort && r.mode !== "mock").length;
   const status: AppState["status"] = active.length
-    ? {
-        text: offline ? `실행 중 ${active.length}개 · 연결 다시 시도하는 중` : `실행 중 ${active.length}개`,
-        tone: offline ? "warn" : "ok",
-      }
+    ? attention
+      ? { text: `실행 중 ${active.length}개 · 확인 필요 ${attention}개`, tone: "danger" }
+      : {
+          text: offline ? `실행 중 ${active.length}개 · 연결 다시 시도하는 중` : `실행 중 ${active.length}개`,
+          tone: offline ? "warn" : "ok",
+        }
     : m.runs.length
       ? { text: "대기 중", tone: "muted" }
       : { text: "매크로를 추가하세요", tone: "muted" };

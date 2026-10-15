@@ -202,6 +202,43 @@ async fn degraded_runs_show_on_the_card_and_the_header() {
 }
 
 #[tokio::test]
+async fn a_funds_short_run_reads_as_a_warning_that_still_needs_attention() {
+    let mut c = core();
+    c.runs.push(run("a", "KRW-BTC", "upbit"));
+    c.runs[0].mode = RunMode::Live;
+    running(&mut c, 0);
+    c.runs[0].data.as_mut().unwrap().health.funds_short = true;
+    // 손절·정리는 그대로라 빨강은 아니지만, 잔고를 채워야 풀리므로 머리줄·트레이의 '확인 필요'에 셈.
+    assert_eq!(c.runs[0].degraded(), Some(("잔고 부족 · 주문 못 함".into(), "warn")));
+    assert!(c.runs[0].needs_attention());
+    let v = serde_json::to_value(c.render("0.19.4")).unwrap();
+    assert_eq!(v["runs"][0]["status"]["text"], "실행 중 · 잔고 부족 · 주문 못 함");
+    assert_eq!(v["runs"][0]["status"]["tone"], "warn");
+    assert_eq!(v["runs"][0]["run"]["fundsShort"], true);
+    // 잔고 부족만이면 머리줄도 카드처럼 노랑(개수에는 셈).
+    assert_eq!(header(&c), ("실행 중 1개 · 확인 필요 1개".into(), "warn".into()));
+
+    // 더 급한 상태가 앞섬(정리 실패) — 머리줄은 빨강.
+    c.runs[0].data.as_mut().unwrap().health.close_failures = 1;
+    assert_eq!(c.runs[0].degraded().unwrap().0, "정리 주문 실패 1회");
+    assert_eq!(header(&c).1, "danger");
+
+    // 진입이 체결돼 풀리면 정상.
+    c.runs[0].data.as_mut().unwrap().health = runner_core::bot::RunHealth { online: true, ..Default::default() };
+    assert_eq!(c.runs[0].degraded(), None);
+    assert!(!c.runs[0].needs_attention());
+    let v = serde_json::to_value(c.render("0.19.4")).unwrap();
+    assert_eq!(v["runs"][0]["run"]["fundsShort"], false);
+
+    // 실행이 끝나면 잔고 부족 상태는 보이지 않음.
+    c.runs[0].data.as_mut().unwrap().health.funds_short = true;
+    c.runs[0].bot = None;
+    c.runs[0].data.as_mut().unwrap().finished = Some(("stopped".into(), "포지션 없이 종료".into(), now_ms()));
+    assert_eq!(c.runs[0].degraded(), None);
+    assert!(!c.runs[0].needs_attention());
+}
+
+#[tokio::test]
 async fn runs_that_ended_in_error_stay_visible_until_restarted() {
     let mut c = core();
     c.runs.push(run("a", "BTCUSDT", "binance"));
@@ -542,6 +579,30 @@ fn activity_copy_keeps_recent_lines_within_limit() {
     // 날짜까지 붙음(MM-DD HH:MM:SS)
     let line = all.lines().nth(1).unwrap();
     assert!(line.as_bytes()[2] == b'-' && line.as_bytes()[5] == b' ', "{line}");
+}
+
+#[test]
+fn activity_copy_keeps_the_error_code_line_indented_under_its_entry() {
+    let mut c = core();
+    c.runs.push(run("a", "KRW-BTC", "upbit"));
+    let raw = runner_core::brokers::with_error_code(
+        "  ⚠ 명령 실행 실패: 주문할 원화 잔고가 모자라요.",
+        "insufficient_funds_bid",
+    );
+    c.push_activity(
+        "a",
+        "error",
+        "잔고가 모자라 주문하지 못했어요",
+        "주문할 원화 잔고가 모자라요.",
+        &raw,
+        false,
+        "danger",
+    );
+    let text = activity_copy_text("[머리말]", &c.run("a").unwrap().activity, ACTIVITY_COPY_CHARS);
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[1].contains("잔고가 모자라 주문하지 못했어요 — 주문할 원화 잔고가 모자라요."), "{text}");
+    assert!(!lines[1].contains("insufficient"), "제목·설명 줄에는 코드가 없음");
+    assert_eq!(lines[3], "                오류 코드: insufficient_funds_bid", "{text}");
 }
 
 #[test]

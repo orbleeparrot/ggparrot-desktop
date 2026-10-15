@@ -83,6 +83,8 @@
 - **접근성:** 버튼은 `<button type="button">`, 아이콘만 있는 버튼은 `aria-label`. 대화상자는 `Dialog`를 씀(포커스 가두기·Esc).
 - **타입:** `any` 금지. 좁힐 수 없으면 `unknown` 후 확인.
 - **테스트:** vitest + Testing Library. 문구가 아니라 동작(역할·상태)을 확인.
+  - 화면 배치는 Playwright(`npm run test:e2e`, `e2e/`)로 webkit(macOS WKWebView)·chromium(Windows WebView2) 두 엔진에서 확인. 가짜 백엔드 견본(`?demo=…`)을 창 크기별로 띄워 겹침·넘침·높이를 잼.
+  - 픽셀 비교 금지(OS마다 글꼴이 다름). 요소 사각형(getBoundingClientRect)으로 확인. 스크린샷은 사람이 보도록 결과에 붙이기만 함.
 
 ## 5. 보안·민감 정보
 
@@ -98,5 +100,5 @@
 - **커밋 제목:** `종류(범위): 한국어 요약`. 종류는 `feat`·`fix`·`refactor`·`perf`·`docs`·`test`·`chore`·`ci`·`style`. 범위는 `core`·`app`·`ui`·`update`·`keys`·`bot`·`api`·`bundle` 등.
 - **본문:** 무엇이 문제였고 왜 이렇게 고쳤는지. 동작이 바뀌지 않는 리팩토링은 "(동작 변경 없음)"을 적음. 문체는 개조식.
 - **브랜치:** `main`은 항상 배포 가능. 작업은 `feat/…`·`fix/…` 브랜치에서 PR로.
-- **PR 전에:** `npm run format:check`·`npm run typecheck`·`npm test`·`cargo test --workspace`·`cargo clippy` 통과. 화면이 바뀌면 스크린샷을 붙임.
+- **PR 전에:** `npm run format:check`·`npm run typecheck`·`npm test`·`npm run test:e2e`·`cargo test --workspace`·`cargo clippy` 통과. 화면이 바뀌면 스크린샷을 붙임.
 - **변경 기록:** `CHANGELOG.md`의 이번 버전 칸에. 사용자에게 보이는 변경은 사용자용 분류, 나머지는 `### 개발`(1. 공통 참고).

@@ -215,7 +215,8 @@
   color: var(--muted);
 }
 /* 2줄 — 상태 앞부분 | 상태 뒷부분 | 경과 | 전략, 오른쪽은 주 버튼 자리.
-   줄이는 순서: 전략(1fr)이 먼저 줄임표로 줄고, 그다음 상태 뒷부분(minmax)이 통째로 사라짐. 상태 앞부분·경과는 줄지 않음. */
+   줄이는 순서: 전략(1fr)이 먼저 줄임표로 줄다가 세 글자쯤 남을 자리도 없으면 구분점과 함께 통째로 사라지고,
+   그다음 상태 뒷부분(minmax)이 통째로 사라짐. 상태 앞부분·경과는 줄지 않음. */
 .run-card-meta {
   display: grid;
   grid-template-columns: auto minmax(0, max-content) auto minmax(0, 1fr);
@@ -245,12 +246,15 @@
   overflow: hidden;
   font-weight: var(--fw-bold);
 }
-.run-card-status-rest::before {
+/* 첫 줄 지킴이 — 한 줄 높이를 줘야 밀려난 글자가 둘째 줄(18px 아래)로 가서 가려짐(높이 0이면 둘째 줄이 맨 위에 붙어 보임) */
+.run-card-status-rest::before,
+.run-card-strategy::before {
   content: "";
+  height: 18px;
 }
 .run-card-status-more::before,
 .run-card-elapsed::before,
-.run-card-strategy::before {
+.run-card-strategy-text::before {
   content: "·";
   margin: 0 5px;
   color: var(--faint);
@@ -269,9 +273,22 @@
   flex: none;
   color: var(--faint);
 }
+/* 전략 — 상태 뒷부분과 같은 방식: 글자 칸의 최소 너비(구분점 + 세 글자쯤)보다 자리가 좁으면 둘째 줄로 밀려
+   가려짐(앞의 빈 ::before가 첫 줄을 지킴). 자리가 있으면 칸을 채우고 줄임표로 줄어듦(flex-basis 0이라 긴 이름도
+   첫 줄에 남음). */
 .run-card-strategy {
   grid-column: 4;
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  height: 18px;
   overflow: hidden;
+}
+.run-card-strategy-text {
+  flex: 1 1 0;
+  min-width: calc(3em + 14px);
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
 }
 /* 주 버튼·× 자리 — 네모난 감싸개가 비워 둔 자리를 덮음(둥근 단추 모서리로 고르기 버튼이 눌리지 않게) */
@@ -438,9 +455,6 @@
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--fs-small);
-}
-.detail-file {
-  color: var(--ink);
 }
 /* 실행 중 매크로 설명 — 한 줄로 줄임 */
 .macro-summary.is-compact {
@@ -625,6 +639,11 @@
   background: var(--danger);
   color: var(--on-accent);
   font-weight: var(--fw-bold);
+}
+/* 잔고 부족 — 손절·정리는 그대로라 주의 색(사람이 잔고를 채워야 풀림) */
+.uncertain-banner.is-warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
 }
 .pnl-row {
   display: grid;

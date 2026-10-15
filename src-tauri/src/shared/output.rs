@@ -59,12 +59,19 @@ impl Shared {
     /// 알림을 앱 기록에 남긴 뒤(첫 줄 = 제목, 나머지 = 설명) 띄움. 알림에는 그 기록 번호(logId)를 실음 —
     /// 화면이 [자세히]로 앱 기록을 열 수 있게. 기록 줄을 먼저 보내 알림보다 늦게 도착하지 않게 함.
     pub fn notice_from(&self, source: &'static str, level: &str, message: impl Into<String>) {
+        self.notice_with_code(source, level, message, "");
+    }
+
+    /// [`Shared::notice_from`]과 같되 거래소 오류 코드를 앱 기록 설명 끝에만 붙임("오류 코드: …") —
+    /// 알림 글에는 넣지 않음(문의할 때 앱 기록 [›]·복사 글에서 찾음).
+    pub fn notice_with_code(&self, source: &'static str, level: &str, message: impl Into<String>, code: &str) {
         let message = message.into();
+        let logged = runner_core::brokers::with_error_code(&message, code);
         let log_id = {
             let _order = lock_or_recover(&self.emit_lock);
             let (id, logs) = {
                 let mut c = self.lock();
-                let id = c.push_notice_log(level, source, &message);
+                let id = c.push_notice_log(level, source, &logged);
                 (id, std::mem::take(&mut c.pending_app_log))
             };
             for entry in logs {

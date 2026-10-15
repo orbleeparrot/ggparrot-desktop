@@ -10,8 +10,8 @@ pub mod binance;
 pub mod domestic;
 pub mod mock;
 
-pub use binance::{BinanceBroker, BinanceUrls};
-pub use domestic::{explain_domestic_error, jwt_token, DomesticBroker};
+pub use binance::{binance_rejection_parts, is_binance_no_funds, BinanceBroker, BinanceUrls};
+pub use domestic::{domestic_error_code, explain_domestic_error, is_no_funds_error, jwt_token, DomesticBroker};
 pub use mock::MockBroker;
 
 pub type LogFn = Arc<dyn Fn(String) + Send + Sync>;
@@ -218,6 +218,10 @@ pub trait Broker: Send + Sync {
     }
     /// 마지막 리허설에서 거래소가 돌려준 오류 낱말.
     fn last_error_name(&self) -> String;
+    /// 마지막 리허설에서 거래소가 돌려준 오류 코드(지원용 — 문장에는 넣지 않고 자세히 보기에만). 없으면 "".
+    fn last_error_code(&self) -> String {
+        String::new()
+    }
     fn set_log(&self, log: LogFn);
 
     async fn check_account(&self) -> Result<(), BrokerError>;
@@ -249,6 +253,16 @@ pub fn exc_text(e: &BrokerError) -> String {
             format!("APIError(code={name}): {message}")
         }
         other => other.to_string(),
+    }
+}
+
+/// 지원용 오류 코드 줄을 덧붙임 — "…\n오류 코드: insufficient_funds_bid". 코드가 없으면 그대로.
+/// 사람이 읽는 문장에는 코드를 넣지 않고 자세히 보기(활동 원문·앱 기록 설명)·원문 로그·복사 글에만 남김.
+pub fn with_error_code(text: &str, code: &str) -> String {
+    if code.is_empty() {
+        text.to_string()
+    } else {
+        format!("{text}\n오류 코드: {code}")
     }
 }
 

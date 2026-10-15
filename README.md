@@ -132,6 +132,13 @@ npm test
 cd src-tauri && cargo test --workspace
 ```
 
+- 화면 배치 검사(Playwright)는 webkit(macOS)·chromium(Windows) 엔진으로 가짜 백엔드 미리보기를 띄워 겹침·넘침을 잼.
+- 처음 한 번 브라우저를 받음(`npm run test:e2e:install`). 결과 보고서·스크린샷은 `playwright-report/`·`test-results/`에 남음.
+
+```bash
+npm run test:e2e
+```
+
 - 포맷은 Prettier(TS·CSS·JSON, 폭 120)와 rustfmt(폭 120)로 맞춤.
 - CI가 `format:check`로 확인함.
 

@@ -61,6 +61,8 @@ pub struct BinanceBroker {
     base_asset: Mutex<String>,
     rules: Mutex<OrderRules>,
     last_error_name: Mutex<String>,
+    /// 마지막 리허설에서 거래소가 돌려준 오류 코드("-2015" 등, 지원용 — 문장에는 넣지 않음). 없으면 "".
+    last_error_code: Mutex<String>,
     /// 거래소 시계 - 이 기기 시계(ms). 서명 요청의 timestamp에 더함(-1021 방지).
     time_offset: AtomicI64,
     /// 연습 환경(현물 테스트넷·선물 데모) 키인지. 연습 환경에는 IP 제한·키 권한 조회가 없음.
@@ -81,15 +83,45 @@ const BINANCE_AMBIGUOUS: [&str; 5] = ["-1000", "-1001", "-1006", "-1007", "-1008
 fn definite_rejection(e: &BrokerError) -> Option<String> {
     match e {
         BrokerError::Api { status, name, message }
-            if (400..500).contains(status)
-                && name.starts_with('-')
-                && name[1..].chars().all(|c| c.is_ascii_digit())
-                && !BINANCE_AMBIGUOUS.contains(&name.as_str()) =>
+            if (400..500).contains(status) && is_code(name) && !BINANCE_AMBIGUOUS.contains(&name.as_str()) =>
         {
             Some(if message.is_empty() { name.clone() } else { format!("{name} {message}") })
         }
         _ => None,
     }
+}
+
+/// 숫자 오류 코드("-2015")인지 여부.
+fn is_code(name: &str) -> bool {
+    name.len() > 1 && name.starts_with('-') && name[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+/// 바이낸스 오류를 (문장에 넣을 거래소 설명, 오류 코드)로 나눔. 코드는 문장에 넣지 않고 자세히 보기·원문 로그로 보냄.
+/// 숫자 코드가 없는 오류(네트워크 등)는 (오류 글 그대로, "").
+pub(crate) fn binance_error_parts(e: &BrokerError) -> (String, String) {
+    match e {
+        BrokerError::Api { status, name, message } if is_code(name) => {
+            let text = if message.is_empty() { format!("HTTP {status}") } else { message.clone() };
+            (text, name.clone())
+        }
+        other => (other.to_string(), String::new()),
+    }
+}
+
+/// 거절된 주문의 거래소 상태 글([`definite_rejection`]의 "-2010 Account has …")을 (오류 코드, 설명)으로 나눔.
+/// 코드 모양이 아니면 코드 없이 글 전체가 설명임.
+pub fn binance_rejection_parts(raw: &str) -> (&str, &str) {
+    let (head, rest) = raw.split_once(' ').unwrap_or((raw, ""));
+    if is_code(head) {
+        (head, rest.trim())
+    } else {
+        ("", raw.trim())
+    }
+}
+
+/// 잔고(증거금)가 모자라 거절된 주문인지 여부 — 선물 -2019(Margin is insufficient), 현물 -2010 중 잔고 부족 설명.
+pub fn is_binance_no_funds(code: &str, message: &str) -> bool {
+    code == "-2019" || (code == "-2010" && message.to_ascii_lowercase().contains("insufficient balance"))
 }
 
 impl BinanceBroker {
@@ -132,6 +164,7 @@ impl BinanceBroker {
             base_asset: Mutex::new(String::new()),
             rules: Mutex::new(OrderRules::default()),
             last_error_name: Mutex::new(String::new()),
+            last_error_code: Mutex::new(String::new()),
             time_offset: AtomicI64::new(0),
             testnet,
             balances: Mutex::new(None),
@@ -140,6 +173,10 @@ impl BinanceBroker {
 
     fn set_error_name(&self, name: &str) {
         *self.last_error_name.lock().unwrap() = name.into();
+    }
+
+    fn set_error_code(&self, code: &str) {
+        *self.last_error_code.lock().unwrap() = code.into();
     }
 
     pub fn base_asset(&self) -> String {
@@ -227,8 +264,8 @@ impl BinanceBroker {
             // -4046: 이미 격리 마진 — 원하는 상태임.
             Err(BrokerError::Api { name, .. }) if name == "-4046" => {}
             Err(e) => {
-                let why = exc_text(&e);
-                self.log(format!("⚠ 격리 마진 설정 실패({why})."));
+                self.log(format!("⚠ 격리 마진 설정 실패({}).", exc_text(&e)));
+                let (why, _) = binance_error_parts(&e);
                 return Err(BrokerError::Access {
                     explanation: format!(
                         "바이낸스 선물을 격리 마진으로 바꾸지 못했어요({why}). 이 심볼에 열린 포지션이나 주문이 있으면 정리한 뒤 다시 시작하세요."
@@ -245,8 +282,8 @@ impl BinanceBroker {
             )
             .await
         {
-            let why = exc_text(&e);
-            self.log(format!("⚠ 레버리지 {}배 설정 실패({why}).", self.leverage));
+            self.log(format!("⚠ 레버리지 {}배 설정 실패({}).", self.leverage, exc_text(&e)));
+            let (why, _) = binance_error_parts(&e);
             return Err(BrokerError::Access {
                 explanation: format!(
                     "레버리지를 {}배로 바꾸지 못했어요({why}). 계정 기본 레버리지로 주문하지 않도록 시작을 멈췄어요.",
@@ -279,6 +316,9 @@ impl Broker for BinanceBroker {
     }
     fn last_error_name(&self) -> String {
         self.last_error_name.lock().unwrap().clone()
+    }
+    fn last_error_code(&self) -> String {
+        self.last_error_code.lock().unwrap().clone()
     }
     fn set_log(&self, log: LogFn) {
         *self.log.lock().unwrap() = log;
@@ -332,7 +372,7 @@ impl Broker for BinanceBroker {
                     return Err(BrokerError::Access {
                         explanation: format!(
                             "바이낸스 선물 심볼 정보를 받지 못했어요({}). 인터넷 연결을 확인한 뒤 다시 시작하세요.",
-                            exc_text(&e)
+                            binance_error_parts(&e).0
                         ),
                         name: "symbol_info".into(),
                     });
@@ -358,21 +398,21 @@ impl Broker for BinanceBroker {
     /// 실거래는 그 뒤 키 권한 조회로 허용 IP·주문 권한까지 봄(`check_live_restrictions`).
     async fn rehearse(&self, notional: f64, _spend: Option<f64>) -> (bool, String) {
         self.set_error_name("");
+        self.set_error_code("");
         *self.balances.lock().unwrap() = None;
         let minimum = match self.rehearse_reads().await {
             Ok(Ok(minimum)) => minimum,
             Ok(Err(reason)) => return (false, reason),
             Err(e) => {
+                let (why, code) = binance_error_parts(&e);
+                self.set_error_code(&code);
                 if let BrokerError::Api { name, .. } = &e {
                     // 키 형식(-2014)·서명 = 시크릿 짝(-1022)·없는 키(-2008) — 키를 다시 복사하면 됨.
                     if ["-2014", "-1022", "-2008"].contains(&name.as_str()) {
                         self.set_error_name("binance_key");
                         return (
                             false,
-                            format!(
-                                "바이낸스에서 키를 받지 않았어요({}). API Key · Secret Key를 다시 복사해 넣으세요.",
-                                exc_text(&e)
-                            ),
+                            "바이낸스에서 키를 받지 않았어요. API Key · Secret Key를 다시 복사해 넣으세요.".into(),
                         );
                     }
                     // -2015는 '키·허용 IP·권한' 중 무엇인지 거래소가 가르지 않고 한 코드로 돌려줌.
@@ -384,10 +424,10 @@ impl Broker for BinanceBroker {
                         } else {
                             "키 · 허용 IP · 권한 설정을 확인하세요."
                         };
-                        return (false, format!("바이낸스에서 키를 거절했어요({}). {hint}", exc_text(&e)));
+                        return (false, format!("바이낸스에서 키를 거절했어요. {hint}"));
                     }
                 }
-                return (false, format!("바이낸스 확인에 실패했어요: {}", exc_text(&e)));
+                return (false, format!("바이낸스 확인에 실패했어요: {why}"));
             }
         };
         let amount = positive_f64(notional);

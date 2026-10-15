@@ -2,6 +2,7 @@
 // - 1줄: 거래소 로고 · 종목 · 롱/숏 · 모드 …… 오른쪽 칸(실행 중: 손익 %, 대기·끝남: × 자리, 시작·종료 중: 비움)
 // - 2줄: ● 상태 · 경과(실행 중·끝남) · 전략 …… 주 버튼 자리
 // - 좁을 때 줄이는 순서는 run.css(.run-card-head·.run-card-meta)에서 정함 — 글자 길이를 재는 스크립트는 없음.
+//   전략은 세 글자쯤 보일 자리가 없으면 앞의 구분점(·)과 함께 통째로 숨음('· …'만 남지 않게).
 // - ×·주 버튼은 고르기 버튼 밖의 형제 — 비워 둔 자리를 네모난 감싸개가 통째로 덮어 모서리를 눌러도 카드가 골라지지 않음.
 import { GripVertical, Timer, X } from "lucide-react";
 import { forwardRef, type KeyboardEvent, type PointerEventHandler } from "react";
@@ -110,8 +111,9 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
               {formatElapsed(elapsed)}
             </span>
           )}
+          {/* 바깥은 자리(좁으면 통째로 가려짐), 안쪽은 구분점과 글자(줄임표) — run.css .run-card-strategy */}
           <span className="run-card-strategy" title={strategyTitle}>
-            {strategy}
+            <span className="run-card-strategy-text">{strategy}</span>
           </span>
         </span>
       </button>

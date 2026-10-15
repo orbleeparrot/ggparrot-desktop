@@ -32,7 +32,10 @@ impl Bot {
                         Ok(true) if self.mode == RunMode::Mock => return Ok("모의 보유분 정리 후 종료".into()),
                         Ok(true) => return Ok("청산 완료 후 종료".into()),
                         Ok(false) => {}
-                        Err(e) => self.log(format!("  ⚠ 청산 시도 {}/3: {e}", attempt + 1)),
+                        Err(e) => {
+                            let line = format!("  ⚠ 청산 시도 {}/3: {e}", attempt + 1);
+                            self.log(with_error_code(&line, &self.order_error_code));
+                        }
                     }
                     if self.position_uncertain || !self.in_position || wait == 0 {
                         break;

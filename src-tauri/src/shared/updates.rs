@@ -66,8 +66,23 @@ impl Shared {
                         c.update.status = "none";
                     }
                     Err(e) => {
-                        let how = if silent { "자동 확인" } else { "직접 확인" };
-                        c.push_app_log("warn", "update", "업데이트 정보를 확인하지 못했어요", &format!("{how} · {e}"));
+                        // 자동 확인 실패(아직 공개한 릴리스가 없음·잠깐 끊김)는 정보로만 — 실행할 때마다 '주의'가 쌓이지 않게.
+                        // 사용자가 직접 누른 확인이 실패했을 때만 주의로 남김.
+                        if silent {
+                            c.push_app_log(
+                                "info",
+                                "update",
+                                "업데이트 정보를 받지 못했어요",
+                                &format!("자동 확인 · {e}"),
+                            );
+                        } else {
+                            c.push_app_log(
+                                "warn",
+                                "update",
+                                "업데이트 정보를 확인하지 못했어요",
+                                &format!("직접 확인 · {e}"),
+                            );
+                        }
                         if silent {
                             if c.update.status != "available" {
                                 c.update.status = "idle";

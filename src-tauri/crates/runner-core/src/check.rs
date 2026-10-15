@@ -72,6 +72,7 @@ pub async fn perform_connection_check(
     let (ok, reason) = broker.rehearse(notional, spend).await;
     let mut result = PreflightResult::new(ok, safe_preflight_reason(&reason, c), fingerprint);
     result.error_name = broker.last_error_name();
+    result.error_code = broker.last_error_code();
     result.balance = broker.balance_note();
     if ok {
         result.broker = Some(broker);

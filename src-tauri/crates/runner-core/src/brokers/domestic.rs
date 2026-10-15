@@ -132,64 +132,72 @@ pub(crate) mod error_names;
 use error_names::{EXPIRED_KEY_ERRORS, IP_FIRST_ERRORS, MARKET_ERRORS, NO_FUNDS_ERRORS, OTHER_ACCESS_ERRORS};
 
 /// 거래소 오류를 사람이 다음에 할 일이 보이는 문장으로 옮김. 모르는 오류는 거래소 말을 그대로 둠.
-pub fn explain_domestic_error(ex: Exchange, status: u16, name: &str, message: &str) -> String {
+/// 문장에는 오류 이름(코드)을 넣지 않음 — 코드는 [`domestic_error_code`]로 따로 들고 자세히 보기·원문 로그에만 남김.
+pub fn explain_domestic_error(ex: Exchange, name: &str, message: &str) -> String {
     let label = ex.label();
     if IP_FIRST_ERRORS.contains(&name) {
         return format!(
-            "{label}에서 요청을 거절했어요({name}). 먼저 이 기기의 현재 IP가 {label}의 \
+            "{label}에서 요청을 거절했어요. 먼저 이 기기의 현재 IP가 {label}의 \
              허용 IP에 등록돼 있는지 확인하세요. 집 인터넷 IP는 바뀔 수 있어요. IP가 맞다면 \
              API 키(Access Key · Secret Key)를 다시 복사해 넣으세요."
         );
     }
     if name == "invalid_query_payload" {
         return format!(
-            "{label}에서 요청 서명을 검증하지 못했어요({name}). API 키나 허용 IP 문제가 아니라 \
+            "{label}에서 요청 서명을 검증하지 못했어요. API 키나 허용 IP 문제가 아니라 \
              이 앱이 만든 요청의 문제예요. 개발팀에 알려 주세요."
         );
     }
     if name == "jwt_verification" {
         return format!(
-            "{label}에서 인증 토큰(JWT) 서명을 검증하지 못했어요({name}). \
+            "{label}에서 인증 토큰(JWT) 서명을 검증하지 못했어요. \
              Access Key와 Secret Key가 같은 발급 건인지, Secret Key를 빠짐없이 붙여 넣었는지 확인한 뒤 \
              다시 연결을 확인하세요. 계속 실패하면 개발팀에 알려 주세요."
         );
     }
     if name == "out_of_scope" {
-        return format!("이 API 키에 주문 권한이 없어요({name}). {label} API 관리에서 주문하기 권한을 켠 키를 쓰세요.");
+        return format!("이 API 키에 주문 권한이 없어요. {label} API 관리에서 주문하기 권한을 켠 키를 쓰세요.");
     }
     if name == "expired_jwt" {
-        return format!(
-            "요청 인증 토큰(JWT)이 만료됐어요({name}). API 키는 그대로 쓸 수 있어요. \
-             PC 시계를 맞춘 뒤 다시 연결을 확인하세요. 계속 실패하면 개발팀에 알려 주세요."
-        );
+        return "요청 인증 토큰(JWT)이 만료됐어요. API 키는 그대로 쓸 수 있어요. \
+                PC 시계를 맞춘 뒤 다시 연결을 확인하세요. 계속 실패하면 개발팀에 알려 주세요."
+            .into();
     }
     if EXPIRED_KEY_ERRORS.contains(&name) {
-        return format!("API 키가 만료됐어요({name}). {label} API 관리에서 만료된 키를 삭제하고 새 키를 발급하세요.");
+        return format!("API 키가 만료됐어요. {label} API 관리에서 만료된 키를 삭제하고 새 키를 발급하세요.");
     }
     if name.starts_with("under_min_total") {
-        return format!(
-            "최소 주문 금액보다 적어요({name}). 매크로 투자 금액을 {label} 최소 주문 금액 이상으로 올리세요."
-        );
+        return format!("최소 주문 금액보다 적어요. 매크로 투자 금액을 {label} 최소 주문 금액 이상으로 올리세요.");
     }
     if NO_FUNDS_ERRORS.contains(&name) {
-        return format!("주문할 원화 잔고가 모자라요({name}). 잔고를 채우거나 매크로 투자 금액을 줄이세요.");
+        return "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.".into();
     }
     if name == "over_krw_funds_bid" {
-        return format!("거래소의 1회 최대 주문 금액을 넘었어요({name}). 매크로 투자 금액을 줄이세요.");
+        return "거래소의 1회 최대 주문 금액을 넘었어요. 매크로 투자 금액을 줄이세요.".into();
     }
     if MARKET_ERRORS.contains(&name) {
-        return format!("이 마켓은 지금 주문할 수 없어요({name}). 마켓 이름이 맞는지, 거래소 점검 중인지 확인하세요.");
+        return "이 마켓은 지금 주문할 수 없어요. 마켓 이름이 맞는지, 거래소 점검 중인지 확인하세요.".into();
     }
-    let detail = if !name.is_empty() && !message.is_empty() {
-        format!("{name}: {message}")
-    } else if !name.is_empty() {
-        name.to_string()
-    } else if !message.is_empty() {
-        message.to_string()
+    // 모르는 오류 — 거래소가 준 설명은 그대로 보이고, 이름(코드)은 자세히 보기로 보냄.
+    if message.is_empty() {
+        format!("{label}에서 주문을 거절했어요.")
     } else {
+        format!("{label}에서 주문을 거절했어요: {message}")
+    }
+}
+
+/// 지원용 오류 코드 — 거래소 오류 이름. 이름이 없으면 HTTP 상태.
+pub fn domestic_error_code(status: u16, name: &str) -> String {
+    if name.is_empty() {
         format!("HTTP {status}")
-    };
-    format!("{label}에서 거절했어요({detail})")
+    } else {
+        name.to_string()
+    }
+}
+
+/// 잔고가 모자라 거절된 주문인지 여부(업비트 insufficient_funds_bid 등).
+pub fn is_no_funds_error(name: &str) -> bool {
+    NO_FUNDS_ERRORS.contains(&name)
 }
 
 /// 키·허용 IP·권한 때문에 거절된 것인지 여부. 상태 코드만으로 가르지 않음(400짜리 허용 IP 오류가 있음).
@@ -321,6 +329,8 @@ pub struct DomesticBroker {
     fees: Mutex<Fees>,
     rules: Mutex<Option<OrderRules>>,
     last_error_name: Mutex<String>,
+    /// 마지막 리허설에서 거래소가 돌려준 오류 코드(지원용, 문장에는 넣지 않음). 거래소 오류가 아니면 "".
+    last_error_code: Mutex<String>,
     holdings: Mutex<Option<Holdings>>,
     /// 마지막 시세의 전일 대비 등락률(signed_change_rate).
     change: Mutex<Option<f64>>,
@@ -358,6 +368,7 @@ impl DomesticBroker {
             fees: Mutex::new(Fees::default()),
             rules: Mutex::new(None),
             last_error_name: Mutex::new(String::new()),
+            last_error_code: Mutex::new(String::new()),
             holdings: Mutex::new(None),
             change: Mutex::new(None),
         })
@@ -643,6 +654,9 @@ impl Broker for DomesticBroker {
     fn last_error_name(&self) -> String {
         self.last_error_name.lock().unwrap().clone()
     }
+    fn last_error_code(&self) -> String {
+        self.last_error_code.lock().unwrap().clone()
+    }
     fn set_log(&self, log: LogFn) {
         *self.log.lock().unwrap() = log;
     }
@@ -671,7 +685,7 @@ impl Broker for DomesticBroker {
             Ok(_) => Ok(true),
             Err(BrokerError::Api { status, name, message }) => {
                 if is_access_error(status, &name) {
-                    let explanation = explain_domestic_error(self.exchange, status, &name, &message);
+                    let explanation = explain_domestic_error(self.exchange, &name, &message);
                     Err(BrokerError::Access { explanation, name })
                 } else if status == 400 || status == 404 {
                     Ok(false)
@@ -694,14 +708,18 @@ impl Broker for DomesticBroker {
     /// 돈을 쓰지 않고 키·허용 IP·주문 권한·최소 주문 금액이 통하는지 봄.
     async fn rehearse(&self, notional: f64, spend: Option<f64>) -> (bool, String) {
         self.set_last_error("");
+        let set_code = |code: String| *self.last_error_code.lock().unwrap() = code;
+        set_code(String::new());
         match self.rehearse_inner(notional, spend).await {
             Ok(result) => result,
             Err(BrokerError::Api { status, name, message }) => {
                 self.set_last_error(&name);
-                (false, explain_domestic_error(self.exchange, status, &name, &message))
+                set_code(domestic_error_code(status, &name));
+                (false, explain_domestic_error(self.exchange, &name, &message))
             }
             Err(BrokerError::Access { explanation, name }) => {
                 self.set_last_error(&name);
+                set_code(name);
                 (false, explanation)
             }
             Err(BrokerError::Other(m)) => {

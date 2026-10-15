@@ -71,7 +71,7 @@ impl Bot {
         let broker = self.broker()?;
         let ready = match broker.ensure_ready().await {
             Ok(r) => r,
-            Err(BrokerError::Access { explanation, .. }) => return Ok(self.rehearsal_failed(&explanation)),
+            Err(BrokerError::Access { explanation, name }) => return Ok(self.rehearsal_failed(&explanation, &name)),
             Err(e) => return Err(e.to_string()),
         };
         if !ready {
@@ -103,7 +103,7 @@ impl Bot {
         }
         let broker = match self.broker() {
             Ok(b) => b,
-            Err(e) => return self.rehearsal_failed(&e),
+            Err(e) => return self.rehearsal_failed(&e, ""),
         };
         let (notional, spend) = rehearsal_amounts(&self.macro_, &self.exchange_name, Some(&broker));
         let (ok, reason) = broker.rehearse(notional, spend).await;
@@ -113,7 +113,7 @@ impl Bot {
             self.balance_activity(&broker.balance_note());
             return true;
         }
-        self.rehearsal_failed(&reason)
+        self.rehearsal_failed(&reason, &broker.last_error_code())
     }
 
     /// 시작 전 확인에서 읽은 잔고를 활동 한 줄로 — 모의는 실제 잔고를 쓰지 않아 남기지 않음.
@@ -124,17 +124,16 @@ impl Bot {
         self.logger.activity("info", "잔고를 확인했어요", note.to_string(), format!("잔고: {note}"), "muted");
     }
 
-    pub(super) fn rehearsal_failed(&self, reason: &str) -> bool {
-        let raw = format!("[오류] 주문 전 확인 실패 — {reason}");
+    /// 주문 전 확인 실패를 남김. `code`는 거래소 오류 코드(지원용) — 문장에는 넣지 않고 원문·자세히 보기에만 붙임.
+    pub(super) fn rehearsal_failed(&self, reason: &str, code: &str) -> bool {
+        let raw = with_error_code(&format!("[오류] 주문 전 확인 실패 — {reason}"), code);
         self.log(&raw);
         if self.mode == RunMode::Mock {
             self.logger.activity("blocked", "실전이라면 주문 전 확인에서 막혀요", reason.to_string(), raw, "warn");
         } else {
             self.logger.activity("error", "주문 전 확인에서 막혀 시작하지 않았어요", reason.to_string(), raw, "danger");
         }
-        if self.exchange_name == "binance"
-            && (reason.contains("-2015") || reason.contains("-2014") || reason.contains('키'))
-        {
+        if self.exchange_name == "binance" && (["-2015", "-2014"].contains(&code) || reason.contains('키')) {
             let market = if self.market == Market::Futures { "선물" } else { "현물" };
             // 연결 도우미가 안내하는 사이트와 같은 이름(`connection::binance_env`).
             let where_ = if self.testnet() {

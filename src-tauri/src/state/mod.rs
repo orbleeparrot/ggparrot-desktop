@@ -41,12 +41,14 @@ pub fn activity_copy_text(head: &str, items: &[ActivityDto], max_chars: usize) -
             let t = chrono::DateTime::from_timestamp_millis(a.at)
                 .map(|d| d.with_timezone(&chrono::Local).format("%m-%d %H:%M:%S").to_string())
                 .unwrap_or_default();
-            let mut line = format!("{t}  {}", a.title);
+            // 원문 줄(자세히 보기)이 여러 줄이면(오류 코드 줄 등) 같은 들여쓰기로 이음. 원문 로그 줄의 제목은 한 줄로.
+            const INDENT: &str = "\n                ";
+            let mut line = format!("{t}  {}", a.title.replace('\n', " "));
             if !a.detail.is_empty() {
                 line.push_str(&format!(" — {}", a.detail));
             }
             if !a.raw.is_empty() && a.raw != a.title {
-                line.push_str(&format!("\n                {}", a.raw.trim()));
+                line.push_str(&format!("{INDENT}{}", a.raw.trim().replace('\n', INDENT)));
             }
             line
         })

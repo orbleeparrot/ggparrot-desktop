@@ -83,6 +83,7 @@ export function makeRun(over: Partial<RunStatus> = {}): RunStatus {
     offlineSince: 0,
     priceStaleSince: 0,
     closeFailures: 0,
+    fundsShort: false,
     updatedAt: Date.now(),
     price: 100,
     inPosition: false,

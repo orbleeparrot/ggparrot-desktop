@@ -157,7 +157,7 @@ impl Bot {
                                 "error",
                                 "정리 주문이 실패했어요",
                                 format!("다음 확인 때 다시 시도해요 ({}/{MAX_CLOSE_FAILURES})", self.close_failures),
-                                format!("  ⚠ 정리 실패: {e}"),
+                                with_error_code(&format!("  ⚠ 정리 실패: {e}"), &self.order_error_code),
                                 "danger",
                             );
                         } else {
@@ -173,11 +173,14 @@ impl Bot {
                                         "새 진입은 멈추고 정리를 계속 다시 시도해요(최대 1분 간격). {}",
                                         self.where_to_settle()
                                     ),
-                                    format!("  ⚠ 정리 실패: {e}"),
+                                    with_error_code(&format!("  ⚠ 정리 실패: {e}"), &self.order_error_code),
                                     "danger",
                                 );
                             } else {
-                                self.log(format!("  ⚠ 정리 실패({}회): {e}", self.close_failures));
+                                self.log(with_error_code(
+                                    &format!("  ⚠ 정리 실패({}회): {e}", self.close_failures),
+                                    &self.order_error_code,
+                                ));
                             }
                         }
                     }

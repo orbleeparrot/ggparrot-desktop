@@ -332,8 +332,9 @@ async fn wrapped_binance_futures_never_changes_margin_or_leverage_or_orders() {
     assert!(m.ensure_ready().await.unwrap());
     assert_eq!(m.order_rules().await.unwrap().step, 0.001);
     let (ok, reason) = m.rehearse(1000.0, None).await;
-    assert!(ok && reason.contains("APIError(code=-2015)"), "{reason}");
+    assert!(ok && reason.contains("키를 거절했어요") && !reason.contains("-2015"), "{reason}");
     assert_eq!(m.last_error_name(), "binance_access");
+    assert_eq!(m.last_error_code(), "-2015", "안쪽 어댑터의 오류 코드를 그대로 넘김");
     let o = m.submit(req(OrderSide::Buy, Some(3.0), None, "ggp-f2")).await.unwrap();
     assert_eq!((o.status.as_str(), o.acquired_qty), ("FILLED", 3.0));
     // 모의 선물도 시장가(테이커) 기본 수수료 0.05%를 알려 줌 — 3개 × 100 USDT × 0.05% = 0.15 USDT.

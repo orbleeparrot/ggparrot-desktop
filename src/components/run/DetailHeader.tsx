@@ -1,4 +1,4 @@
-// 상세 머리줄 — 뒤로(한 열)·거래소 로고·종목·방향·거래소, 파일 이름과 요약, 웹 실행 기록·거래소 종목 화면 단추.
+// 상세 머리줄 — 뒤로(한 열)·거래소 로고·종목·방향·거래소, 출처·전략·시장 요약(파일 이름은 마우스를 올리면), 웹 실행 기록·거래소 종목 화면 단추.
 import { ArrowLeft, ExternalLink, History } from "lucide-react";
 import { useRunnerContext } from "../../state/context";
 import { MARKET_LABELS, SIDE_LABELS } from "../../state/runs";
@@ -30,11 +30,8 @@ export function DetailHeader({ slot, onBack }: { slot: RunSlot; onBack?: () => v
           <span className={`side side-${m.side}`}>{SIDE_LABELS[m.side]}</span>
           <span className="detail-exchange">{m.exchangeLabel || m.exchangeName}</span>
         </h2>
-        <p className="detail-sub" title={m.title}>
-          <span className="detail-file">{m.title}</span>
-          {facts.map((f) => (
-            <span key={f}> · {f}</span>
-          ))}
+        <p className="detail-sub" title={`매크로 파일: ${m.title}`}>
+          {facts.join(" · ")}
         </p>
       </div>
       {(slot.marketPage || slot.webRunPage) && (

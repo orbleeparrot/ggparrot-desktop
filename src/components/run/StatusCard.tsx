@@ -14,7 +14,7 @@ import {
   moneyDigits,
   toneOf,
 } from "../../state/format";
-import { alertOf, labelOf, serverCell, STALE_MS } from "../../state/runStatus";
+import { labelOf, serverCell, STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus, Tone } from "../../types";
 import { ExitBar } from "./ExitBar";
 import { PriceChart } from "./PriceChart";
@@ -47,7 +47,7 @@ export function StatusCard({
   const live = !run.finished && phase === "running" && status.tone === "ok";
   const toneClass = run.finished ? "" : `tone-${status.tone as Tone}`;
   const server = serverCell(run, now);
-  const alert = alertOf(run, mode);
+  const alert = statusAlert(run, mode, macro);
   const age = run.updatedAt > 0 ? now - run.updatedAt : 0;
   const stale = !run.finished && phase === "running" && age > STALE_MS;
   const q = macro.quote;
@@ -66,9 +66,9 @@ export function StatusCard({
   return (
     <section className={`status-card ${stateClass}`} aria-label="실행 상태">
       {alert && (
-        <div className="uncertain-banner" role="alert">
+        <div className={`uncertain-banner ${alert.tone === "warn" ? "is-warn" : ""}`} role="alert">
           <TriangleAlert size={16} aria-hidden="true" />
-          {alert}
+          {alert.text}
         </div>
       )}
 

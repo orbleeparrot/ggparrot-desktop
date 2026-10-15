@@ -701,6 +701,12 @@ export function createMockBackend(
       retrying.offline = true;
       Object.assign(retrying.run, { online: false, offlineSince: now - 90_000 });
     }
+    // 잔고 부족으로 진입 주문이 거절된 실전 실행('실행 중 · 잔고 부족 · 주문 못 함').
+    const short = m.runs[11];
+    if (short?.run) {
+      short.mode = "live";
+      short.run.fundsShort = true;
+    }
   }
 
   return {

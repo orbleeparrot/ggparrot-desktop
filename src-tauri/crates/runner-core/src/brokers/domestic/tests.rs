@@ -214,61 +214,95 @@ fn ip_class_errors_name_the_allowed_ip_before_the_key() {
         (Exchange::Bithumb, "NotAllowIP"),
         (Exchange::Upbit, "no_authorization_token"),
     ] {
-        let text = explain_domestic_error(ex, 401, name, "허용되지 않은 IP");
+        let text = explain_domestic_error(ex, name, "허용되지 않은 IP");
         assert!(text.find("허용 IP").unwrap() < text.find("API 키").unwrap(), "{text}");
     }
     assert_eq!(
-        explain_domestic_error(Exchange::Upbit, 401, "no_authorization_ip", ""),
-        "업비트에서 요청을 거절했어요(no_authorization_ip). 먼저 이 기기의 현재 IP가 업비트의 \
+        explain_domestic_error(Exchange::Upbit, "no_authorization_ip", ""),
+        "업비트에서 요청을 거절했어요. 먼저 이 기기의 현재 IP가 업비트의 \
          허용 IP에 등록돼 있는지 확인하세요. 집 인터넷 IP는 바뀔 수 있어요. IP가 맞다면 \
          API 키(Access Key · Secret Key)를 다시 복사해 넣으세요."
     );
 }
 
+/// 사람이 읽는 문장에는 오류 이름(코드)을 넣지 않음 — 코드는 `domestic_error_code`로 따로 감.
+const ALL_NAMES: [&str; 20] = [
+    "no_authorization_ip",
+    "NotAllowIP",
+    "invalid_access_key",
+    "no_authorization_token",
+    "invalid_query_payload",
+    "jwt_verification",
+    "out_of_scope",
+    "expired_jwt",
+    "expired_access_key",
+    "under_min_total_bid",
+    "under_min_total_market_bid",
+    "insufficient_funds_bid",
+    "insufficient_funds_ask",
+    "insufficient_funds",
+    "over_krw_funds_bid",
+    "notfoundmarket",
+    "invalid_market",
+    "market_offline",
+    "brand_new_error",
+    "x",
+];
+
+#[test]
+fn sentences_never_carry_the_error_code() {
+    for ex in [Exchange::Upbit, Exchange::Bithumb] {
+        for name in ALL_NAMES {
+            let text = explain_domestic_error(ex, name, "");
+            assert!(!text.contains(name), "{name}: {text}");
+            assert!(!text.contains('(') || text.contains("(JWT)") || text.contains("(Access Key"), "{name}: {text}");
+            assert_eq!(domestic_error_code(400, name), name, "코드는 오류 이름 그대로");
+        }
+    }
+    assert_eq!(domestic_error_code(403, ""), "HTTP 403", "이름이 없으면 HTTP 상태가 코드");
+}
+
 #[test]
 fn each_error_class_has_its_own_text() {
-    let e = |name: &str| explain_domestic_error(Exchange::Upbit, 400, name, "fixture");
+    let e = |name: &str| explain_domestic_error(Exchange::Upbit, name, "fixture");
     let sig = e("invalid_query_payload");
     assert!(sig.contains("서명") && !sig.contains("집 IP 는 바뀝니다") && !sig.contains("다시 복사"));
-    let jwt = explain_domestic_error(Exchange::Bithumb, 400, "jwt_verification", "");
+    let jwt = explain_domestic_error(Exchange::Bithumb, "jwt_verification", "");
     assert_eq!(
         jwt,
-        "빗썸에서 인증 토큰(JWT) 서명을 검증하지 못했어요(jwt_verification). Access Key와 Secret Key가 같은 발급 건인지, \
+        "빗썸에서 인증 토큰(JWT) 서명을 검증하지 못했어요. Access Key와 Secret Key가 같은 발급 건인지, \
          Secret Key를 빠짐없이 붙여 넣었는지 확인한 뒤 다시 연결을 확인하세요. 계속 실패하면 개발팀에 알려 주세요."
     );
     assert!(!jwt.contains("허용 IP") && !jwt.contains("만료"));
     assert_eq!(
         e("out_of_scope"),
-        "이 API 키에 주문 권한이 없어요(out_of_scope). 업비트 API 관리에서 주문하기 권한을 켠 키를 쓰세요."
+        "이 API 키에 주문 권한이 없어요. 업비트 API 관리에서 주문하기 권한을 켠 키를 쓰세요."
     );
     let expired_jwt = e("expired_jwt");
     assert!(expired_jwt.contains("JWT") && expired_jwt.contains("시계"));
     assert!(!expired_jwt.contains("API 키가 만료") && !expired_jwt.contains("재발급") && !expired_jwt.contains("연장"));
     for ex in [Exchange::Upbit, Exchange::Bithumb] {
-        let t = explain_domestic_error(ex, 401, "expired_access_key", "fixture");
+        let t = explain_domestic_error(ex, "expired_access_key", "fixture");
         assert!(t.contains("API 키가 만료") && t.contains("삭제") && t.contains("발급") && !t.contains("연장"));
     }
     assert_eq!(
         e("under_min_total_market_bid"),
-        "최소 주문 금액보다 적어요(under_min_total_market_bid). 매크로 투자 금액을 업비트 최소 주문 금액 이상으로 올리세요."
+        "최소 주문 금액보다 적어요. 매크로 투자 금액을 업비트 최소 주문 금액 이상으로 올리세요."
     );
     for name in ["insufficient_funds_bid", "insufficient_funds_ask", "insufficient_funds"] {
-        assert_eq!(
-            e(name),
-            format!("주문할 원화 잔고가 모자라요({name}). 잔고를 채우거나 매크로 투자 금액을 줄이세요.")
-        );
+        assert_eq!(e(name), "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.");
+        assert!(is_no_funds_error(name), "{name}");
     }
-    assert_eq!(
-        e("over_krw_funds_bid"),
-        "거래소의 1회 최대 주문 금액을 넘었어요(over_krw_funds_bid). 매크로 투자 금액을 줄이세요."
-    );
+    assert!(!is_no_funds_error("under_min_total_bid") && !is_no_funds_error("over_krw_funds_bid"));
+    assert_eq!(e("over_krw_funds_bid"), "거래소의 1회 최대 주문 금액을 넘었어요. 매크로 투자 금액을 줄이세요.");
     for name in ["notfoundmarket", "invalid_market", "market_offline"] {
         assert!(e(name).starts_with("이 마켓은 지금 주문할 수 없어요"));
     }
-    assert_eq!(e("brand_new_error"), "업비트에서 거절했어요(brand_new_error: fixture)");
-    assert_eq!(explain_domestic_error(Exchange::Upbit, 400, "x", ""), "업비트에서 거절했어요(x)");
-    assert_eq!(explain_domestic_error(Exchange::Upbit, 400, "", "말"), "업비트에서 거절했어요(말)");
-    assert_eq!(explain_domestic_error(Exchange::Bithumb, 403, "", ""), "빗썸에서 거절했어요(HTTP 403)");
+    // 모르는 오류는 거래소 설명을 그대로 두고, 이름(코드)은 문장에 넣지 않음.
+    assert_eq!(e("brand_new_error"), "업비트에서 주문을 거절했어요: fixture");
+    assert_eq!(explain_domestic_error(Exchange::Upbit, "x", ""), "업비트에서 주문을 거절했어요.");
+    assert_eq!(explain_domestic_error(Exchange::Upbit, "", "말"), "업비트에서 주문을 거절했어요: 말");
+    assert_eq!(explain_domestic_error(Exchange::Bithumb, "", ""), "빗썸에서 주문을 거절했어요.");
 }
 
 #[test]
@@ -830,8 +864,10 @@ async fn rehearsal_errors_are_explained_and_named() {
         let (ok, reason) = b.rehearse(10_000.0, None).await;
         assert!(!ok);
         assert!(reason.contains(needle), "{name}: {reason}");
-        assert_eq!(reason, explain_domestic_error(ex, status, name, "fixture"));
+        assert_eq!(reason, explain_domestic_error(ex, name, "fixture"));
+        assert!(!reason.contains(name), "문장에는 코드가 없음: {reason}");
         assert_eq!(b.last_error_name(), name);
+        assert_eq!(b.last_error_code(), name, "코드는 따로 들고 있음(자세히 보기용)");
         if ex == Exchange::Bithumb {
             assert!(requests(&server, "POST", "/v1/orders/test").await.is_empty());
         }
@@ -844,15 +880,17 @@ async fn unrecognised_and_unnamed_errors_keep_the_exchanges_words_or_status() {
     mount(&server, "POST", "/v1/orders/test", err("brand_new_error", "거래소가 한 말", 400)).await;
     let (b, _) = make(Exchange::Upbit, &server.uri());
     let (ok, reason) = b.rehearse(10_000.0, None).await;
-    assert!(!ok && reason.contains("brand_new_error") && reason.contains("거래소가 한 말"));
+    assert_eq!((ok, reason.as_str()), (false, "업비트에서 주문을 거절했어요: 거래소가 한 말"));
+    assert_eq!(b.last_error_code(), "brand_new_error", "코드는 문장 밖에서 따로 들고 있음");
 
     let server = MockServer::start().await;
     mount(&server, "POST", "/v1/orders/test", ResponseTemplate::new(403).set_body_string("<html>blocked</html>")).await;
     let (b, _) = make(Exchange::Upbit, &server.uri());
     let (ok, reason) = b.rehearse(10_000.0, None).await;
     assert!(!ok);
-    assert_eq!(reason, "업비트에서 거절했어요(HTTP 403)");
+    assert_eq!(reason, "업비트에서 주문을 거절했어요.");
     assert_eq!(b.last_error_name(), "");
+    assert_eq!(b.last_error_code(), "HTTP 403");
 }
 
 #[tokio::test]

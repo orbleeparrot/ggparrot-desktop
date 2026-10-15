@@ -76,6 +76,8 @@ export interface RunStatus {
   priceStaleSince: number;
   /** 손절·강제 청산 주문이 연달아 실패한 횟수. */
   closeFailures: number;
+  /** 진입 주문이 잔고(증거금) 부족으로 거절된 뒤 아직 진입 주문이 체결되지 않음. 다음 진입이 체결되면 풀림. */
+  fundsShort: boolean;
   /** 마지막 상태를 받은 시각(epoch ms). 0이면 아직(시작 직후). */
   updatedAt: number;
   price: number;

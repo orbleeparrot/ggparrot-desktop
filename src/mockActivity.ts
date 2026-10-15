@@ -152,6 +152,7 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     offlineSince: 0,
     priceStaleSince: 0,
     closeFailures: 0,
+    fundsShort: false,
     updatedAt: at,
     price,
     inPosition: false,

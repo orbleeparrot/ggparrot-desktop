@@ -73,6 +73,9 @@ impl Broker for MockBroker {
     fn last_error_name(&self) -> String {
         self.inner.last_error_name()
     }
+    fn last_error_code(&self) -> String {
+        self.inner.last_error_code()
+    }
     fn set_log(&self, log: LogFn) {
         self.inner.set_log(log.clone());
         *self.log.lock().unwrap() = log;
@@ -126,7 +129,8 @@ impl Broker for MockBroker {
         if ok {
             return (true, reason);
         }
-        self.log(format!("모의 모드: 실전이라면 여기서 막힙니다 — {reason}"));
+        let line = format!("모의 모드: 실전이라면 여기서 막힙니다 — {reason}");
+        self.log(super::with_error_code(&line, &self.inner.last_error_code()));
         (true, format!("모의라서 그대로 진행해요. 실전이라면 막힐 이유: {reason}"))
     }
 

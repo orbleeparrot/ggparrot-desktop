@@ -6,8 +6,11 @@ use super::*;
 #[derive(Debug, PartialEq)]
 pub(crate) enum RunCheckNext {
     Nothing,
-    /// 막힌 이유를 알림으로 보임.
-    Warn(String),
+    /// 막힌 이유를 알림으로 보임. code는 거래소 오류 코드 — 알림 글에는 넣지 않고 앱 기록 설명에만 붙임.
+    Warn {
+        message: String,
+        code: String,
+    },
     /// 연결 도우미의 결과 화면으로 데려감.
     Wizard(WizardTarget),
     /// 이어서 시작함.
@@ -63,7 +66,7 @@ impl Shared {
         self.refresh_wizard();
         match next {
             RunCheckNext::Nothing => {}
-            RunCheckNext::Warn(m) => self.notice_from("run", "warn", m),
+            RunCheckNext::Warn { message, code } => self.notice_with_code("run", "warn", message, &code),
             RunCheckNext::Wizard(target) => self.wizard_open(target, "result_fail"),
             RunCheckNext::Start => match self.start_run(id) {
                 StartReply::ConfirmLive { title, message } => {
@@ -126,9 +129,14 @@ impl Core {
             let next = if start_after { RunCheckNext::Start } else { RunCheckNext::Nothing };
             return Some((next, connected));
         }
-        self.push_activity(id, "error", "시작 전 확인에서 막혔어요", &result.reason, &result.reason, false, "danger");
+        // 오류 코드는 이유 문장에 넣지 않고 자세히 보기(원문)에만 붙임.
+        let raw = runner_core::brokers::with_error_code(&result.reason, &result.error_code);
+        self.push_activity(id, "error", "시작 전 확인에서 막혔어요", &result.reason, &raw, false, "danger");
         let view = check_view(ex.map(|e| e.as_str()).unwrap_or(""), false, &result.error_name);
-        let warn = || RunCheckNext::Warn(format!("{}\n\n매매는 시작하지 않았어요.", result.reason));
+        let warn = || RunCheckNext::Warn {
+            message: format!("{}\n\n매매는 시작하지 않았어요.", result.reason),
+            code: result.error_code.clone(),
+        };
         let next = if start_after && view.problem == "order_size" {
             warn()
         } else if let (true, false, Some(target)) = (start_after, wizard_open, target) {
@@ -199,6 +207,25 @@ mod tests {
         assert!(matches!(next, RunCheckNext::Wizard(t) if t.slot == KeySlot::Upbit), "{next:?}");
         let (next, _) = c.accept_run_check("a", gen, &failed, false).unwrap();
         assert_eq!(next, RunCheckNext::Nothing, "[시작]을 누르지 않았으면 활동 기록만");
+
+        // 잔고 부족(주문 내용 오류)은 알림으로 — 오류 코드는 알림 글이 아니라 따로(앱 기록 설명에 붙임).
+        let mut funds = result_for(&c, false, "insufficient_funds_bid");
+        funds.reason = "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.".into();
+        funds.error_code = "insufficient_funds_bid".into();
+        let (next, _) = c.accept_run_check("a", gen, &funds, true).unwrap();
+        match next {
+            RunCheckNext::Warn { message, code } => {
+                assert!(
+                    !message.contains("insufficient") && message.ends_with("매매는 시작하지 않았어요."),
+                    "{message}"
+                );
+                assert_eq!(code, "insufficient_funds_bid");
+            }
+            other => panic!("{other:?}"),
+        }
+        let act = c.run("a").unwrap().activity.last().unwrap().clone();
+        assert!(!act.detail.contains("insufficient"), "{}", act.detail);
+        assert!(act.raw.ends_with("\n오류 코드: insufficient_funds_bid"), "{}", act.raw);
 
         c.closed = true;
         assert!(c.accept_run_check("a", gen, &failed, true).is_none(), "닫는 중에는 아무것도 하지 않음");

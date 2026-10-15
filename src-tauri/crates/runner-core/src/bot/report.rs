@@ -112,6 +112,7 @@ impl Bot {
             offline_since: self.offline_since,
             price_stale_since: self.price_fail_since,
             close_failures: self.close_failures,
+            funds_short: self.funds_short,
         }
     }
 

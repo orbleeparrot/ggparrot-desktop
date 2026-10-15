@@ -5,7 +5,11 @@ use crate::brokers::Order;
 
 impl Bot {
     /// 시장가 주문 하나를 넣고 체결을 확인한 뒤 보유 상태를 갱신함. 실패는 Err(사람이 읽을 문장).
+    /// - 거래소 오류 코드는 문장에 넣지 않고 `order_error_code`에 따로 남김(자세히 보기·원문 로그용).
+    /// - 진입 주문이 잔고 부족으로 거절되면 `funds_short`를 켜고, 진입 주문이 체결되면 끔. 매매 동작은 그대로임.
     pub async fn place(&mut self, side: OrderSide, qty: f64, reduce_only: bool, notional: f64) -> Result<bool, String> {
+        self.order_error_code.clear();
+        self.order_no_funds = false;
         let broker = self.broker()?;
         let open = if self.side == Side::Long { OrderSide::Buy } else { OrderSide::Sell };
         let closing = reduce_only || (self.in_position && side != open);
@@ -46,8 +50,10 @@ impl Bot {
         {
             Ok(o) => o,
             Err(e) => {
+                self.order_error_code = e.name().to_string();
                 let mut d = request_details.clone();
                 d.insert("error".into(), json!(e.to_string()));
+                d.insert("error_code".into(), json!(self.order_error_code));
                 self.logger.telemetry(
                     "error",
                     &format!("{mode_label} {target}에서 주문 처리 오류를 알려 왔어요."),
@@ -87,14 +93,13 @@ impl Bot {
         let close = self.apply_fill(&order, closing, result_uncertain);
         self.last_close = close;
         if order.status == "REJECTED" && executed == 0.0 {
-            if self.domestic() {
-                let ex = self.exchange().unwrap_or(Exchange::Upbit);
-                return Err(crate::brokers::explain_domestic_error(ex, 400, &order.raw_status, ""));
+            let (text, code, no_funds) = self.rejection_text(&order.raw_status, closing);
+            self.order_error_code = code;
+            self.order_no_funds = no_funds && !closing;
+            if self.order_no_funds {
+                self.funds_short = true;
             }
-            return Err(format!(
-                "바이낸스에서 주문을 거절했어요({}). 잔고 · 최소 주문 금액 · 키 권한을 확인하세요. 주문은 들어가지 않았어요.",
-                order.raw_status
-            ));
+            return Err(text);
         }
         let incomplete = order.status != "FILLED" || (closing && self.in_position && !partial_close);
         if incomplete && !self.position_uncertain && executed > 0.0 {
@@ -129,7 +134,36 @@ impl Bot {
         );
         self.logger.ui(&raw);
         self.fill_activity(side, closing, executed, average, close.as_ref(), order.fee.as_ref(), raw);
+        if !closing {
+            self.funds_short = false; // 진입 주문이 체결됨 — 잔고 부족이 풀림
+        }
         Ok(true)
+    }
+
+    /// 거래소가 받지 않은 주문의 (사람이 읽을 문장, 오류 코드, 잔고 부족인지). 코드는 문장에 넣지 않음.
+    /// `raw`는 거절 상태 글 — 국내는 오류 이름("insufficient_funds_bid"), 바이낸스는 "-2010 Account has …".
+    pub(super) fn rejection_text(&self, raw: &str, closing: bool) -> (String, String, bool) {
+        if self.domestic() {
+            let ex = self.exchange().unwrap_or(Exchange::Upbit);
+            let text = crate::brokers::explain_domestic_error(ex, raw, "");
+            return (text, raw.to_string(), crate::brokers::is_no_funds_error(raw));
+        }
+        let (code, message) = crate::brokers::binance_rejection_parts(raw);
+        let no_funds = crate::brokers::is_binance_no_funds(code, message);
+        let text = if no_funds && !closing {
+            if self.market == Market::Futures {
+                format!(
+                    "주문할 증거금이 모자라요. 바이낸스 선물 지갑에 {}를 채우거나 매크로 투자 금액을 줄이세요.",
+                    self.quote
+                )
+            } else {
+                format!("주문할 {} 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.", self.quote)
+            }
+        } else {
+            let why = if message.is_empty() { String::new() } else { format!("({message})") };
+            format!("바이낸스에서 주문을 거절했어요{why}. 잔고 · 최소 주문 금액 · 키 권한을 확인하세요. 주문은 들어가지 않았어요.")
+        };
+        (text, code.to_string(), no_funds)
     }
 
     /// 체결 하나를 보유 상태에 반영함 — 수수료 합계, 정리(실현 손익·먼지)·추가 진입(가중평균)·새 진입.

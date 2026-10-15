@@ -62,6 +62,26 @@ describe("내 매크로 카드(두 줄)", () => {
     expect(rest.textContent).toBe("서버 재시도 중");
   });
 
+  it("잔고 부족 상태는 주의 색 한 줄 — 앞부분 '실행 중', 뒷부분 '잔고 부족 · 주문 못 함'", () => {
+    const run = makeRun({ fundsShort: true });
+    const status = { text: "실행 중 · 잔고 부족 · 주문 못 함", tone: "warn" as const };
+    const { card } = renderCard(makeSlot({ phase: "running", run, status }));
+    const head = card.querySelector(".run-card-status")!;
+    const rest = card.querySelector(".run-card-status-rest")!;
+    expect(head.className).toContain("tone-warn");
+    expect(head.textContent).toBe("실행 중");
+    expect(rest.textContent).toBe("잔고 부족 · 주문 못 함");
+  });
+
+  it("전략은 자리(바깥)와 글자(안쪽, 구분점 포함)로 나눠 둠 — 좁으면 구분점과 함께 통째로 숨음", () => {
+    const slot = makeSlot();
+    const { card } = renderCard(slot);
+    const strategy = card.querySelector(".run-card-strategy")!;
+    expect(strategy.querySelector(".run-card-strategy-text")?.textContent).toBe(
+      slot.macro.strategy || slot.macro.title,
+    );
+  });
+
   it("전략은 줄임표로 잘려도 title 에 전략과 매크로 이름이 다 있음", () => {
     const slot = makeSlot();
     const { card } = renderCard(slot);

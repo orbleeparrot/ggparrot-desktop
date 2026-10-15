@@ -876,13 +876,13 @@ async fn a_practice_key_hint_does_not_mention_an_allowed_ip() {
     let m = json!({"symbol": "BTCUSDT", "exchange": "binance", "position_side": "short", "leverage": 2});
     let fb = FakeBroker::new(100.0, Market::Futures, Side::Short);
     let (bot, mut rx) = bot_with(m.clone(), fb.clone(), RunMode::Testnet);
-    assert!(!bot.rehearsal_failed("바이낸스 -2015 키 거절"));
+    assert!(!bot.rehearsal_failed("바이낸스에서 키를 거절했어요", "-2015"));
     let hint = logs(&mut rx).into_iter().find(|l| l.contains("키인지")).unwrap();
     assert!(hint.contains("선물 데모(demo.binance.com) 키인지, 권한을 확인하세요."), "{hint}");
     assert!(!hint.contains("허용 IP"), "{hint}");
 
     let (bot, mut rx) = bot_with(m, fb, RunMode::Live);
-    assert!(!bot.rehearsal_failed("바이낸스 -2015 키 거절"));
+    assert!(!bot.rehearsal_failed("바이낸스에서 키를 거절했어요", "-2015"));
     let hint = logs(&mut rx).into_iter().find(|l| l.contains("키인지")).unwrap();
     assert!(hint.contains("실거래(binance.com) 키인지, 허용 IP와 권한을 확인하세요."), "{hint}");
 }
@@ -1400,4 +1400,143 @@ async fn mock_futures_report_fees_from_the_start() {
     let fb = FakeBroker::new(100.0, Market::Futures, Side::Long);
     let (bot, _rx) = bot_with(json!({"symbol": "BTCUSDT", "leverage": 3}), fb, RunMode::Mock);
     assert_eq!(bot.ui_snapshot(bot.snapshot())["fees_paid"], 0.0, "모의 선물은 수수료를 알려 줌");
+}
+
+// --- 잔고 부족·오류 코드 ------------------------------------------------------------
+
+fn health_of(bot: &Bot) -> RunHealth {
+    bot.health(&crate::server::HeartbeatReply::idle())
+}
+
+#[tokio::test]
+async fn an_entry_rejected_for_funds_raises_the_funds_state_once_until_an_entry_fills() {
+    let fb = FakeBroker::new(15_000_000.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(
+        json!({"symbol": "KRW-BTC", "exchange": "upbit", "params": {"initial_capital": 1_000_000}}),
+        fb.clone(),
+        RunMode::Live,
+    );
+    bot.step = 0.0;
+    let buy = |id: i64| json!({"id": id, "action": "buy", "notional_frac": 0.5, "reason": "골든크로스"});
+
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    let ack = bot.execute_command(&buy(1), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    // 문장(ack·활동 설명)에는 코드가 없고, 원문(자세히 보기)에만 '오류 코드' 줄이 있음.
+    assert_eq!(ack["error"], "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.");
+    assert!(bot.funds_short && health_of(&bot).funds_short, "잔고 부족 상태가 화면으로 감");
+    let evs = events(&mut rx);
+    let acts = acts_of(&evs);
+    let first = acts.iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!(first.title, "잔고가 모자라 주문하지 못했어요");
+    assert_eq!(first.tone, "danger", "처음 한 번은 위험 줄(→ OS 알림)");
+    assert!(
+        first.detail.ends_with("다음 신호에서 다시 주문해요.") && !first.detail.contains("insufficient"),
+        "{}",
+        first.detail
+    );
+    assert!(first.raw.ends_with("\n오류 코드: insufficient_funds_bid"), "{}", first.raw);
+    assert!(logs_of(&evs).iter().any(|l| l.contains("오류 코드: insufficient_funds_bid")), "원문 로그에도 코드");
+
+    // 같은 이유가 이어지면 주의 줄로만 — OS 알림을 거듭 띄우지 않음.
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    bot.execute_command(&buy(2), 15_000_000.0).await.unwrap();
+    let again = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!((again.title.as_str(), again.tone), ("잔고가 모자라 주문하지 못했어요", "warn"));
+    assert!(bot.funds_short);
+
+    // 진입 주문이 체결되면 풀림. 매매 동작은 그대로(멈추지 않고 다음 신호에 다시 주문함).
+    let ack = bot.execute_command(&buy(3), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], true);
+    assert!(!bot.funds_short && !health_of(&bot).funds_short);
+    assert_eq!(fb.submits().len(), 3, "잔고 부족 뒤에도 신호마다 주문을 냄");
+
+    // 다시 생기면 새로 한 번 알림.
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    bot.execute_command(&buy(4), 15_000_000.0).await.unwrap();
+    let fresh = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!(fresh.tone, "danger");
+}
+
+fn logs_of(evs: &[BotEvent]) -> Vec<String> {
+    evs.iter()
+        .filter_map(|e| match e {
+            BotEvent::Log(l) => Some(l.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn other_rejections_and_exit_rejections_do_not_raise_the_funds_state() {
+    let fb = FakeBroker::new(15_000_000.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-BTC", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    bot.step = 0.0;
+    fb.push(Order::rejected("under_min_total_bid".into()));
+    let ack =
+        bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    assert!(!bot.funds_short, "최소 주문 금액은 잔고 부족이 아님");
+    let act = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!(act.title, "주문이 처리되지 않았어요");
+    assert!(!act.detail.contains("under_min_total") && act.raw.ends_with("오류 코드: under_min_total_bid"), "{act:?}");
+
+    // 보유 중 정리 주문이 코인 잔고 부족으로 거절돼도 진입 잔고 상태는 켜지 않음(정리 실패는 따로 알림).
+    bot.execute_command(&json!({"id": 2, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    fb.push(Order::rejected("insufficient_funds_ask".into()));
+    let ack = bot.execute_command(&json!({"id": 3, "action": "sell"}), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    assert!(!bot.funds_short);
+}
+
+#[tokio::test]
+async fn binance_funds_rejections_are_named_without_the_code_in_the_sentence() {
+    let cases = [
+        (
+            Market::Spot,
+            Side::Long,
+            "-2010 Account has insufficient balance for requested action.",
+            true,
+            "주문할 USDT 잔고가 모자라요",
+        ),
+        (Market::Futures, Side::Long, "-2019 Margin is insufficient.", true, "주문할 증거금이 모자라요"),
+        (
+            Market::Spot,
+            Side::Long,
+            "-1013 Filter failure: NOTIONAL",
+            false,
+            "바이낸스에서 주문을 거절했어요(Filter failure: NOTIONAL)",
+        ),
+    ];
+    for (market, side, raw, funds, want) in cases {
+        let fb = FakeBroker::new(100.0, market, side);
+        let m = if market == Market::Futures {
+            json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 2})
+        } else {
+            json!({"symbol": "BTCUSDT"})
+        };
+        let (mut bot, mut rx) = bot_with(m, fb.clone(), RunMode::Live);
+        fb.push(Order::rejected(raw.into()));
+        let ack = bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 100.0).await.unwrap();
+        let err = ack["error"].as_str().unwrap();
+        let code = raw.split(' ').next().unwrap();
+        assert!(err.starts_with(want) && !err.contains(code), "{raw}: {err}");
+        assert_eq!(bot.funds_short, funds, "{raw}");
+        let act = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+        assert!(act.raw.ends_with(&format!("\n오류 코드: {code}")), "{raw}: {}", act.raw);
+    }
+}
+
+#[tokio::test]
+async fn another_rejection_during_a_funds_streak_keeps_its_own_title() {
+    let fb = FakeBroker::new(15_000_000.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-BTC", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    bot.step = 0.0;
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    fb.push(Order::rejected("under_min_total_bid".into()));
+    bot.execute_command(&json!({"id": 2, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    let last = acts_of(&events(&mut rx)).into_iter().rfind(|a| a.kind == "error").unwrap();
+    assert_eq!(last.title, "주문이 처리되지 않았어요", "잔고 부족이 아닌 거절은 잔고 부족으로 적지 않음");
+    assert!(bot.funds_short, "진입이 체결될 때까지 잔고 부족 상태는 남음");
 }
