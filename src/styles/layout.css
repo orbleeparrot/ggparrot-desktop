@@ -38,14 +38,6 @@
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
-.badge-version {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: 11px;
-  font-weight: var(--fw-bold);
-}
 .status {
   display: inline-flex;
   align-items: center;
@@ -107,13 +99,7 @@
     opacity: 0;
   }
 }
-/* 버전 표시와 업데이트 알림을 한 덩어리로 — [v0.18.3][● v0.18.4 새 버전] */
-.version-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
+/* 업데이트 알림 — 새 버전이 있을 때만 앱 이름 옆에 [● v0.19.1 새 버전] */
 .update-chip {
   position: relative;
   display: inline-flex;
@@ -282,11 +268,6 @@
   }
   .app-name {
     font-size: 15px;
-  }
-}
-@media (max-width: 480px) {
-  .badge-version {
-    display: none;
   }
 }
 
