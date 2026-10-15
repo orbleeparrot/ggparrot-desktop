@@ -86,9 +86,14 @@ jobs:
           gh release list --repo "$REPO" --limit 100 --json tagName,isDraft,name \
             --jq '.[] | select(.isDraft and (.name | startswith("GG Parrot (껄무새) v"))) | .tagName' |
             while read -r tag; do gh release delete "$tag" --repo "$REPO" --yes; done
-          gh release create "v$VERSION" --repo "$REPO" --draft --target "$SHA" \
-            --title "GG Parrot (껄무새) v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
-          id="$(gh api "repos/$REPO/releases" --jq "[.[] | select(.draft and .tag_name == \"v$VERSION\")][0].id")"
+          # 만든 응답에서 바로 id를 받음(목록 조회는 막 만든 초안을 늦게 보일 수 있음).
+          id="$(gh api -X POST "repos/$REPO/releases" -f tag_name="v$VERSION" -f target_commitish="$SHA" \
+            -f name="GG Parrot (껄무새) v$VERSION" -F draft=true -F body=@"$RUNNER_TEMP/notes.md" --jq .id)"
+          if ! [[ "$id" =~ ^[0-9]+$ ]]; then
+            echo "::error::초안을 만들지 못했어요(id: '$id')."
+            exit 1
+          fi
+          echo "초안 id $id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
           {
             echo "## 초안 v$VERSION"
@@ -150,6 +155,16 @@ jobs:
             echo "macOS: 인증서로 서명$( [ -n "$APPLE_ID" ] && echo '·공증' )"
           else
             echo "macOS: Apple 인증서 없음 — 임시 서명(ad-hoc)으로 만듦"
+          fi
+      # 초안 id가 없으면 tauri-action이 올리기를 건너뛰고 성공으로 끝남 — 그 전에 멈춤.
+      - name: 올릴 초안 확인
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+        run: |
+          if ! [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::올릴 초안 id가 없어요(prepare 작업 확인)."
+            exit 1
           fi
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         env:
