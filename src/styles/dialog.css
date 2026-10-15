@@ -1,0 +1,116 @@
+/* 대화상자·실전 확인 시트. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  background: var(--scrim);
+  animation: fade-in 160ms var(--ease);
+}
+.scrim-sheet {
+  place-items: end center;
+  padding-bottom: 0;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow-lift);
+  animation: pop-in 180ms var(--ease);
+}
+.dialog:focus {
+  outline: none;
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.dialog-sheet {
+  width: min(560px, 100%);
+  padding: 22px 24px 20px;
+  border-radius: 16px 16px 0 0;
+  border-top: 4px solid var(--live);
+  animation: sheet-in 240ms var(--ease);
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dialog-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--hover);
+}
+.tone-warn .dialog-icon {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.tone-danger .dialog-icon {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.tone-live .dialog-icon {
+  background: color-mix(in srgb, var(--live) 14%, var(--card));
+  color: var(--live);
+}
+.dialog-title {
+  font-size: 17px;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+.dialog-body {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.dialog-sheet .dialog-body {
+  color: var(--ink);
+  font-size: 14px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.dialog-sheet .dialog-actions .btn {
+  flex: 1;
+}
+.dialog-meta {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.dialog-body p + p:not(.dialog-meta) {
+  margin-top: 6px;
+}
+/* 대화상자는 연결 도우미·매크로 추가 시트보다 위. */
+.scrim-dialog,
+.scrim-sheet {
+  z-index: 60;
+}

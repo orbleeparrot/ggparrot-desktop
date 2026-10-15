@@ -1,0 +1,36 @@
+# 줄 끝은 저장소에서 LF로 통일함(Windows에서 받아도 같은 바이트로 빌드).
+* text=auto eol=lf
+
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# 바이너리 — 줄 끝을 바꾸지 않고 diff하지 않음.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.icns binary
+*.gif  binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.bmp  binary
+*.tif  binary
+*.tiff binary
+*.dmg  binary
+*.exe  binary
+*.msi  binary
+*.zip  binary
+*.gz   binary
+*.sqlite3 binary
+
+# 잠금 파일은 리뷰에서 접어 둠.
+package-lock.json linguist-generated=true -diff
+src-tauri/Cargo.lock linguist-generated=true -diff
+src-tauri/gen/** linguist-generated=true
+
+# GitHub 언어 통계에서 문서·그림 원본은 뺌.
+docs/** linguist-documentation
+assets/** linguist-vendored

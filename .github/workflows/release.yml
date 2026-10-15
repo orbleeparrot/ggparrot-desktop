@@ -1,0 +1,106 @@
+name: release
+
+# 태그 v{major}.{minor}.{patch}(예: v0.18.2)를 올리면 macOS·Windows 설치 파일과
+# 앱 안 업데이트용 파일(서명·latest.json)을 만들어 GitHub Release 초안에 첨부함.
+# 초안을 [Publish] 해야 앱의 '업데이트 확인'이 새 버전을 봄(latest 릴리스만 읽음).
+#
+# 필요한 저장소 비밀값
+#   TAURI_SIGNING_PRIVATE_KEY           ~/.tauri/ggparrot-desktop-updater.key 내용(앱 업데이트 서명 — 필수)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  위 키의 암호
+#   APPLE_* (선택)                      macOS 코드 서명·공증. 넣는 방법은 docs/code-signing.md
+#
+# 실행 방법: 태그를 직접 올리거나, release-prepare 워크플로가 태그를 올린 뒤 이 워크플로를 태그로 실행함
+# (GITHUB_TOKEN으로 올린 태그는 push 이벤트를 만들지 않아 workflow_dispatch로 부름). 태그가 아닌 곳에서는 돌지 않음.
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # 태그 이름은 스크립트에 바로 끼우지 않고 환경변수로 넘김(이름에 셸 문법이 섞여도 실행되지 않게).
+      - name: 태그와 앱 버전이 같은지 확인
+        env:
+          TAG: ${{ github.ref_name }}
+        run: node scripts/check-versions.mjs "$TAG"
+      - name: 릴리스 본문(CHANGELOG의 사용자용 내용, 배포하지 않은 칸 합침)
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        # 여러 줄 출력의 끝 표시는 매번 무작위로 — 본문에 같은 줄이 있어도 끊기지 않게.
+        run: |
+          notes="$(node scripts/release-notes.mjs "$TAG")"
+          eof="GGP_NOTES_$(node -e "process.stdout.write(require('crypto').randomBytes(16).toString('hex'))")"
+          {
+            echo "body<<$eof"
+            printf '%s\n' "$notes"
+            echo "$eof"
+          } >> "$GITHUB_OUTPUT"
+      - name: 업데이트 주소를 이 저장소로 맞춘다
+        shell: bash
+        run: |
+          echo "UPDATER_CONFIG={\"bundle\":{\"createUpdaterArtifacts\":true},\"plugins\":{\"updater\":{\"endpoints\":[\"https://github.com/${{ github.repository }}/releases/latest/download/latest.json\"]}}}" >> "$GITHUB_ENV"
+      # Apple 비밀값은 값이 있을 때만 환경변수로 넘김.
+      # Tauri는 빈 값이라도 변수가 있으면 그 값으로 서명을 시도해 실패함. 없으면 tauri.conf.json의 임시 서명("-")으로 만듦.
+      - name: macOS 코드 서명 값(있을 때만)
+        if: matrix.platform == 'macos-latest'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set_if() { if [ -n "${!1}" ]; then { echo "$1<<GGP_ENV_EOF"; printf '%s\n' "${!1}"; echo "GGP_ENV_EOF"; } >> "$GITHUB_ENV"; fi; }
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do set_if "$v"; done
+            if [ -n "$APPLE_ID" ]; then for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do set_if "$v"; done; fi
+            echo "macOS: 인증서로 서명$( [ -n "$APPLE_ID" ] && echo '·공증' )"
+          else
+            echo "macOS: Apple 인증서 없음 — 임시 서명(ad-hoc)으로 만듦"
+          fi
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "GG Parrot (껄무새) ${{ github.ref_name }}"
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: true
+          # 설치 파일 이름은 기술 이름: ggparrot-desktop_<버전>_darwin_universal.dmg, ..._windows_x64-setup.exe(로컬은 scripts/name-bundles.mjs)
+          releaseAssetNamePattern: "[mainBinaryName]_[version]_[platform]_[arch][setup][ext]"
+          args: ${{ matrix.args }} --config ${{ env.UPDATER_CONFIG }}

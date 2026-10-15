@@ -1,0 +1,36 @@
+[package]
+name = "runner-core"
+version.workspace = true
+edition = "2021"
+publish = false
+description = "GG Parrot(껄무새) 코어 — GUI 의존 없음"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+hmac = "0.13"
+sha2 = "0.11"
+base64 = "0.23"
+hex = "0.4"
+uuid = { version = "1", features = ["v4"] }
+regex = "1"
+rust_decimal = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+keyring = "4"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+rand = "0.10"
+url = "2"
+once_cell = "1"
+dirs = "7"
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
+
+# Windows 자격 증명 관리자 항목을 '이 컴퓨터에만'(Local)으로 만들 때 keyring 4의 코어 API를 씀.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring-core = "1"

@@ -1,0 +1,5 @@
+# CI(dtolnay/rust-toolchain@stable)와 같은 stable 채널. 버전을 고정하지 않고 최신 stable을 따름.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

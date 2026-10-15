@@ -1,0 +1,85 @@
+# ─────────────────────────────────────────────────────────────
+# 의존성·빌드 결과
+# ─────────────────────────────────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Rust·Tauri(빌드 캐시는 수십 GB까지 커짐)
+target/
+src-tauri/target/
+src-tauri/target-*/
+# 상대 경로 CARGO_TARGET_DIR로 cargo가 src-tauri 안에 한 번 더 만든 빌드 폴더
+src-tauri/src-tauri/
+**/*.rs.bk
+*.pdb
+# Tauri가 빌드 때 만드는 권한 스키마(편집기 검사용, 커밋하지 않음)
+src-tauri/gen/
+# 설치 화면 그림의 중간 파일(scripts/installer-art.swift가 만들고 .tiff로 합침)
+src-tauri/installer/dmg-background*.png
+
+# 설치 파일·업데이트 묶음(릴리스에만 올림)
+*.dmg
+*.app/
+*.msi
+*-setup.exe
+*.app.tar.gz
+*.nsis.zip
+*.sig
+
+# ─────────────────────────────────────────────────────────────
+# 비밀·개인 정보 — 절대 커밋하지 않음
+# ─────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.key.pub
+*.pem
+*.p8
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.jks
+*.keystore
+*.mobileprovision
+*.provisionprofile
+.tauri/
+secrets/
+credentials.dat
+# 앱이 만드는 로컬 데이터(실행 목록·설정·활동 기록 보관함)
+runs.json
+prefs.json
+*.sqlite3
+*.sqlite3-*
+
+# ─────────────────────────────────────────────────────────────
+# 로그·임시
+# ─────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+*.tmp
+*.swp
+*~
+
+# ─────────────────────────────────────────────────────────────
+# OS·편집기
+# ─────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+Thumbs.db
+desktop.ini
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Claude Code 로컬 파일(공유하는 launch.json만 커밋)
+.claude/*
+!.claude/launch.json

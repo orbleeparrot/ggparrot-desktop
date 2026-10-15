@@ -1,0 +1,326 @@
+/* 창 배치 — 머리줄 + 본문(실행 화면 또는 설정). 토스트. */
+.app {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  min-height: 0;
+}
+.app-main {
+  min-height: 0;
+  min-width: 0;
+}
+
+/* --- 머리줄 ---------------------------------------------------------------- */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px var(--pad);
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  -webkit-app-region: drag;
+}
+.app-header button {
+  -webkit-app-region: no-drag;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.brand img {
+  flex: none;
+}
+.app-name {
+  font-size: 17px;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.badge-version {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--hover);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-small);
+}
+.status.tone-ok {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+.status.tone-warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.status.tone-danger {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+.status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.status-dot {
+  position: relative;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* 퍼지는 고리가 이웃 글자나 칸 가장자리에 잘리지 않게 양옆에 자리를 둠. */
+.status-dot.is-live {
+  margin-inline: 3px;
+}
+.status-dot.is-live::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  opacity: 0;
+  animation: pulse 1.8s var(--ease) infinite;
+}
+@keyframes pulse {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
+}
+/* 버전 표시와 업데이트 알림을 한 덩어리로 — [v0.18.3][● v0.18.4 새 버전] */
+.version-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.update-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--brand) 75%, transparent);
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+}
+.update-chip:hover {
+  background: color-mix(in srgb, var(--brand) 40%, var(--brand-soft));
+}
+/* 내려받는 동안 칩 자체가 진행 막대가 됨 */
+.update-chip.is-downloading::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--p, 0%);
+  background: color-mix(in srgb, var(--brand) 70%, var(--brand-soft));
+  transition: width 300ms var(--ease);
+  z-index: -1;
+}
+.update-chip.is-ready,
+.update-chip.is-installing {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+.update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 25%, transparent);
+}
+.header-web,
+.header-gear {
+  width: 34px;
+  height: 34px;
+}
+.header-gear.is-on {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+/* --- 토스트 ------------------------------------------------------------------ */
+.toasts {
+  position: fixed;
+  right: var(--pad);
+  bottom: var(--pad);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: var(--shadow-lift);
+  pointer-events: auto;
+  animation: toast-in 220ms var(--ease);
+}
+.toast > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.toast-error > svg {
+  color: #fca5a5;
+}
+.toast-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  font-size: var(--fs-small);
+}
+.toast .icon-btn {
+  width: 24px;
+  height: 24px;
+  color: inherit;
+  opacity: 0.7;
+}
+.toast .icon-btn:hover {
+  background: rgb(255 255 255 / 0.12);
+  color: inherit;
+  opacity: 1;
+}
+@keyframes toast-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+
+/* --- 끌어다 놓기 ---------------------------------------------------------------- */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+  animation: fade-in 120ms var(--ease);
+}
+.drop-target {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: min(520px, 100%);
+  padding: 40px 24px;
+  border: 2px dashed var(--brand-hover);
+  border-radius: 18px;
+  background: var(--card);
+  color: var(--ink);
+  text-align: center;
+  box-shadow: var(--shadow-lift);
+}
+.drop-target svg {
+  color: var(--brand-deep);
+}
+.drop-target p {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+}
+.drop-target span {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+@media (max-width: 899px) {
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+}
+@media (max-width: 640px) {
+  .update-chip-text {
+    display: none;
+  }
+  .update-chip {
+    padding: 0 6px;
+  }
+  .app-name {
+    font-size: 15px;
+  }
+}
+@media (max-width: 480px) {
+  .badge-version {
+    display: none;
+  }
+}
+
+/* --- 창 테두리 없이 머리줄이 맨 위 -------------------------------------------------
+   macOS: 신호등(닫기·최소화·전체 화면)이 머리줄 왼쪽에 겹쳐 그려짐 — 그만큼 비움.
+   Windows: 시스템 제목 줄 대신 오른쪽 끝에 창 단추를 직접 그림. */
+.app-header {
+  min-height: 54px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+html[data-platform="mac"] .app-header {
+  padding-left: 86px;
+}
+html[data-platform="windows"] .app-header {
+  padding-right: 0;
+}
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  margin: -10px 0 -10px 4px;
+}
+.window-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: default;
+}
+.window-btn:hover {
+  background: var(--hover);
+}
+.window-btn.is-close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+.window-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}

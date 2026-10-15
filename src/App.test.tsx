@@ -1,0 +1,247 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import App from "./App";
+import { call, on } from "./ipc";
+import { act as activity, makeRun, makeSettings, makeSlot, makeState, upbitMacro } from "./test/fixtures";
+import type { Activity, AppState, LibraryFile, StartReply } from "./types";
+import { EV_CONFIRM, EV_NAVIGATE, EV_STATE } from "./types";
+
+vi.mock("./ipc", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ipc")>();
+  return { ...actual, call: vi.fn(), on: vi.fn() };
+});
+
+const handlers = new Map<string, (p: unknown) => void>();
+let current: AppState;
+let startReply: StartReply;
+let history: Activity[];
+
+beforeEach(() => {
+  handlers.clear();
+  current = makeState();
+  startReply = { kind: "started" };
+  history = [];
+  vi.mocked(on).mockImplementation(async (name, handler) => {
+    handlers.set(name, handler as (p: unknown) => void);
+    return () => handlers.delete(name);
+  });
+  vi.mocked(call).mockImplementation((async (cmd: string) => {
+    if (cmd === "get_state") return current;
+    if (cmd === "get_activity") return history;
+    if (cmd === "start_run") return startReply;
+    if (cmd === "start_run_confirmed") return { kind: "started" };
+    if (cmd === "add_run_from_library") return "run-2";
+    return undefined;
+  }) as typeof call);
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+const calledWith = (cmd: string) => vi.mocked(call).mock.calls.filter((c) => c[0] === cmd);
+const pushState = (s: AppState) => act(() => handlers.get(EV_STATE)!(s));
+const ready = () => waitFor(() => expect(handlers.has(EV_STATE)).toBe(true));
+
+const libFile: LibraryFile = {
+  fileName: "업비트.ggm.json",
+  valid: true,
+  error: "",
+  title: "업비트 눌림목",
+  exchange: "upbit",
+  exchangeLabel: "업비트",
+  symbol: "KRW-BTC",
+  side: "long",
+  summary: "",
+  strategy: "RSI 조건 매매",
+  unsupported: "",
+  signed: true,
+  modifiedAt: Date.now(),
+  inUse: 0,
+};
+
+describe("껄무새 웹", () => {
+  it("머리줄 [껄무새 웹 열기]는 open_web을 보낸다", async () => {
+    render(<App />);
+    await ready();
+    fireEvent.click(await screen.findByRole("button", { name: "껄무새 웹 열기" }));
+    expect(calledWith("open_web")).toHaveLength(1);
+  });
+});
+
+describe("매크로 추가", () => {
+  it("폴더에서 고르면 add_run_from_library 를 보내고 새 슬롯을 고른다", async () => {
+    current = makeState({ library: { dir: "/m", files: [libFile], skipped: 0, truncated: 0 } });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "매크로 추가" }));
+    const sheet = await screen.findByRole("dialog", { name: "매크로 추가" });
+    fireEvent.click(within(sheet).getByRole("button", { name: /업비트 눌림목/ }));
+    await waitFor(() =>
+      expect(calledWith("add_run_from_library")).toEqual([["add_run_from_library", { fileName: "업비트.ggm.json" }]]),
+    );
+    await ready();
+    await pushState(
+      makeState({ runs: [makeSlot(), makeSlot({ id: "run-2", macro: upbitMacro, modeChoices: ["mock", "live"] })] }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const selected = document.querySelector('[aria-current="true"]');
+    expect(selected?.textContent).toContain("KRW-BTC");
+    expect(screen.getByRole("heading", { level: 2, name: /KRW-BTC/ })).toBeTruthy();
+    await waitFor(() =>
+      expect(calledWith("get_activity").some((c) => (c[1] as { runId: string }).runId === "run-2")).toBe(true),
+    );
+  });
+
+  it("목록이 비면 첫 실행 안내와 [매크로 추가]", async () => {
+    current = makeState({ runs: [] });
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "실행할 매크로를 추가하세요" })).toBeTruthy();
+    expect(screen.getByText("설정에서 키 연결")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "매크로 추가" }));
+    expect(await screen.findByRole("dialog", { name: "매크로 추가" })).toBeTruthy();
+  });
+});
+
+describe("실전 확인 시트", () => {
+  it("start_run 이 confirm_live 면 시트를 띄우고, [실전으로 시작] 으로 start_run_confirmed 를 보낸다", async () => {
+    current = makeState({ runs: [makeSlot({ mode: "live" })] });
+    startReply = { kind: "confirm_live", title: "바이낸스 실전으로 시작할까요?", message: "실제 자금으로 주문해요." };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "실전으로 시작" }));
+    const sheet = await screen.findByRole("dialog", { name: "바이낸스 실전으로 시작할까요?" });
+    expect(sheet.textContent).toContain("실제 자금으로 주문해요.");
+    expect(document.activeElement?.textContent).toBe("취소");
+    fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
+    await waitFor(() =>
+      expect(calledWith("start_run_confirmed")).toEqual([["start_run_confirmed", { runId: "run-1" }]]),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("검사가 끝난 뒤 온 runner:confirm 도 같은 시트 · Esc 로 닫으면 시작하지 않는다", async () => {
+    render(<App />);
+    await waitFor(() => expect(handlers.has(EV_CONFIRM)).toBe(true));
+    act(() => handlers.get(EV_CONFIRM)!({ runId: "run-1", title: "실전 확인", message: "계속할까요?" }));
+    const sheet = await screen.findByRole("dialog", { name: "실전 확인" });
+    fireEvent.keyDown(sheet, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(calledWith("start_run_confirmed")).toHaveLength(0);
+  });
+});
+
+describe("막힌 이유 → 설정", () => {
+  it("[설정에서 입력] 은 설정을 열고 그 키 칸에 포커스를 둔다", async () => {
+    current = makeState({
+      runs: [
+        makeSlot({
+          mode: "testnet",
+          keySlot: "binance_testnet",
+          readiness: {
+            canStart: false,
+            blocker: "바이낸스 테스트넷 API 키가 필요해요. 설정에서 입력하세요.",
+            needs: { kind: "key", slot: "binance_testnet" },
+          },
+        }),
+      ],
+    });
+    render(<App />);
+    expect(await screen.findByText("바이낸스 테스트넷 API 키가 필요해요. 설정에서 입력하세요.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "설정에서 입력" }));
+    expect(await screen.findByRole("heading", { name: "설정" })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement?.id).toBe("slot-binance_testnet-access"));
+  });
+
+  it("blocked 답은 대화상자로, 필요한 칸이 있으면 [설정에서 입력] 도 준다", async () => {
+    current = makeState({
+      runs: [makeSlot({ readiness: { canStart: false, blocker: "", needs: { kind: "member" } } })],
+    });
+    startReply = { kind: "blocked", message: "회원 키가 필요해요.\n\n설정 › 껄무새 계정에서 입력하세요." };
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 시작" }));
+    const dlg = await screen.findByRole("dialog", { name: "시작할 수 없어요" });
+    fireEvent.click(within(dlg).getByRole("button", { name: "설정에서 입력" }));
+    await waitFor(() => expect(document.activeElement?.id).toBe("member-key"));
+  });
+});
+
+describe("활동 기록 · 개발자 로그", () => {
+  it("원문 줄은 숨겨 두고, 설정에서 켜면 보인다", async () => {
+    history = [
+      activity({
+        id: 1,
+        kind: "buy",
+        title: "BTC 0.00122개를 81,806 USDT에 샀어요",
+        raw: "BUY 체결: id=abc 수량=0.00122",
+      }),
+      activity({ id: 2, kind: "info", title: "heartbeat ok · price=81806", dev: true }),
+    ];
+    render(<App />);
+    expect(await screen.findByText("BTC 0.00122개를 81,806 USDT에 샀어요")).toBeTruthy();
+    expect(screen.queryByText("heartbeat ok · price=81806")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "자세히" }));
+    expect(screen.getByText("BUY 체결: id=abc 수량=0.00122")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "설정" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "개발자 로그 보기" }));
+    await waitFor(() => expect(calledWith("set_show_dev_log")).toEqual([["set_show_dev_log", { show: true }]]));
+    await pushState(makeState({ settings: makeSettings({ showDevLog: true }) }));
+    expect((screen.getByRole("switch", { name: "개발자 로그 보기" }) as HTMLElement).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "실행 화면으로" }));
+    expect(await screen.findByText("heartbeat ok · price=81806")).toBeTruthy();
+  });
+});
+
+describe("종료 · 이동", () => {
+  it("[■ 종료 ▾] 에서 고르면 '{label}할까요?' 를 묻고 stop_run 을 보낸다", async () => {
+    const holding = makeRun({ inPosition: true, qty: 1, entryPrice: 100 });
+    current = makeState({ runs: [makeSlot({ phase: "running", mode: "live", run: holding })] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 종료" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "청산 후 종료" }));
+    const dlg = await screen.findByRole("dialog", { name: "청산 후 종료할까요?" });
+    expect(dlg.textContent).toContain("보유 포지션을 시장가로 정리한 뒤 종료해요.");
+    fireEvent.click(within(dlg).getByRole("button", { name: "청산 후 종료" }));
+    await waitFor(() =>
+      expect(calledWith("stop_run")).toEqual([["stop_run", { runId: "run-1", mode: "close_and_stop" }]]),
+    );
+  });
+
+  it("모의 · 보유 없음이면 고를 게 없어 [■ 종료] 하나 — 모의는 실제 주문이 없다고 말한다", async () => {
+    const holding = makeRun({ inPosition: true, qty: 1, entryPrice: 100 });
+    current = makeState({ runs: [makeSlot({ phase: "running", mode: "mock", run: holding })] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 종료" }));
+    expect(screen.queryByRole("menuitem")).toBeNull();
+    const dlg = await screen.findByRole("dialog", { name: "종료할까요?" });
+    expect(dlg.textContent).toContain("실제 주문은 보내지 않아요");
+    expect(dlg.textContent).not.toContain("청산");
+    fireEvent.click(within(dlg).getByRole("button", { name: "종료" }));
+    await waitFor(() =>
+      expect(calledWith("stop_run")).toEqual([["stop_run", { runId: "run-1", mode: "close_and_stop" }]]),
+    );
+  });
+
+  it("실전이라도 보유가 없으면 두 방법이 같아 [■ 종료] 하나", async () => {
+    current = makeState({ runs: [makeSlot({ phase: "running", mode: "live", run: makeRun() })] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 종료" }));
+    const dlg = await screen.findByRole("dialog", { name: "종료할까요?" });
+    expect(dlg.textContent).toContain("보유 포지션이 없어요");
+  });
+
+  it("runner:navigate 와 ⌘/Ctrl+, 로 화면을 바꾼다", async () => {
+    current = makeState({ runs: [makeSlot(), makeSlot({ id: "run-9", macro: upbitMacro })] });
+    render(<App />);
+    await screen.findByRole("heading", { level: 2, name: /BTCUSDT/ });
+    await waitFor(() => expect(handlers.has(EV_NAVIGATE)).toBe(true));
+    act(() => handlers.get(EV_NAVIGATE)!({ to: "run:run-9" }));
+    expect(await screen.findByRole("heading", { level: 2, name: /KRW-BTC/ })).toBeTruthy();
+    fireEvent.keyDown(window, { key: ",", ctrlKey: true });
+    expect(await screen.findByRole("heading", { name: "설정" })).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "설정" })).toBeNull());
+  });
+});

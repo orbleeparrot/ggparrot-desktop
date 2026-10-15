@@ -1,0 +1,288 @@
+/* 활동 기록 — 밝은 카드·왼쪽 시각·가운데 실(타임라인) 위의 종류 아이콘·제목/둘째 줄/자세히. */
+.feed {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 240px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.feed-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 10px 10px var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+.feed-title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+}
+.feed-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.feed-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.feed-chip:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+.feed-chip.is-on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+.feed-chip-count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--hover);
+  color: var(--muted);
+  font-size: 10.5px;
+  text-align: center;
+}
+.feed-chip.is-on .feed-chip-count {
+  background: color-mix(in srgb, var(--bg) 22%, transparent);
+  color: var(--bg);
+}
+.feed-copy {
+  margin-left: auto;
+}
+.feed-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0 10px;
+}
+.feed-body:focus-visible {
+  outline-offset: -2px;
+}
+.feed-empty {
+  padding: 28px var(--pad);
+  color: var(--muted);
+  text-align: center;
+}
+.feed-list {
+  position: relative;
+}
+/* 타임라인 실 — 아이콘 칸 가운데를 지남. */
+.feed-list::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: calc(var(--pad) + 64px + 10px + 12px);
+  width: 1px;
+  background: var(--border);
+}
+.act {
+  position: relative;
+  display: grid;
+  grid-template-columns: 64px 24px minmax(0, 1fr);
+  column-gap: 10px;
+  padding: 7px var(--pad) 7px var(--pad);
+}
+.act.is-fresh {
+  animation: act-in 220ms var(--ease);
+}
+@keyframes act-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.act-time {
+  padding-top: 3px;
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+  text-align: right;
+}
+.act-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--hover);
+  color: var(--muted);
+  box-shadow: 0 0 0 3px var(--card);
+}
+.act-body {
+  min-width: 0;
+  padding-top: 2px;
+}
+.act-title {
+  font-weight: var(--fw-bold);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.act-detail {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.act-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 1px 4px 1px 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.act-more:hover {
+  color: var(--ink);
+}
+.act-raw {
+  margin: 4px 0 2px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--card-sunken);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 종류별 아이콘 색 */
+.kind-start .act-icon {
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+}
+.kind-signal .act-icon {
+  background: var(--info-soft);
+  color: var(--info-ink);
+}
+.kind-buy .act-icon,
+.kind-sell[data-tone="ok"] .act-icon,
+.kind-connection[data-tone="ok"] .act-icon {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+.kind-sell[data-tone="danger"] .act-icon,
+.kind-stop_loss .act-icon,
+.kind-error .act-icon {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+.kind-blocked .act-icon,
+.kind-connection[data-tone="warn"] .act-icon {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.kind-sell .act-icon {
+  background: var(--hover);
+  color: var(--ink);
+}
+.kind-sell[data-tone="danger"] .act-detail {
+  color: var(--danger-ink);
+}
+.kind-sell[data-tone="ok"] .act-detail {
+  color: var(--ok-ink);
+}
+.kind-error .act-title {
+  color: var(--danger-ink);
+}
+
+/* 원문 줄(개발자 로그 보기) — 작고 흐린 고정폭 */
+.act-dev {
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+.act-dev .act-time {
+  padding-top: 0;
+  font-weight: var(--fw-regular);
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+.act-dev-mark {
+  justify-self: center;
+  width: 5px;
+  height: 5px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  box-shadow: 0 0 0 3px var(--card);
+}
+.act-dev-text {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.feed-jump {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  box-shadow: var(--shadow-lift);
+  cursor: pointer;
+}
+.feed-jump.has-new {
+  border-color: var(--brand-hover);
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+@media (max-width: 899px) {
+  .feed {
+    flex: none;
+    height: 460px;
+  }
+}
+@media (max-width: 480px) {
+  .act {
+    grid-template-columns: 52px 24px minmax(0, 1fr);
+    column-gap: 8px;
+  }
+  .feed-list::before {
+    left: calc(var(--pad) + 52px + 8px + 12px);
+  }
+}

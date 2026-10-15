@@ -1,0 +1,52 @@
+# https://editorconfig.org — 편집기마다 같은 공백·줄 끝·인코딩을 씀.
+# 포맷 자체는 Prettier(TS·CSS·JSON·YAML)와 rustfmt(Rust)가 맡음. 줄 폭은 둘 다 120.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.rs]
+indent_size = 4
+max_line_length = 120
+
+[*.{ts,tsx,js,mjs,cjs,css,html}]
+max_line_length = 120
+
+[*.{json,jsonc,yml,yaml,toml}]
+indent_size = 2
+
+[*.swift]
+indent_size = 2
+max_line_length = 120
+
+[*.md]
+# 줄 끝 공백 두 칸은 마크다운의 줄바꿈임.
+trim_trailing_whitespace = false
+max_line_length = off
+
+[Makefile]
+indent_style = tab
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+
+# 생성·잠금 파일은 손대지 않음.
+[{package-lock.json,Cargo.lock,src-tauri/gen/**}]
+indent_style = unset
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+
+# 바이너리
+[*.{png,jpg,jpeg,gif,webp,ico,icns,bmp,tiff,woff,woff2,ttf,dmg,exe}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset

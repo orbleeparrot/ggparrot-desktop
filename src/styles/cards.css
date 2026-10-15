@@ -1,0 +1,123 @@
+/* 공통 카드 조각 — 카드 제목·실행 모드 세그먼트·비밀 칸. */
+.card-title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.ex-logo {
+  flex: none;
+  border-radius: 6px;
+}
+.macro-summary {
+  color: var(--muted);
+  font-size: var(--fs-body);
+  line-height: 1.55;
+}
+
+/* --- 실행 모드 ---------------------------------------------------------------- */
+.segmented {
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--hover);
+}
+.segment {
+  height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  transition:
+    background-color 140ms var(--ease),
+    color 140ms var(--ease),
+    box-shadow 140ms var(--ease);
+}
+.segment:hover:not(:disabled):not(.is-selected) {
+  color: var(--ink);
+}
+.segment:disabled {
+  cursor: not-allowed;
+}
+.segment.is-selected {
+  background: var(--brand);
+  color: var(--brand-ink);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+.segment-live.is-selected {
+  background: var(--live);
+  color: #fff;
+}
+.mode-note {
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+.mode-note.is-live {
+  color: var(--danger);
+  font-weight: var(--fw-bold);
+}
+
+/* --- 비밀 칸 ------------------------------------------------------------------ */
+.secret-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.field-label {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.secret-field {
+  position: relative;
+}
+.eye-btn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.eye-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--hover);
+}
+.eye-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.eye-btn[aria-pressed="true"] {
+  color: var(--ink);
+}
+
+.segmented.is-locked {
+  opacity: 0.75;
+}
+.segment-live.is-selected {
+  background: var(--live);
+  color: #fff;
+}
+.segment-testnet.is-selected {
+  background: var(--info);
+  color: #fff;
+}
+.chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 160ms var(--ease);
+}
+.chevron.is-open {
+  transform: rotate(90deg);
+}

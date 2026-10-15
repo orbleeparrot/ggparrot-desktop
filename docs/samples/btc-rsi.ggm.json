@@ -1,0 +1,10 @@
+{
+  "symbol": "BTCUSDT",
+  "exchange": "binance",
+  "position_side": "long",
+  "leverage": 1,
+  "rule_type": "F",
+  "human_summary": "RSI 14가 30 아래로 내려갔다가 다시 올라오면 사고, 70을 넘으면 팝니다.",
+  "params": {"initial_capital": 200},
+  "risk": {"stop_loss_pct": 3, "daily_max_loss_pct": 5, "max_holding_hours": 24, "cooldown_minutes": 30, "invest_ratio": 1.0}
+}

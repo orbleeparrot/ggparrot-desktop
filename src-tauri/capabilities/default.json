@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "메인 창 권한 — 명령은 Rust 가 소유하고 웹뷰에는 이벤트 구독과 창 조작(끌기 · 최소화 · 최대화 · 닫기)만 연다. core:default(메뉴 · 트레이 · 경로 · 이미지 API)는 열지 않는다.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized"
+  ]
+}

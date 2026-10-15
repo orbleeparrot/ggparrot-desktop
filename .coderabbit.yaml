@@ -1,0 +1,87 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit 리뷰 설정 — 규칙은 docs/conventions.md를 따름.
+language: ko-KR
+tone_instructions: "간결한 한국어 해요체로, 근거(파일:줄)와 고칠 방법을 함께 적어 주세요."
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  poem: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches: ["main"]
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/dist/**"
+    - "!src-tauri/target*/**"
+    - "!src-tauri/gen/**"
+    - "!package-lock.json"
+    - "!src-tauri/Cargo.lock"
+    - "!src-tauri/icons/**"
+    - "!src-tauri/installer/**"
+    - "!docs/screenshots/**"
+    - "!assets/**"
+  path_instructions:
+    - path: "src-tauri/crates/runner-core/src/**/*.rs"
+      instructions: |
+        실제 돈이 오가는 주문 코드다. 다음을 특히 본다.
+        - 결과를 모르는 주문을 다시 보내지 않는가(같은 client id 로 조회만). 분명한 거절과 결과 모름을 구분하는가.
+        - 네트워크 · 파일 · 입력 값에 unwrap/expect 가 없는가. HTTP 요청에 제한 시간이 있는가.
+        - 키 · 시크릿 · 회원 키가 로그 · 오류 · 서버 이벤트에 그대로 나가지 않는가(mask_secrets · safe_preflight_reason).
+        - 수량 · 가격 반올림이 money.rs 함수를 쓰는가(내림 · 거래소 단위).
+    - path: "src-tauri/src/**/*.rs"
+      instructions: |
+        - std::sync::Mutex 잠금을 .await 너머로 들고 있지 않는가, 잠금 안에서 파일 · 네트워크 I/O 를 하지 않는가.
+        - 메뉴 · 트레이 · 창 API 를 메인 스레드가 아닌 곳에서 막히게 부르지 않는가(run_on_main_thread).
+        - 상태를 바꾼 뒤 emit() 으로 화면에 알리는가. DTO 를 바꿨다면 src/types.ts 와 필드가 같은가.
+    - path: "src/**/*.{ts,tsx}"
+      instructions: |
+        - Rust 계약은 src/types.ts 한 곳. 새 명령은 src/ipc.ts · src/mock.ts 에도 있는가.
+        - 사용자 문구는 해요체, 조사는 앞말에 맞는가(버전 · 숫자 뒤는 particle.ts). 용어집(docs/conventions.md 2절)을 따르는가.
+        - 색은 CSS 토큰(var(--…))만. 아이콘 버튼은 aria-label. any 금지.
+    - path: "src-tauri/capabilities/**"
+      instructions: "웹뷰 권한을 넓히는 변경은 이유가 있어야 한다. 원격 URL 에 IPC 를 열면 안 된다."
+    - path: ".github/workflows/**"
+      instructions: "권한은 최소로(permissions), 서드파티 액션은 버전을 고정한다. 비밀이 로그에 찍히지 않게 한다."
+    - path: "**/*.md"
+      instructions: "한국어 문서. 사실과 코드가 맞는지만 본다(문체 지적은 하지 않는다)."
+  tools:
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    clippy:
+      enabled: true
+    actionlint:
+      enabled: true
+    zizmor:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: false
+    languagetool:
+      enabled: false
+    biome:
+      enabled: false
+    eslint:
+      enabled: false
+    osvScanner:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "docs/conventions.md"
+      - "CONTRIBUTING.md"

@@ -1,0 +1,547 @@
+/* 연결 도우미 — 지금 화면 위에 뜨는 시트. 한 열에서는 전체 화면. */
+.scrim.scrim-wizard {
+  z-index: 55;
+  padding: 24px;
+}
+.wizard {
+  position: relative;
+  width: min(720px, 100%);
+  min-height: min(440px, 100%);
+  max-height: min(680px, 100%);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+  animation: wz-in 220ms var(--ease);
+}
+@keyframes wz-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.wz-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 10px 10px var(--pad);
+  border-bottom: 1px solid var(--border);
+}
+.wz-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.wz-name .card-title {
+  white-space: nowrap;
+}
+.wz-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.wz-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.wz-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 20px var(--pad) 24px;
+  animation: wz-stage 200ms var(--ease);
+}
+@keyframes wz-stage {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+.wz-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px var(--pad);
+  border-top: 1px solid var(--border);
+}
+
+/* 단계 점 */
+.wz-steps {
+  display: flex;
+  gap: 6px;
+}
+.wz-step {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.wz-step::before {
+  content: "";
+  height: 4px;
+  border-radius: 4px;
+  background: var(--border);
+}
+.wz-step.is-done::before {
+  background: var(--ok);
+}
+.wz-step.is-on::before {
+  background: var(--brand);
+}
+.wz-step {
+  position: relative;
+  padding-left: 0;
+}
+.wz-step-dot {
+  display: none;
+}
+.wz-step-label {
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wz-step.is-on .wz-step-label {
+  color: var(--ink);
+}
+.wz-step.is-done .wz-step-label {
+  color: var(--ok-ink);
+}
+
+.wz-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
+}
+.wz-title:focus {
+  outline: none;
+}
+.wz-question {
+  margin: 12px 0 8px;
+  font-size: 20px;
+}
+.wz-title-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+}
+.wz-title-icon.is-ok {
+  background: var(--ok);
+}
+.wz-title-icon.is-bad {
+  background: var(--danger);
+}
+.wz-title-icon.is-spin {
+  color: var(--brand-hover);
+}
+.wz-lead {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* 질문 카드 */
+.wz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wz-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms var(--ease),
+    transform 120ms var(--ease);
+}
+.wz-option:hover,
+.wz-option:focus-visible {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand);
+}
+.wz-option svg {
+  color: var(--muted);
+}
+.wz-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.wz-option-text strong {
+  font-size: var(--fs-title);
+}
+.wz-option-text span {
+  color: var(--muted);
+}
+
+/* 허용 IP */
+.wz-ip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--card-sunken);
+  border: 1px solid var(--border);
+}
+.wz-ip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wz-ip-value {
+  font-size: 28px;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.wz-ip-value.tone-muted {
+  font-size: 20px;
+}
+.wz-ip-note {
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+.wz-ip-note.is-changed {
+  color: var(--warn-ink);
+  font-weight: var(--fw-bold);
+}
+.wz-ip-actions {
+  display: flex;
+  gap: 6px;
+}
+.wz-caveat {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.wz-watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--warn-ink);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.wz-watch svg {
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+.wz-new-link {
+  align-self: flex-start;
+}
+
+/* 세 줄·받은 칸 */
+.wz-rows {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.wz-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+.wz-row-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--faint);
+}
+.check-ok .wz-row-icon {
+  background: var(--ok);
+}
+.check-bad .wz-row-icon {
+  background: var(--danger);
+}
+.check-na .wz-row-icon {
+  background: color-mix(in srgb, var(--faint) 60%, transparent);
+}
+.check-wait .wz-row-icon {
+  background: transparent;
+  border: 1.5px dashed var(--faint);
+  color: var(--faint);
+}
+.check-spin .wz-row-icon {
+  background: transparent;
+  color: var(--brand-hover);
+}
+.wz-wait {
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-2px);
+}
+.wz-row-label {
+  font-weight: var(--fw-bold);
+}
+.wz-row-value {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.check-bad .wz-row-value {
+  color: var(--danger);
+  font-weight: var(--fw-bold);
+}
+.wz-row-value.strong {
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+.wz-row-value.is-got {
+  color: var(--ok-ink);
+  font-weight: var(--fw-bold);
+}
+.wz-reason {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.wz-fix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wz-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- 거래소 화면 그림 ----------------------------------------------------------- */
+/* 실제 입력 칸과 헷갈리지 않게: 점무늬 회색 받침 + [예시 화면] 표시 + 살짝 작게 띄운 창. */
+.ex-stage {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 14px 16px;
+  border: 1px dashed color-mix(in srgb, var(--muted) 45%, transparent);
+  border-radius: var(--radius);
+  background-color: var(--hover);
+  background-image: radial-gradient(color-mix(in srgb, var(--muted) 22%, transparent) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+.ex-caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.ex-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--card);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.01em;
+}
+.ex-caption-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ex-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.ex-toggle:hover {
+  color: var(--ink);
+  background: var(--card-sunken);
+}
+.ex-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.ex-window {
+  width: 94%;
+  align-self: center;
+  border: 1px solid #d9dce1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 6px 18px rgb(17 24 39 / 0.1),
+    0 1px 3px rgb(17 24 39 / 0.08);
+  pointer-events: none;
+  user-select: none;
+}
+.ex-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 26px;
+  padding: 0 10px;
+  background: #eef0f3;
+  border-bottom: 1px solid #e3e5e9;
+}
+.ex-dots {
+  display: inline-flex;
+  gap: 5px;
+}
+.ex-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cfd3d9;
+}
+.ex-url {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 10px;
+  border-radius: 6px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ex-screen {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font);
+}
+.ex-fade {
+  transition:
+    fill 160ms ease,
+    stroke 160ms ease;
+}
+.ex-layer {
+  animation: ex-layer 220ms ease;
+}
+@keyframes ex-layer {
+  from {
+    opacity: 0;
+  }
+}
+.ex-caret {
+  animation: breathe 0.9s steps(1) infinite;
+  font-weight: 500;
+}
+.ex-cursor {
+  opacity: 0;
+  pointer-events: none;
+}
+.ex-cursor.is-visible {
+  opacity: 1;
+}
+.ex-arrow {
+  fill: #111827;
+  stroke: #fff;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  transform-origin: 0 0;
+  transition: transform 100ms ease;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
+}
+.ex-arrow.is-pressed {
+  transform: scale(0.82);
+}
+.ex-ripple {
+  fill: rgb(245 197 66 / 0.55);
+  stroke: #eab308;
+  stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ex-ripple 460ms ease-out forwards;
+}
+@keyframes ex-ripple {
+  from {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* 한 열: 전체 화면 */
+.wizard:focus {
+  outline: none;
+}
+@media (max-width: 899px) {
+  .scrim.scrim-wizard {
+    padding: 0;
+  }
+  .wizard {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+  .wz-links .btn-quiet {
+    padding: 0 6px;
+  }
+}
+@media (max-width: 560px) {
+  .wz-head {
+    flex-wrap: wrap;
+  }
+  .wz-ip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

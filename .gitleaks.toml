@@ -1,0 +1,16 @@
+# 비밀 검사(gitleaks) 설정 — 기본 규칙에 이 저장소의 예외만 더함.
+# 실행: gitleaks git --redact .   (CI의 security 작업과 같음)
+title = "ggparrot-desktop"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "빌드 결과 · 의존성 · 잠금 파일(우리가 쓴 비밀 아님)"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)dist/''',
+  '''(^|/)target(-[^/]+)?/''',
+  '''package-lock\.json$''',
+  '''Cargo\.lock$''',
+]

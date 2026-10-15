@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 앱 이름을 언어별로: 한국어 '껄무새', 그 밖 'GG Parrot' (macos/*.lproj/InfoPlist.strings) -->
+  <key>CFBundleDisplayName</key>
+  <string>GG Parrot</string>
+  <key>LSHasLocalizedDisplayName</key>
+  <true/>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>ko</string>
+  </array>
+</dict>
+</plist>

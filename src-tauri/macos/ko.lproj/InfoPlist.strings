@@ -1,0 +1,3 @@
+/* macOS 언어가 한국어면 Finder·Dock·메뉴 막대에 이 이름이 보임. */
+CFBundleDisplayName = "껄무새";
+CFBundleName = "껄무새";

@@ -1,0 +1,55 @@
+[workspace]
+members = [".", "crates/runner-core"]
+resolver = "2"
+
+# 앱 버전은 여기 한 곳에만 적음. 두 크레이트가 물려받고, tauri.conf.json에 version이 없으면
+# Tauri(창·업데이터 비교·설치 파일 이름)와 릴리스 액션도 이 값을 씀.
+[workspace.package]
+version = "0.18.23"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "gzip"] }
+async-trait = "0.1"
+
+[package]
+name = "ggparrot-desktop"
+version.workspace = true
+edition = "2021"
+description = "GG Parrot (껄무새)"
+default-run = "ggparrot-desktop"
+# 앱이라 crates.io에 올리지 않음.
+publish = false
+
+[lib]
+name = "ggparrot_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+runner-core = { path = "crates/runner-core" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-updater = "2"
+tauri-plugin-notification = "2"
+dirs = "7"
+uuid = { version = "1", features = ["v4"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
