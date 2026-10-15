@@ -207,6 +207,15 @@ pub trait Broker: Send + Sync {
     fn fee_from_base_asset(&self) -> bool;
     /// 국내 어댑터가 읽은 매수 수수료율. 바이낸스는 None. 모의는 안쪽 값을 그대로.
     fn bid_fee(&self) -> Option<f64>;
+    /// 국내 어댑터가 읽은 매도 수수료율. 바이낸스는 None. 모의는 안쪽 값을 그대로.
+    fn ask_fee(&self) -> Option<f64> {
+        None
+    }
+    /// 수수료를 모를 때 쓰는 이 거래소·시장의 기본 수수료율([`crate::pnl::default_fee_rate`]).
+    /// 바이낸스 값이 기본 — 국내 어댑터는 자기 거래소 값으로 바꿈.
+    fn default_fee_rate(&self) -> f64 {
+        crate::pnl::default_fee_rate(Some(crate::types::Exchange::Binance), self.market())
+    }
     /// 마지막 리허설에서 거래소가 돌려준 오류 낱말.
     fn last_error_name(&self) -> String;
     fn set_log(&self, log: LogFn);

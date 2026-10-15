@@ -417,7 +417,12 @@ async fn activity_reads_like_a_person_wrote_it() {
     assert_eq!(acts[1].detail, "모의 체결 · 실제 주문은 보내지 않았어요");
     assert!(acts[1].raw.contains("BUY 체결"));
     assert!(acts[3].title.ends_with("개를 81,831.58 USDT에 팔았어요"), "{}", acts[3].title);
-    assert!(acts[3].detail.starts_with("손익 +"), "{}", acts[3].detail);
+    // 가짜 거래소는 수수료를 알려 주지 않음 — 수수료 전 값이라고 밝힘.
+    assert!(
+        acts[3].detail.starts_with("실현손익 +0.02 USDT(수수료 제외 전) · 이번 실행 누적 +0.02 USDT(수수료 제외 전)"),
+        "{}",
+        acts[3].detail
+    );
     assert_eq!(acts[3].tone, "ok");
 }
 
@@ -908,7 +913,9 @@ async fn fees_and_signal_slippage_reach_the_screen_but_not_the_server_snapshot()
     bot.execute_command(&json!({"id": 2, "action": "sell", "signal_price": 110.0}), 110.0).await.unwrap();
     let acts = activities(&mut rx);
     let sold = acts.iter().find(|a| a.kind == "sell").unwrap();
-    assert_eq!(sold.detail, "손익 +5.00 USDT · 누적 +5.00 USDT · 신호가 대비 +0.00% · 수수료 0.055 USDT");
+    // 수수료 반영 — 가격 손익 5 − 진입 수수료 0.05 − 정리 수수료 0.055 = 4.895. 수수료는 이번 정리에 든 몫의 합.
+    assert_eq!(sold.detail, "실현손익 +4.90 USDT · 이번 실행 누적 +4.90 USDT · 신호가 대비 0.00% · 수수료 0.105 USDT");
+    assert!((bot.realized_net - 4.895).abs() < 1e-9);
 
     // 서버로 가는 스냅샷은 파이썬 실행기와 같음 — 실현손익에서 수수료를 빼지 않고 수수료 칸도 없음.
     let snap = bot.snapshot();
@@ -917,6 +924,7 @@ async fn fees_and_signal_slippage_reach_the_screen_but_not_the_server_snapshot()
     let ui = bot.ui_snapshot(bot.snapshot());
     assert!((ui["fees_paid"].as_f64().unwrap() - 0.105).abs() < 1e-12, "{ui}");
     assert_eq!(ui["realized_pnl"], 5.0);
+    assert!((ui["realized_net"].as_f64().unwrap() - 4.895).abs() < 1e-9, "{ui}");
 
     // 손절처럼 신호 없이 낸 주문에는 신호가 차이를 붙이지 않음.
     fb.push(filled_with_fee(0.5, 100.0, fee(0.0)));
@@ -925,9 +933,11 @@ async fn fees_and_signal_slippage_reach_the_screen_but_not_the_server_snapshot()
     fb.push(filled_with_fee(0.5, 90.0, None));
     assert!(bot.close_position().await.unwrap());
     let sold = activities(&mut rx).into_iter().find(|a| a.kind == "sell").unwrap();
-    assert!(!sold.detail.contains("신호가") && !sold.detail.contains("수수료"), "{}", sold.detail);
+    assert_eq!(sold.detail, "실현손익 -5.00 USDT(수수료 제외 전) · 이번 실행 누적 0.00 USDT(수수료 제외 전)");
+    assert_eq!(sold.tone, "danger");
     // 수수료를 모르는 체결이 끼면 화면에도 모름(null)으로 — 수수료 뺀 손익을 주장하지 않음.
-    assert!(bot.ui_snapshot(bot.snapshot())["fees_paid"].is_null());
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert!(ui["fees_paid"].is_null() && ui["realized_net"].is_null(), "{ui}");
 }
 
 #[tokio::test]
@@ -1200,4 +1210,194 @@ async fn command_branches_at_their_boundaries() {
                "mode": "live", "outcome": "execution_reported"})
     );
     assert!(close(bot.held_qty, 1.5) && close(bot.entry_price, (100.0 + 0.5 * 50.0) / 1.5), "{:?}", pos(&bot));
+}
+
+// --- 수수료 반영 손익(화면·안전 규칙) ---------------------------------------------
+
+fn sells(rx: &mut mpsc::UnboundedReceiver<BotEvent>) -> Vec<ActivityEvent> {
+    activities(rx).into_iter().filter(|a| a.kind == "sell").collect()
+}
+
+#[tokio::test]
+async fn upbit_round_trip_shows_fee_aware_realized_pnl() {
+    // 업비트 1,000,000원 매수(수수료 0.05% = 500원) → +0.5%에 매도(수수료 502.5원).
+    // 가격 손익 +5,000 − 500 − 502.5 = +3,997.5원.
+    let fb = FakeBroker::new(50_000_000.0, Market::Spot, Side::Long);
+    fb.st.lock().unwrap().bid_fee = Some(0.0005);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-BTC", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(0.02, 50_000_000.0, fee(500.0)));
+    bot.place(OrderSide::Buy, 0.0, false, 1_000_000.0).await.unwrap();
+    assert_eq!((bot.open_entry_fee, bot.open_fee_known), (500.0, true));
+    fb.st.lock().unwrap().price = 50_250_000.0;
+    fb.push(filled_with_fee(0.02, 50_250_000.0, fee(502.5)));
+    assert!(bot.close_position().await.unwrap());
+    assert!((bot.realized - 5_000.0).abs() < 1e-6, "서버로 가는 값은 수수료 전");
+    assert!((bot.realized_net - 3_997.5).abs() < 1e-6, "{}", bot.realized_net);
+    let sold = sells(&mut rx).pop().unwrap();
+    assert_eq!(sold.title, "BTC 0.02개를 50,250,000 KRW에 팔았어요");
+    assert_eq!(sold.detail, "실현손익 +3,998 KRW · 이번 실행 누적 +3,998 KRW · 수수료 1,003 KRW");
+    assert_eq!(sold.tone, "ok");
+    let snap = bot.snapshot();
+    assert_eq!(snap["realized_pnl"], 5_000.0);
+    let ui = bot.ui_snapshot(snap);
+    assert!((ui["realized_net"].as_f64().unwrap() - 3_997.5).abs() < 1e-6);
+    assert!((ui["fees_paid"].as_f64().unwrap() - 1_002.5).abs() < 1e-6);
+}
+
+#[tokio::test]
+async fn binance_spot_up_015_pct_reads_as_a_small_loss_now() {
+    // 1,000 USDT 매수(수수료 1 USDT) 뒤 +0.15% — 지금 정리하면 1.5 − 1 − 1.0015 = −0.5015 USDT.
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(10.0, 100.0, fee(1.0)));
+    bot.place(OrderSide::Buy, 10.0, false, 0.0).await.unwrap();
+    bot.last_price = 100.15;
+    let snap = bot.snapshot();
+    assert!((snap["unrealized_pct"].as_f64().unwrap() - 0.15).abs() < 1e-9, "서버로 가는 %는 수수료 전");
+    let ui = bot.ui_snapshot(snap);
+    let amount = ui["unrealized_net"].as_f64().unwrap();
+    assert!((amount + 0.5015).abs() < 1e-9, "{ui}");
+    assert_eq!(money(amount, "USDT"), "-0.50 USDT");
+    assert!((ui["invested"].as_f64().unwrap() - 1_001.0).abs() < 1e-9);
+    assert!((ui["unrealized_net_pct"].as_f64().unwrap() + 0.5015 / 1_001.0 * 100.0).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn partial_exits_take_their_share_of_the_entry_fee() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(2.0, 100.0, fee(0.2)));
+    bot.place(OrderSide::Buy, 2.0, false, 0.0).await.unwrap();
+    fb.st.lock().unwrap().price = 110.0;
+    // 0.5개(1/4) 정리 — 진입 수수료 0.2의 1/4 = 0.05. 5 − 0.05 − 0.055 = 4.895.
+    fb.push(filled_with_fee(0.5, 110.0, fee(0.055)));
+    bot.place(OrderSide::Sell, 0.5, false, 0.0).await.unwrap();
+    assert!(bot.in_position);
+    assert!((bot.open_entry_fee - 0.15).abs() < 1e-12);
+    assert!((bot.realized_net - 4.895).abs() < 1e-9);
+    assert_eq!(
+        sells(&mut rx).pop().unwrap().detail,
+        "실현손익 +4.90 USDT · 이번 실행 누적 +4.90 USDT · 수수료 0.105 USDT"
+    );
+    // 나머지 1.5개 — 15 − 0.15 − 0.165 = 14.685. 합계 19.58(수수료 전 20).
+    fb.push(filled_with_fee(1.5, 110.0, fee(0.165)));
+    assert!(bot.close_position().await.unwrap());
+    assert!((bot.realized_net - 19.58).abs() < 1e-9, "{}", bot.realized_net);
+    assert!((bot.realized - 20.0).abs() < 1e-9);
+    assert_eq!((bot.open_entry_fee, bot.open_fee_known), (0.0, true));
+    assert_eq!(
+        sells(&mut rx).pop().unwrap().detail,
+        "실현손익 +14.69 USDT · 이번 실행 누적 +19.58 USDT · 수수료 0.315 USDT"
+    );
+}
+
+#[tokio::test]
+async fn daily_loss_counts_fees_so_flat_round_trips_trip_it() {
+    // 기준 100 USDT·하루 최대 손실 5%. 같은 가격으로 100 USDT씩 사고팔면 수수료 전 손익은 0이지만
+    // 수수료(모르면 바이낸스 현물 기본 0.1%씩)로 한 번에 −0.2 USDT — 25번 남짓이면 −5%에 닿음.
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let m = json!({"symbol": "BTCUSDT", "params": {"initial_capital": 100}, "risk": {"daily_max_loss_pct": 5}});
+    let (mut bot, _rx) = bot_with(m, fb.clone(), RunMode::Live);
+    let mut guard = bot.risk_guard();
+    guard.roll_day();
+    let mut blocked_at = None;
+    for trip in 0..30i64 {
+        bot.pending_acks.clear();
+        let cmds = vec![entry(trip * 2, json!({"notional_frac": 1.0})), json!({"id": trip * 2 + 1, "action": "sell"})];
+        bot.apply_reply(&reply_with(cmds), &mut guard, 100.0).await.unwrap();
+        if bot.pending_acks[0]["ok"] == false && blocked_at.is_none() {
+            blocked_at = Some(trip);
+        }
+    }
+    assert_eq!(bot.realized, 0.0, "수수료 전으로는 손실이 없음 — 예전 계산이면 막히지 않음");
+    let trip = blocked_at.expect("수수료 반영 손실로 진입이 막혀야 함");
+    assert!((25..=26).contains(&trip), "{trip}");
+    assert!(guard.entry_blocked().1.contains("하루 최대 손실(5%)"));
+}
+
+#[tokio::test]
+async fn futures_with_unknown_fees_use_the_default_rate_for_safety_but_show_gross() {
+    // 선물 1개 100 → 99: 가격 손익 −1.00(−1%). 수수료를 모르니 기본 0.05%로 어림 — 진입 0.05 + 청산 0.0495.
+    // 하루 최대 손실 1.05%: 수수료 전(−1%)이면 닿지 않지만 수수료 반영(−1.0995%)이면 닿음.
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Long);
+    let m = json!({"symbol": "BTCUSDT", "leverage": 3, "params": {"initial_capital": 100},
+                   "risk": {"daily_max_loss_pct": 1.05}});
+    let (mut bot, mut rx) = bot_with(m, fb.clone(), RunMode::Live);
+    bot.place(OrderSide::Buy, 1.0, false, 0.0).await.unwrap();
+    assert!(!bot.open_fee_known);
+    assert!((bot.open_entry_fee - 0.05).abs() < 1e-12, "모르는 진입 수수료는 기본 수수료율로 어림");
+    bot.last_price = 99.0;
+    fb.st.lock().unwrap().price = 99.0;
+    assert!((bot.unrealized_net(99.0) + 1.0995).abs() < 1e-9);
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert!(ui["unrealized_net"].is_null() && ui["realized_net"].is_null() && ui["fees_paid"].is_null(), "{ui}");
+    assert_eq!(ui["invested"], 100.0, "수수료를 모르면 수량×평단");
+    let mut guard = bot.risk_guard();
+    guard.roll_day();
+    bot.enforce_safety_net(&mut guard, 99.0).await.unwrap();
+    assert_eq!(fb.submits().len(), 2, "수수료 반영 손실로 강제 청산");
+    let acts = activities(&mut rx);
+    let forced = acts.iter().find(|a| a.kind == "stop_loss").unwrap();
+    assert_eq!(forced.detail, "하루 최대 손실(1.05%)에 닿았어요(오늘 수수료 포함 -1.10%)");
+    let sold = acts.iter().find(|a| a.kind == "sell").unwrap();
+    assert_eq!(sold.detail, "실현손익 -1.00 USDT(수수료 제외 전) · 이번 실행 누적 -1.00 USDT(수수료 제외 전)");
+}
+
+#[tokio::test]
+async fn stop_loss_reads_as_a_price_move_from_the_average() {
+    let fb = FakeBroker::new(95.0, Market::Spot, Side::Long);
+    let m = json!({"symbol": "BTCUSDT", "risk": {"stop_loss_pct": 5}});
+    let (mut bot, mut rx) = bot_with(m, fb.clone(), RunMode::Live);
+    bot.in_position = true;
+    bot.held_qty = 1.0;
+    bot.entry_price = 100.0;
+    let mut guard = RiskGuard::new(&json!({}), 1000.0, 100.0);
+    bot.enforce_safety_net(&mut guard, 95.0).await.unwrap();
+    let evs = events(&mut rx);
+    let stop = acts_of(&evs).into_iter().find(|a| a.kind == "stop_loss").unwrap();
+    assert_eq!(stop.detail, "평단 대비 가격 -5.00%(손절 기준 -5%) · 현재가 95 USDT · 평단 100 USDT");
+    assert_eq!(stop.raw, "[손절] 95.0 (평단 100.0 · 평단 대비 가격 -5.00%)");
+    let lines: Vec<String> =
+        evs.iter().filter_map(|e| if let BotEvent::Log(l) = e { Some(l.clone()) } else { None }).collect();
+    assert!(
+        lines.iter().any(|l| l == "  실현손익 -5.00 USDT(수수료 제외 전) · 평단 대비 가격 -5.00% · 이번 실행 누적 -5.00 USDT(수수료 제외 전)"),
+        "{lines:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_server_snapshot_keeps_its_python_shape() {
+    // 서버 하트비트는 파이썬 실행기와 같은 칸·같은 값(수수료 전) — 화면용 칸이 새지 않음.
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(1.0, 100.0, fee(0.1)));
+    bot.place(OrderSide::Buy, 1.0, false, 0.0).await.unwrap();
+    bot.last_price = 102.0;
+    let snap = bot.snapshot();
+    let mut keys: Vec<&str> = snap.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "entry_price",
+            "in_position",
+            "last_price",
+            "note",
+            "position_qty",
+            "position_uncertain",
+            "realized_pnl",
+            "unrealized_pct"
+        ]
+    );
+    assert!((snap["unrealized_pct"].as_f64().unwrap() - 2.0).abs() < 1e-9);
+    fb.push(filled_with_fee(1.0, 102.0, fee(0.102)));
+    assert!(bot.close_position().await.unwrap());
+    assert!((bot.snapshot()["realized_pnl"].as_f64().unwrap() - 2.0).abs() < 1e-9, "수수료를 빼지 않음");
+}
+
+#[tokio::test]
+async fn mock_futures_report_fees_from_the_start() {
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Long);
+    let (bot, _rx) = bot_with(json!({"symbol": "BTCUSDT", "leverage": 3}), fb, RunMode::Mock);
+    assert_eq!(bot.ui_snapshot(bot.snapshot())["fees_paid"], 0.0, "모의 선물은 수수료를 알려 줌");
 }

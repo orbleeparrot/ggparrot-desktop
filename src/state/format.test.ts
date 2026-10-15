@@ -5,6 +5,7 @@ import {
   formatClockSeconds,
   formatAmount,
   formatElapsed,
+  formatFee,
   formatWhen,
   formatMoney,
   formatPercent,
@@ -12,6 +13,7 @@ import {
   formatQty,
   formatSigned,
   formatSpan,
+  roundAway,
   toneOf,
 } from "./format";
 
@@ -25,10 +27,32 @@ describe("formatMoney", () => {
     expect(formatMoney(-0.5, "USDT")).toBe("-0.50 USDT");
     expect(formatMoney(1234.5, "USDT")).toBe("+1,234.50 USDT");
   });
-  it("반올림해 0 이면 -0 이 아니라 +0", () => {
-    expect(formatMoney(-0.001, "USDT")).toBe("+0.00 USDT");
-    expect(formatMoney(-0.4, "KRW")).toBe("+0 KRW");
-    expect(formatMoney(Number.NaN, "USDT")).toBe("+0.00 USDT");
+  it("반올림해 0 이면 부호 없이 0 — -0.004 USDT 는 0.00 USDT(Rust money 와 같음)", () => {
+    expect(formatMoney(-0.004, "USDT")).toBe("0.00 USDT");
+    expect(formatMoney(0.004, "USDT")).toBe("0.00 USDT");
+    expect(formatMoney(-0.4, "KRW")).toBe("0 KRW");
+    expect(formatMoney(Number.NaN, "USDT")).toBe("0.00 USDT");
+    expect(formatMoney(-0.005, "USDT")).toBe("-0.01 USDT");
+    expect(toneOf(-0.004)).toBe("flat");
+    expect(toneOf(-0.005)).toBe("down");
+  });
+  it("0 에서 먼 쪽으로 반올림 — Rust money.rs 와 같은 숫자 · 같은 결과", () => {
+    expect(formatMoney(1002.5, "KRW")).toBe("+1,003 KRW");
+    expect(formatMoney(500 + 1_005_000 * 0.0005, "KRW")).toBe("+1,003 KRW");
+    expect(formatMoney(3997.5, "KRW")).toBe("+3,998 KRW");
+    expect(formatMoney(-3997.5, "KRW")).toBe("-3,998 KRW");
+    expect(formatMoney(1.005, "USDT")).toBe("+1.01 USDT");
+    expect(formatMoney(-0.125, "USDT")).toBe("-0.13 USDT");
+    expect(roundAway(-0.125, 2)).toBe(-0.13);
+    expect(roundAway(-0.004, 2)).toBe(0);
+  });
+});
+
+describe("formatFee", () => {
+  it("부호 없이 돈의 자릿수 — 1,002.5원은 1,003 KRW, 0.1 USDT는 0.10 USDT", () => {
+    expect(formatFee(1002.5, "KRW")).toBe("1,003 KRW");
+    expect(formatFee(0.1, "USDT")).toBe("0.10 USDT");
+    expect(formatFee(0.105, "USDT")).toBe("0.11 USDT");
   });
 });
 
@@ -36,14 +60,22 @@ describe("formatPercent · formatSigned", () => {
   it("소수 둘째 자리와 부호", () => {
     expect(formatPercent(0.4249)).toBe("+0.42%");
     expect(formatPercent(-3.1)).toBe("-3.10%");
-    expect(formatPercent(0)).toBe("+0.00%");
-    expect(formatSigned(-0.004, 2)).toBe("+0.00");
+    expect(formatPercent(0)).toBe("0.00%");
+    expect(formatSigned(-0.004, 2)).toBe("0.00");
   });
 });
 
 describe("formatPrice · formatQty", () => {
-  it("KRW 시세는 정수", () => {
+  it("KRW 시세는 100원 이상 정수(반올림), 그 아래 유효숫자 4자리", () => {
     expect(formatPrice(94350123.6, "KRW")).toBe("94,350,124");
+    expect(formatPrice(3120.6, "KRW")).toBe("3,121");
+    expect(formatPrice(3120.4, "KRW")).toBe("3,120");
+    expect(formatPrice(3120.5, "KRW")).toBe("3,121");
+    expect(formatPrice(0.0234, "KRW")).toBe("0.0234");
+    expect(formatPrice(12.345, "KRW")).toBe("12.35");
+    expect(formatPrice(99.99, "KRW")).toBe("99.99");
+    expect(formatPrice(5, "KRW")).toBe("5");
+    expect(formatPrice(0.000123456, "KRW")).toBe("0.0001235");
   });
   it("USDT 시세는 크기에 맞춘 소수", () => {
     expect(formatPrice(64210.5, "USDT")).toBe("64,210.50");

@@ -1,47 +1,68 @@
-// 숫자·돈·시간 표시. 돈: KRW는 정수, 그 밖(USDT)은 소수 둘째 자리, 늘 부호를 붙임.
+// 숫자·돈·시간 표시. 돈: KRW는 정수, 그 밖(USDT)은 소수 둘째 자리. 손익에는 부호를 붙이되 반올림해 0이면 부호 없이.
+// 반올림은 0에서 먼 쪽(3,120.5 → 3,121) — Rust(runner-core money.rs `round_away`)와 같은 규칙·같은 결과.
 import type { MacroInfo } from "../types";
 
 type Quote = MacroInfo["quote"];
 
+// Intl의 기본 반올림(halfExpand)이 곧 0에서 먼 쪽 반올림임.
 const nf = (min: number, max: number) =>
   new Intl.NumberFormat("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
 const INT = nf(0, 0);
 const TWO = nf(2, 2);
+/** 100원 아래 원화 시세 — 유효숫자 4자리(동전주가 "0"으로 보이지 않게). */
+const SIG4 = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 4 });
 
 function clean(n: number): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** "+1,234 KRW"·"-12.30 USDT". 반올림해서 0이 되면 "+0"으로 씀(“-0.00”을 보이지 않음). */
+/** 부동소수 찌꺼기(1002.4999999999999)를 유효숫자 12자리로 걷어 냄 — Rust와 같은 수에서 반올림을 시작함. */
+function tidy(n: number): number {
+  const v = clean(n);
+  return v === 0 ? 0 : Number(v.toPrecision(12));
+}
+
+/** 소수 digits자리에서 0에서 먼 쪽으로 반올림한 값. -0은 0. */
+export function roundAway(value: number, digits: number): number {
+  const v = tidy(value);
+  const r = Number(nf(0, digits).format(Math.abs(v)).replace(/,/g, "")) * Math.sign(v);
+  return r === 0 ? 0 : r;
+}
+
+/** "+1,234 KRW"·"-12.30 USDT". 반올림해서 0이 되면 부호 없이 "0 KRW"·"0.00 USDT". */
 export function formatMoney(amount: number, quote: Quote): string {
-  return `${formatSigned(amount, quote === "KRW" ? 0 : 2)} ${quote}`;
+  return `${formatSigned(amount, moneyDigits(quote))} ${quote}`;
 }
 
 export function formatSigned(value: number, digits: number): string {
-  const v = clean(value);
+  const v = tidy(value);
   const body = (digits === 0 ? INT : digits === 2 ? TWO : nf(digits, digits)).format(Math.abs(v));
   const zero = Number(body.replace(/,/g, "")) === 0;
-  return `${v < 0 && !zero ? "-" : "+"}${body}`;
+  return `${zero ? "" : v < 0 ? "-" : "+"}${body}`;
 }
 
 /** 부호 없는 금액 "1,000 USDT"·"500,000 KRW" — 투자 금액처럼 손익이 아닌 금액. */
 export function formatAmount(amount: number, quote: Quote): string {
-  const v = clean(amount);
-  return `${(quote === "KRW" ? INT : nf(0, 2)).format(quote === "KRW" ? Math.round(v) : v)} ${quote}`;
+  return `${(quote === "KRW" ? INT : nf(0, 2)).format(tidy(amount))} ${quote}`;
 }
 
-/** "+0.42%" */
+/** 낸 수수료 "1,003 KRW"·"0.10 USDT" — 부호 없이 돈의 자릿수(KRW 정수·그 밖 소수 둘째 자리). */
+export function formatFee(amount: number, quote: Quote): string {
+  return `${(quote === "KRW" ? INT : TWO).format(Math.abs(tidy(amount)))} ${quote}`;
+}
+
+/** "+0.42%"·"0.00%" */
 export function formatPercent(value: number): string {
   return `${formatSigned(value, 2)}%`;
 }
 
-/** 시세·평단. KRW는 정수, USDT는 큰 값은 소수 둘, 작은 값은 유효 자릿수를 살림. */
+/** 시세·평단. KRW는 100원 이상 정수·그 아래 유효숫자 4자리, USDT는 큰 값은 소수 둘, 작은 값은 유효 자릿수를 살림. */
 export function formatPrice(price: number, quote: Quote): string {
-  const v = clean(price);
-  if (quote === "KRW") return INT.format(Math.round(v));
+  const v = tidy(price);
+  if (v === 0) return "0";
+  if (quote === "KRW") return Math.abs(v) >= 100 ? INT.format(v) : SIG4.format(v);
   if (Math.abs(v) >= 1000) return TWO.format(v);
   if (Math.abs(v) >= 1) return nf(2, 4).format(v);
-  if (v === 0) return "0";
   return nf(2, 8).format(v);
 }
 
@@ -83,11 +104,11 @@ export function formatAgo(ms: number): string {
   return `${Math.floor(m / 60)}시간 전`;
 }
 
-/** 값의 부호에 맞는 톤. 보이는 자릿수(digits)로 반올림해 0이면 flat — "+0.00%"가 빨갛게 보이지 않게. */
+/** 값의 부호에 맞는 톤. 보이는 자릿수(digits)로 반올림해 0이면 flat — "0.00%"가 빨갛게 보이지 않게. */
 export function toneOf(value: number, digits = 2): "up" | "down" | "flat" {
-  const v = clean(value);
-  if (Math.abs(v) < 0.5 * 10 ** -digits) return "flat";
-  return v > 0 ? "up" : "down";
+  const r = roundAway(value, digits);
+  if (r === 0) return "flat";
+  return r > 0 ? "up" : "down";
 }
 
 export function moneyDigits(quote: Quote): number {

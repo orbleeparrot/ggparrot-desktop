@@ -39,8 +39,26 @@ export interface MacroInfo {
   capitalLocked: string;
   /** 1회 주문 상한(견적 통화) — 투자 금액이 커도 한 번에 이보다 많이 주문하지 않음. */
   orderCap: number;
-  /** 이 앱이 로컬에서 지키는 안전 설정(예: "손절 3%"). 서버 연결이 끊겨도 지킴. */
+  /** 이 앱이 로컬에서 지키는 안전 설정(예: "손절 평단 대비 가격 -3%"). 서버 연결이 끊겨도 지킴. */
   risk: string[];
+  /** 청산 기준(익절·손절·트레일링, 평단 대비 가격 %) — 웹 positionExits.js `exitRules`와 같은 값·문구. */
+  exits: ExitRules;
+}
+
+/** 청산 규칙 하나 — pct는 평단 대비 가격 %(양수), label은 "손절 -3%"·"익절 +5%". */
+export interface ExitRule {
+  pct: number;
+  label: string;
+}
+
+export interface ExitRules {
+  sl: ExitRule | null;
+  tp: ExitRule | null;
+  /** 트레일링(E) — 발동 수익 %(0이면 처음부터)·고점 대비 되돌림 %. label "발동 +5% · 고점 -2%". */
+  trailing: { activation: number; trail: number; label: string } | null;
+  kind: "two" | "sl-only" | "tp-only" | "none";
+  /** "익절 +5% · 손절 -3%"·"손절 -4% · 익절은 신호"·"전략 신호". */
+  summary: string;
 }
 
 export interface RunStatus {
@@ -65,10 +83,19 @@ export interface RunStatus {
   uncertain: boolean;
   entryPrice: number;
   qty: number;
+  /** 평가손익 %(지금 정리하면) — 목록 카드·상태 카드가 같은 값을 씀. 수수료를 알면 투입금 대비 수수료 반영 %,
+   *  모르면 평단 대비 가격 %(수수료 전). */
   unrealizedPct: number;
+  /** 평가손익 금액(견적 통화) — unrealizedPct와 같은 기준. */
   unrealized: number;
-  /** 서버에 보고하는 실현손익 그대로(수수료를 빼지 않음). */
+  /** 평가손익이 수수료 반영 값인지. 거짓이면 '수수료 제외 전'을 붙임(실전 선물·BNB 수수료). */
+  unrealizedFeeAware: boolean;
+  /** 투입금 — 지금 포지션에 들어간 돈(수량×평단 + 남은 진입 수수료). 보유가 없으면 0. */
+  invested: number;
+  /** 서버에 보고하는 실현손익 그대로(수수료를 빼지 않음) — 웹 기록과 같은 값. */
   realized: number;
+  /** 이번 실행 실현손익(수수료 반영). 수수료를 모르면 null. */
+  realizedNet: number | null;
   /** 이번 실행에서 낸 수수료(견적 통화). 모르면 null — 선물·BNB로 낸 수수료가 끼면 모름. */
   fees: number | null;
   /** 전일 대비 등락률(%) — 업비트·빗썸 시세에 함께 옴. 모르면 null. */

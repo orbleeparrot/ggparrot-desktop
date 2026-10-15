@@ -99,6 +99,8 @@ impl RiskGuard {
         }
     }
 
+    /// 오늘 손익(%) — 실현(수수료 반영)과 지금 포지션의 평가손익(수수료 반영)을 기준 금액으로 나눔.
+    /// 부르는 쪽(봇)이 수수료를 뺀 값을 넘김 — 수수료를 모르면 기본 수수료율로 어림한 값.
     fn daily_loss_pct(&self, unrealized: f64) -> f64 {
         (self.day_pnl + unrealized) / self.base * 100.0
     }
@@ -125,7 +127,7 @@ impl RiskGuard {
         if let Some((limit, raw)) = &self.daily_max_loss {
             let dd = self.daily_loss_pct(unrealized);
             if dd <= -limit {
-                return (true, format!("하루 최대 손실({raw}%)에 닿았어요(오늘 {dd:.2}%)"));
+                return (true, format!("하루 최대 손실({raw}%)에 닿았어요(오늘 수수료 포함 {dd:.2}%)"));
             }
         }
         (false, String::new())
@@ -149,7 +151,7 @@ impl RiskGuard {
         self.halt_if_needed();
     }
 
-    /// 부분 청산: 실현손익만 일일 집계에 더하고 보유 시간은 그대로.
+    /// 부분 청산: 실현손익(수수료 반영)만 일일 집계에 더하고 보유 시간은 그대로.
     pub fn on_partial_exit(&mut self, pnl: f64) {
         self.day_pnl += pnl;
         self.halt_if_needed();
@@ -238,6 +240,6 @@ mod tests {
         g.roll_day();
         let (forced, why) = g.force_close(-2.5);
         assert!(forced);
-        assert_eq!(why, "하루 최대 손실(2%)에 닿았어요(오늘 -2.50%)");
+        assert_eq!(why, "하루 최대 손실(2%)에 닿았어요(오늘 수수료 포함 -2.50%)");
     }
 }

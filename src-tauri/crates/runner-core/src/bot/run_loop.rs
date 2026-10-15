@@ -98,7 +98,8 @@ impl Bot {
     /// 실행을 끝내면 손절 감시도 함께 사라지므로 끝내지 않음.
     pub(super) async fn enforce_safety_net(&mut self, guard: &mut RiskGuard, price: f64) -> Result<(), String> {
         if self.in_position {
-            let unreal = pnl_amount(self.held_qty, self.entry_price, price, self.side);
+            // 안전 규칙은 수수료 반영 평가손익으로 봄(지금 정리하면 남는 돈 — 수수료를 모르면 기본 수수료율로 어림).
+            let unreal = self.unrealized_net(price);
             let (forced, why) = guard.force_close(unreal);
             let stop = self.local_stop_loss(price);
             if (forced || stop) && self.close_failures >= MAX_CLOSE_FAILURES && unix_ms() < self.close_retry_at {
@@ -106,7 +107,10 @@ impl Bot {
             }
             if forced || stop {
                 let head = if forced { format!("강제청산: {why}") } else { "손절".to_string() };
-                let raw = format!("[{head}] {} (진입 {})", py_num(price), py_num(self.entry_price));
+                // 손절은 가격 기준 — 평단 대비 가격이 손절 %만큼 움직였는지(수수료와 무관).
+                let moved = signed_pct(pnl_pct(self.entry_price, price, self.side));
+                let raw =
+                    format!("[{head}] {} (평단 {} · 평단 대비 가격 {moved})", py_num(price), py_num(self.entry_price));
                 self.log(&raw);
                 let title = if forced {
                     "안전 규칙으로 포지션을 정리해요"
@@ -116,26 +120,27 @@ impl Bot {
                 let detail = if forced {
                     why.clone()
                 } else {
+                    let sl = num(self.macro_.get("risk").and_then(|r| r.get("stop_loss_pct")));
                     format!(
-                        "현재가 {} · 평단 {}",
+                        "평단 대비 가격 {moved}(손절 기준 -{}%) · 현재가 {} · 평단 {}",
+                        crate::macro_info::pct_text(sl),
                         price_text(price, self.quote),
                         price_text(self.entry_price, self.quote)
                     )
                 };
                 self.logger.activity("stop_loss", title, detail, raw, "warn");
-                let (entry_price, realized_before) = (self.entry_price, self.realized);
+                let (entry_price, net_before) = (self.entry_price, self.realized_net);
                 match self.close_position().await {
                     Ok(true) => {
                         self.close_failures = 0;
                         self.close_retry_at = 0;
-                        let pnl = self.realized - realized_before;
+                        let close = self.last_close.unwrap_or_default();
+                        let (pnl, total, _) = self.realized_texts(&close);
                         self.log(format!(
-                            "  손익 {:+.2}% ({}) · 누적 {}",
-                            pnl_pct(entry_price, self.last_fill_price, self.side),
-                            money(pnl, self.quote),
-                            money(self.realized, self.quote)
+                            "  {pnl} · 평단 대비 가격 {} · {total}",
+                            signed_pct(pnl_pct(entry_price, self.last_fill_price, self.side)),
                         ));
-                        guard.on_exit(pnl, stop);
+                        guard.on_exit(self.realized_net - net_before, stop);
                     }
                     Ok(false) => {}
                     // 결과를 알 수 없으면 더 주문하지 않고 멈춤.
@@ -143,9 +148,9 @@ impl Bot {
                     // 분명히 실패(거절 등)했고 포지션은 그대로 — 실행을 끝내지 않고 다음 틱에 다시 정리함.
                     Err(e) => {
                         self.close_failures += 1;
-                        // 일부라도 정리됐으면 그 손익은 하루 손실에 넣음.
-                        if self.realized != realized_before {
-                            guard.on_partial_exit(self.realized - realized_before);
+                        // 일부라도 정리됐으면 그 손익(수수료 반영)은 하루 손실에 넣음.
+                        if self.realized_net != net_before {
+                            guard.on_partial_exit(self.realized_net - net_before);
                         }
                         if self.close_failures < MAX_CLOSE_FAILURES {
                             self.logger.activity(
@@ -229,7 +234,7 @@ impl Bot {
                     "fill_price": 0.0, "error": format!("로컬 리스크 보류: {why}")}));
                     continue;
                 }
-                let (realized_before, was_flat) = (self.realized, !self.in_position);
+                let (net_before, was_flat) = (self.realized_net, !self.in_position);
                 let ack = match self.execute_command(cmd, price).await {
                     Ok(ack) => ack,
                     Err(e) => {
@@ -242,16 +247,16 @@ impl Bot {
                     }
                 };
                 // 안전 규칙 집계는 ack의 성공 여부가 아니라 실제 체결로 함 — 일부만 체결되고 끝난 주문도
-                // 보유 시간·하루 손실에 들어가야 함.
+                // 보유 시간·하루 손실에 들어가야 함. 하루 손실은 수수료 반영 실현손익으로 셈.
                 if num(ack.get("executed_qty")) > 0.0 {
                     if is_entry {
                         if was_flat && self.in_position {
                             guard.on_entry();
                         }
                     } else if !self.in_position {
-                        guard.on_exit(self.realized - realized_before, false);
+                        guard.on_exit(self.realized_net - net_before, false);
                     } else {
-                        guard.on_partial_exit(self.realized - realized_before);
+                        guard.on_partial_exit(self.realized_net - net_before);
                     }
                 }
                 self.pending_acks.push(ack);

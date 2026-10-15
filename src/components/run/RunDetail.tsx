@@ -1,8 +1,8 @@
 // 오른쪽 상세 — 머리줄(종목·방향·거래소)·모드·시작/종료·막힌 이유·상태 카드·활동 기록.
-import { CircleAlert, Info, LoaderCircle, Play, Settings, TriangleAlert } from "lucide-react";
+import { CircleAlert, LoaderCircle, Play, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
-import { isIdle, MODE_NOTES, primaryAction, settingsTargetOf, stopChoices } from "../../state/runs";
+import { isIdle, primaryAction, settingsTargetOf, stopChoices } from "../../state/runs";
 import type { Activity, RunSlot } from "../../types";
 import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
@@ -83,22 +83,12 @@ export function RunDetail({
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
       <DetailHeader slot={slot} onBack={onBack} />
 
-      {/* 세그먼트와 주 버튼은 한 줄·같은 높이, 모드 설명은 그 아래 한 줄 안내(버튼 높이에 끼어들지 않게). */}
+      {/* 세그먼트와 주 버튼은 한 줄·같은 높이. 모드 설명은 세그먼트 단추의 풍선 도움말(ModeSegment). */}
       <div className="detail-controls">
-        <div className="detail-controls-row">
-          <div className="detail-mode">
-            <ModeSegment slot={slot} />
-          </div>
-          <Controls slot={slot} />
+        <div className="detail-mode">
+          <ModeSegment slot={slot} />
         </div>
-        <p className={`mode-note mode-note-${slot.mode}`}>
-          {slot.mode === "live" ? (
-            <TriangleAlert size={13} aria-hidden="true" />
-          ) : (
-            <Info size={13} aria-hidden="true" />
-          )}
-          <span>{MODE_NOTES[slot.mode]}</span>
-        </p>
+        <Controls slot={slot} />
       </div>
 
       {showBlocker && (

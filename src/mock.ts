@@ -17,7 +17,7 @@ import {
   type MockRun,
   type Model,
 } from "./mockData";
-import { activityText, beginRun, stopActivities, tickRun, type Emit } from "./mockActivity";
+import { activityText, beginRun, holdAt, stopActivities, tickRun, type Emit } from "./mockActivity";
 import { conflictMessage, filled, isActive, keySlotOf, marketPageOf, snapshot } from "./mockSnapshot";
 import { createWizard, type WizardTarget } from "./mockWizard";
 import { formatClock } from "./state/format";
@@ -562,6 +562,7 @@ export function createMockBackend(
   // 디자인 검토용 바로가기
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
+  if (demo === "pnl") seedPnl();
   if (demo === "many") seedMany();
   if (demo === "wizard") wizard.open(slotTarget("upbit", "upbit"), "ask");
   if (demo === "applog") seedAppLog();
@@ -597,6 +598,40 @@ export function createMockBackend(
       goLive(r);
       for (let i = 1; i <= ticks; i += 1) tickRun(say, r, t0 + (i * minutes * 60_000) / (ticks + 1));
       if (r.run) r.run.online = true;
+    }
+  }
+
+  /** ?demo=pnl — 손익·청산 기준 막대 검토용. 정해진 평단·현재가로 보유 중인 매크로 다섯 개(신호 없이 시세만 흔듦).
+   *  업비트 원화 현물(실전·수수료 반영) · 바이낸스 선물 롱 트레일링(실전·수수료 모름) · 선물 숏(모의) ·
+   *  바이낸스 현물 USDT 익절만(+0.15% — 수수료 반영하면 손실) · 빗썸 손절만(익절은 신호). */
+  function seedPnl() {
+    const now = Date.now();
+    m.keys.upbit = {
+      access: "upAccessDemo0000",
+      secret: "upSecretDemo0000",
+      remembered: true,
+      status: "connected",
+      problem: "",
+    };
+    const byTitle = (title: string) => {
+      const existing = m.runs.find((r) => r.macro.title === title);
+      if (existing) return existing;
+      const f = m.files.find((x) => x.macro?.title === title)!;
+      return newRun(m, f.macro!, f.fileName);
+    };
+    const [futures, upbit] = m.runs;
+    const plan: [MockRun, RunMode, number, number][] = [
+      [upbit, "live", 118_000_000, 118_590_000],
+      [byTitle("BTC 단타 (내 수정)"), "mock", 81_806, 81_928.71],
+      [futures, "live", 81_000, 82_900],
+      [byTitle("ETH 숏 연습"), "mock", 3_150, 3_100.4],
+      [byTitle("빗썸 이더 단타"), "mock", 4_812_000, 4_790_000],
+    ];
+    for (const [r, mode, entry, price] of plan) {
+      r.mode = mode;
+      beginRun(say, r, now - 9 * 60_000);
+      goLive(r);
+      holdAt(r, entry, price);
     }
   }
 
@@ -643,9 +678,15 @@ export function createMockBackend(
   }
 
   /** 긴 목록 사이사이에 실행 중 매크로를 둠 — 스크롤한 뒤에도 실행 중 카드가 눈에 띄는지 보려고. */
+  /** ?demo=many — 24개 중 몇 개를 실행 중으로. 앞쪽은 카드 검토용: 긴 종목(1000SHIBUSDT 실행 중·테스트넷·보유 중),
+   *  BTCDOMUSDT(대기·테스트넷), KRW-SHIB(대기·실전), 서버 재시도 중인 카드. */
   function seedMany() {
     const now = Date.now();
-    for (const i of [0, 5, 11, 17, 22]) {
+    const [shib, dom, krwShib] = m.runs.slice(2, 5);
+    if (shib) shib.mode = "testnet";
+    if (dom) dom.mode = "testnet";
+    if (krwShib) krwShib.mode = "live";
+    for (const i of [0, 2, 5, 11, 17, 22]) {
       const r = m.runs[i];
       if (!r || isActive(r)) continue;
       const t0 = now - (i + 3) * 60_000;
@@ -653,6 +694,12 @@ export function createMockBackend(
       goLive(r);
       for (let k = 1; k <= 6; k += 1) tickRun(say, r, t0 + k * 20_000);
       if (r.run) r.run.online = true;
+    }
+    if (shib?.run) holdAt(shib, 100, 101.37);
+    const retrying = m.runs[5];
+    if (retrying?.run) {
+      retrying.offline = true;
+      Object.assign(retrying.run, { online: false, offlineSince: now - 90_000 });
     }
   }
 

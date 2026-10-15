@@ -33,7 +33,6 @@ impl Bot {
             &operation_id,
             &request_details,
         );
-        let realized_before = self.realized;
         let order = match broker
             .submit(SubmitRequest {
                 side,
@@ -85,7 +84,8 @@ impl Bot {
                 "verification": "runner_reported_not_exchange_verified", "ack_source": "runner",
             })),
         );
-        self.apply_fill(&order, closing, result_uncertain);
+        let close = self.apply_fill(&order, closing, result_uncertain);
+        self.last_close = close;
         if order.status == "REJECTED" && executed == 0.0 {
             if self.domestic() {
                 let ex = self.exchange().unwrap_or(Exchange::Upbit);
@@ -106,7 +106,7 @@ impl Bot {
                 order.raw_status
             );
             self.logger.ui(&raw);
-            self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
+            self.fill_activity(side, closing, executed, average, close.as_ref(), order.fee.as_ref(), raw);
             return Err(format!(
                 "주문이 일부만 체결되고 끝났어요(거래소 상태: {}). 체결된 {} {}만 보유에 반영했어요.",
                 order.raw_status,
@@ -128,30 +128,49 @@ impl Bot {
             py_num(executed)
         );
         self.logger.ui(&raw);
-        self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
+        self.fill_activity(side, closing, executed, average, close.as_ref(), order.fee.as_ref(), raw);
         Ok(true)
     }
 
     /// 체결 하나를 보유 상태에 반영함 — 수수료 합계, 정리(실현 손익·먼지)·추가 진입(가중평균)·새 진입.
-    /// `uncertain`은 [`classify`]의 결과 — 불확실하면 보유를 평평하게 보지 않음.
-    fn apply_fill(&mut self, order: &Order, closing: bool, uncertain: bool) {
+    /// `uncertain`은 [`classify`]의 결과 — 불확실하면 보유를 평평하게 보지 않음. 정리 체결이면 그 손익을 돌려줌.
+    pub(super) fn apply_fill(&mut self, order: &Order, closing: bool, uncertain: bool) -> Option<ClosePnl> {
         let (executed, average, acquired) = (order.executed_qty, order.avg_price, order.acquired_qty);
         self.last_fill_qty = executed;
         self.last_fill_price = average;
         self.position_uncertain = uncertain;
-        if executed > 0.0 {
+        // 이 체결의 수수료(견적 통화). 모르면(선물·BNB 등) 기본 수수료율로 어림함 — 안전 규칙이 수수료를 빼고 보게.
+        let (fee_quote, fee_known) = if executed > 0.0 {
+            let notional = executed * average;
             match &order.fee {
-                Some(fee) if fee.other.is_empty() => self.fees_quote += fee.quote,
-                _ => self.fees_complete = false,
+                Some(fee) if fee.other.is_empty() => {
+                    self.fees_quote += fee.quote;
+                    if notional > 0.0 && crate::pnl::plausible_rate(fee.quote / notional) {
+                        self.observed_fee_rate = Some(fee.quote / notional);
+                    }
+                    (fee.quote, true)
+                }
+                other => {
+                    self.fees_complete = false;
+                    let part = other.as_ref().map(|f| f.quote).unwrap_or(0.0);
+                    (part.max(notional * self.fee_rate_estimate()), false)
+                }
             }
-        }
+        } else {
+            (0.0, true)
+        };
         let mut dust_only = false;
+        let mut close = None;
         if executed != 0.0 {
             if closing {
-                let closed_qty = self.held_qty.min(executed);
-                if average != 0.0 && self.entry_price != 0.0 {
-                    self.realized += pnl_amount(closed_qty, self.entry_price, average, self.side);
-                }
+                let held_before = self.held_qty;
+                let closed_qty = held_before.min(executed);
+                let gross = if average != 0.0 && self.entry_price != 0.0 {
+                    pnl_amount(closed_qty, self.entry_price, average, self.side)
+                } else {
+                    0.0
+                };
+                self.realized += gross;
                 self.held_qty = (self.held_qty - executed).max(0.0);
                 if self.held_qty < 1e-12 {
                     self.held_qty = 0.0;
@@ -171,24 +190,64 @@ impl Bot {
                     ));
                     dust_only = true;
                 }
-                if (self.held_qty == 0.0 || dust_only) && !self.position_uncertain {
+                let ended = (self.held_qty == 0.0 || dust_only) && !self.position_uncertain;
+                if ended {
                     self.entry_price = 0.0;
                 }
+                // 진입 수수료는 정리한 수량만큼 나눠 실현손익에 넣음. 포지션이 끝나면(먼지 포함) 남은 몫을 모두 넣음.
+                let entry_fee = if ended {
+                    self.open_entry_fee
+                } else {
+                    crate::pnl::allocate_entry_fee(self.open_entry_fee, held_before, closed_qty)
+                };
+                let fees_known = fee_known && self.open_fee_known;
+                self.open_entry_fee = (self.open_entry_fee - entry_fee).max(0.0);
+                if ended {
+                    self.open_entry_fee = 0.0;
+                    self.open_fee_known = true;
+                }
+                let fees = entry_fee + fee_quote;
+                self.realized_net += gross - fees;
+                close = Some(ClosePnl { gross, net: gross - fees, fees, fees_known });
             } else if self.in_position && self.held_qty > 0.0 && self.entry_price > 0.0 && average != 0.0 {
-                // 추가 진입(그리드·마틴게일): 보유 수량을 더하고 진입가는 가중평균.
+                // 추가 진입(그리드·마틴게일): 보유 수량을 더하고 진입가는 가중평균. 진입 수수료는 쌓음.
                 let (prev_qty, prev_entry) = (self.held_qty, self.entry_price);
                 self.held_qty = prev_qty + acquired;
                 self.entry_price = (prev_qty * prev_entry + acquired * average) / self.held_qty;
+                self.open_entry_fee += fee_quote;
+                self.open_fee_known = self.open_fee_known && fee_known;
             } else {
                 self.entry_price = average;
                 self.held_qty = acquired;
+                self.open_entry_fee = fee_quote;
+                self.open_fee_known = fee_known;
             }
         }
         self.in_position = (self.held_qty > 0.0 && !dust_only) || self.position_uncertain;
+        close
+    }
+
+    /// 정리 손익 두 마디 — ("실현손익 +3,998 KRW", "이번 실행 누적 +3,998 KRW"). 수수료를 모르면 수수료 전 값에
+    /// "(수수료 제외 전)"을 붙임. 셋째 값은 보인 금액(색을 정할 때 씀).
+    pub(super) fn realized_texts(&self, close: &ClosePnl) -> (String, String, f64) {
+        let before = "(수수료 제외 전)";
+        let (amount, pnl) = if close.fees_known {
+            (close.net, format!("실현손익 {}", money(close.net, self.quote)))
+        } else {
+            (close.gross, format!("실현손익 {}{before}", money(close.gross, self.quote)))
+        };
+        let total = if self.fees_complete {
+            format!("이번 실행 누적 {}", money(self.realized_net, self.quote))
+        } else {
+            format!("이번 실행 누적 {}{before}", money(self.realized, self.quote))
+        };
+        (pnl, total, amount)
     }
 
     /// 체결을 사람이 읽는 문장으로 — "BTC 0.00122개를 81,806 USDT에 샀어요"(자산 이름 뒤에 조사를 붙이지 않음).
     /// 자세히에는 신호가와의 차이·수수료를 덧붙임(서버 명령으로 낸 주문·수수료를 아는 체결만).
+    /// 정리 체결은 "실현손익 +3,998 KRW · 이번 실행 누적 +3,998 KRW · 수수료 1,003 KRW"(수수료 반영) — 수수료는
+    /// 이번 정리 수수료와 정리한 수량 몫의 진입 수수료를 합한 값.
     #[allow(clippy::too_many_arguments)] // 체결 한 건의 값들 — 묶으면 부르는 곳마다 구조체만 늘어남.
     pub(super) fn fill_activity(
         &self,
@@ -196,40 +255,42 @@ impl Bot {
         closing: bool,
         qty: f64,
         price: f64,
-        realized_before: f64,
+        close: Option<&ClosePnl>,
         fee: Option<&FeePaid>,
         raw: String,
     ) {
         let asset = base_asset(&self.symbol);
         let what = format!("{asset} {}개를 {}에", qty_text(qty), price_text(price, self.quote));
         let mock = self.mode == RunMode::Mock;
-        let extras: Vec<String> =
-            [slippage_text(self.signal_price, price), fee_text(fee, self.quote)].into_iter().flatten().collect();
+        let slippage = slippage_text(self.signal_price, price);
         if !closing {
             let verb = if side == OrderSide::Buy { "샀어요" } else { "공매도했어요" };
-            let mut parts = extras;
+            let mut parts: Vec<String> = [slippage, fee_text(fee, self.quote)].into_iter().flatten().collect();
             if mock {
                 parts.push("모의 체결 · 실제 주문은 보내지 않았어요".into());
             }
             self.logger.activity("buy", format!("{what} {verb}"), parts.join(" · "), raw, "ok");
         } else {
             let verb = if side == OrderSide::Sell { "팔았어요" } else { "되사서 정리했어요" };
-            let pnl = self.realized - realized_before;
-            let mut detail = format!("손익 {} · 누적 {}", money(pnl, self.quote), money(self.realized, self.quote));
-            for extra in extras {
-                detail.push_str(&format!(" · {extra}"));
-            }
-            if mock {
-                detail.push_str(" · 모의 체결");
-            }
-            let tone = if pnl > 0.0 {
-                "ok"
-            } else if pnl < 0.0 {
-                "danger"
+            let close = close.copied().unwrap_or_default();
+            let (pnl, total, amount) = self.realized_texts(&close);
+            let fee_part = if close.fees_known {
+                (close.fees > 0.0).then(|| format!("수수료 {}", price_text(close.fees, self.quote)))
             } else {
-                "muted"
+                fee_text(fee, self.quote)
             };
-            self.logger.activity("sell", format!("{what} {verb}"), detail, raw, tone);
+            let mut parts: Vec<String> = vec![pnl, total];
+            parts.extend([slippage, fee_part].into_iter().flatten());
+            if mock {
+                parts.push("모의 체결".into());
+            }
+            self.logger.activity(
+                "sell",
+                format!("{what} {verb}"),
+                parts.join(" · "),
+                raw,
+                pnl_tone(amount, self.quote),
+            );
         }
     }
 
@@ -279,9 +340,18 @@ pub(super) fn slippage_text(signal: f64, fill: f64) -> Option<String> {
     if !(signal.is_finite() && signal > 0.0 && fill.is_finite() && fill > 0.0) {
         return None;
     }
-    let pct = (fill / signal - 1.0) * 100.0;
-    let pct = if pct.abs() < 0.005 { 0.0 } else { pct };
-    Some(format!("신호가 대비 {}{:.2}%", if pct >= 0.0 { "+" } else { "-" }, pct.abs()))
+    Some(format!("신호가 대비 {}", crate::money::signed_pct((fill / signal - 1.0) * 100.0)))
+}
+
+/// 손익 색 — 보이는 자릿수로 반올림해 0이면 muted(“0 KRW”가 빨갛게 보이지 않게).
+pub(super) fn pnl_tone(amount: f64, quote: &str) -> &'static str {
+    if crate::money::rounds_to_zero(amount, crate::money::money_dp(quote)) {
+        "muted"
+    } else if amount > 0.0 {
+        "ok"
+    } else {
+        "danger"
+    }
 }
 
 /// 낸 수수료 — "수수료 0.04 USDT"·"수수료 12 KRW + 0.00002 BNB". 모르거나 0이면 None.

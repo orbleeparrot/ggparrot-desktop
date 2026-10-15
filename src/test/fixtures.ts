@@ -20,7 +20,14 @@ export const binanceMacro: MacroInfo = {
   capitalOriginal: null,
   capitalLocked: "",
   orderCap: 100,
-  risk: ["손절 3%"],
+  risk: ["손절 평단 대비 가격 -3%"],
+  exits: {
+    sl: { pct: 3, label: "손절 -3%" },
+    tp: { pct: 5, label: "익절 +5%" },
+    trailing: null,
+    kind: "two",
+    summary: "익절 +5% · 손절 -3%",
+  },
 };
 
 export const upbitMacro: MacroInfo = {
@@ -84,7 +91,10 @@ export function makeRun(over: Partial<RunStatus> = {}): RunStatus {
     qty: 0,
     unrealizedPct: 0,
     unrealized: 0,
+    unrealizedFeeAware: false,
+    invested: 0,
     realized: 0,
+    realizedNet: null,
     fees: null,
     dayChangePct: null,
     macroOrigin: "",

@@ -634,6 +634,12 @@ impl Broker for DomesticBroker {
     fn bid_fee(&self) -> Option<f64> {
         Some(self.fees.lock().unwrap().bid)
     }
+    fn ask_fee(&self) -> Option<f64> {
+        Some(self.fees.lock().unwrap().ask)
+    }
+    fn default_fee_rate(&self) -> f64 {
+        crate::pnl::default_fee_rate(Some(self.exchange), Market::Spot)
+    }
     fn last_error_name(&self) -> String {
         self.last_error_name.lock().unwrap().clone()
     }

@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use super::{exc_text, positive_f64, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest};
 use crate::types::{Market, Side};
 
-const MOCK_DEFAULT_FEE: f64 = 0.0005;
 const MOCK_FALLBACK_RULES: OrderRules = OrderRules { step: 0.0, min_notional: 0.0 };
 
 pub struct MockBroker {
@@ -37,12 +36,13 @@ impl MockBroker {
     }
 
     fn fee_rate(&self) -> f64 {
-        // 바이낸스 어댑터에는 수수료율이 없음. 읽지 못했거나 0이면 기본값으로 대신함.
+        // 바이낸스 어댑터에는 수수료율이 없음. 읽지 못했거나 0이면 거래소·시장 기본값
+        // (바이낸스 현물 0.1%·선물 0.05%·업비트 0.05%·빗썸 0.25%)으로 대신함.
         let rate = self.inner.bid_fee().map(positive_f64).unwrap_or(0.0);
-        if rate != 0.0 {
+        if rate != 0.0 && crate::pnl::plausible_rate(rate) {
             rate
         } else {
-            MOCK_DEFAULT_FEE
+            self.inner.default_fee_rate()
         }
     }
 }
@@ -63,6 +63,12 @@ impl Broker for MockBroker {
     }
     fn bid_fee(&self) -> Option<f64> {
         self.inner.bid_fee()
+    }
+    fn ask_fee(&self) -> Option<f64> {
+        self.inner.ask_fee()
+    }
+    fn default_fee_rate(&self) -> f64 {
+        self.inner.default_fee_rate()
     }
     fn last_error_name(&self) -> String {
         self.inner.last_error_name()
@@ -147,9 +153,9 @@ impl Broker for MockBroker {
         if buying && !closing && self.inner.fee_from_base_asset() {
             acquired = executed * (1.0 - self.fee_rate());
         }
-        // 모의 수수료(견적 통화) — 현물만. 선물은 실전에서도 수수료를 읽지 않으므로 맞춰 둠.
-        let fee = (self.inner.market() == Market::Spot)
-            .then(|| FeePaid { quote: executed * price * self.fee_rate(), other: vec![] });
+        // 모의 수수료(견적 통화) — 현물·선물 모두 알려 줌(화면의 수수료 반영 손익을 연습에서도 보이게).
+        // 실전 선물은 수수료를 읽지 않아 화면이 '수수료 제외 전'으로 보임.
+        let fee = Some(FeePaid { quote: executed * price * self.fee_rate(), other: vec![] });
         Ok(Order {
             status: "FILLED".into(),
             executed_qty: executed,

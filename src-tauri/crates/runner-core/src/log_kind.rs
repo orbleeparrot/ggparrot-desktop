@@ -13,7 +13,7 @@ pub fn event_kind(msg: &str) -> &'static str {
     {
         return "order";
     }
-    if m.contains("체결") || m.trim_start().starts_with("손익") {
+    if m.contains("체결") || m.starts_with("손익") || m.starts_with("실현손익") {
         return "fill";
     }
     if m.contains("종료") {
@@ -58,6 +58,7 @@ mod tests {
         assert_eq!(event_kind("[손절] 100"), "order");
         assert_eq!(event_kind("종료됨 (stopped)"), "stop");
         assert_eq!(event_kind("손익 +1.00%"), "fill");
+        assert_eq!(event_kind("  실현손익 -1.23 USDT · 평단 대비 가격 -3.02% · 이번 실행 누적 -1.23 USDT"), "fill");
         assert_eq!(event_kind("세션 시작"), "info");
     }
 

@@ -132,6 +132,7 @@ impl Core {
                 capital_locked: if r.capital_locked() { CAPITAL_LOCKED.into() } else { String::new() },
                 order_cap: runner_core::types::order_cap(quote),
                 risk: runner_core::macro_info::risk_summary(m),
+                exits: runner_core::exits::exit_rules(m),
             },
             mode: r.mode,
             mode_choices: r.mode_choices(),
@@ -469,6 +470,11 @@ pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {
     let f = |k: &str| s.get(k).and_then(Value::as_f64).unwrap_or(0.0);
     let in_position = d.holding();
     let (price, entry, qty) = (f("last_price"), f("entry_price"), f("position_qty"));
+    let opt = |k: &str| s.get(k).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let gross = if in_position && price > 0.0 && entry > 0.0 { pnl_amount(qty, entry, price, side) } else { 0.0 };
+    // 화면의 평가손익은 봇이 보낸 수수료 반영 값(지금 정리하면). 수수료를 모르면 null이 와서 수수료 전 값을 씀.
+    let (net, net_pct) = (opt("unrealized_net"), opt("unrealized_net_pct"));
+    let fee_aware = in_position && net.is_some() && net_pct.is_some();
     RunStatusDto {
         started_at: d.started_at,
         session_id: d.session_id,
@@ -484,10 +490,17 @@ pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {
         uncertain: d.uncertain(),
         entry_price: entry,
         qty,
-        unrealized_pct: f("unrealized_pct"),
-        unrealized: if in_position && price > 0.0 && entry > 0.0 { pnl_amount(qty, entry, price, side) } else { 0.0 },
+        unrealized_pct: if fee_aware { net_pct.unwrap_or(0.0) } else { f("unrealized_pct") },
+        unrealized: if fee_aware { net.unwrap_or(0.0) } else { gross },
+        unrealized_fee_aware: fee_aware,
+        invested: match s.get("invested").and_then(Value::as_f64).filter(|v| v.is_finite()) {
+            Some(v) => v,
+            None if in_position && entry > 0.0 => qty * entry,
+            None => 0.0,
+        },
         realized: f("realized_pnl"),
-        fees: s.get("fees_paid").and_then(Value::as_f64).filter(|v| v.is_finite() && *v >= 0.0),
+        realized_net: opt("realized_net"),
+        fees: opt("fees_paid").filter(|v| *v >= 0.0),
         day_change_pct: s.get("day_change").and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v * 100.0),
         macro_origin: d.macro_origin.clone(),
         note: s.get("note").and_then(Value::as_str).unwrap_or("").to_string(),
@@ -559,8 +572,10 @@ pub(crate) struct MacroDto {
     capital_locked: String,
     /// 1회 주문 상한(견적 통화). 투자 금액이 커도 한 번에 이보다 많이 주문하지 않음.
     order_cap: f64,
-    /// 이 앱이 로컬에서 지키는 안전 설정(예: "손절 3%"). 없으면 [].
+    /// 이 앱이 로컬에서 지키는 안전 설정(예: "손절 평단 대비 가격 -3%"). 없으면 [].
     risk: Vec<String>,
+    /// 청산 기준(익절·손절·트레일링, 평단 대비 가격 %) — 상태 카드의 청산 기준 막대·요약.
+    exits: runner_core::exits::ExitRules,
 }
 
 #[derive(Serialize)]
@@ -622,10 +637,19 @@ pub(crate) struct RunStatusDto {
     uncertain: bool,
     entry_price: f64,
     qty: f64,
+    /// 평가손익 %(지금 정리하면) — 목록 카드·상태 카드가 함께 씀. 수수료를 알면 투입금 대비 수수료 반영 %,
+    /// 모르면 평단 대비 가격 %(수수료 전, 서버 unrealized_pct와 같음).
     unrealized_pct: f64,
+    /// 평가손익 금액(견적 통화) — `unrealized_pct`와 같은 기준.
     unrealized: f64,
+    /// 평가손익이 수수료 반영 값인지 여부. 거짓이면 화면이 '수수료 제외 전'을 붙임.
+    unrealized_fee_aware: bool,
+    /// 투입금 — 지금 포지션에 들어간 돈(수량×평단 + 남은 진입 수수료, 수수료를 모르면 수량×평단). 보유가 없으면 0.
+    invested: f64,
     /// 서버에 보고하는 실현손익 그대로(수수료를 빼지 않음).
     realized: f64,
+    /// 이번 실행 실현손익(수수료 반영). 수수료를 모르면 null.
+    realized_net: Option<f64>,
     /// 이번 실행에서 낸 수수료(견적 통화). 모르면 null — 선물·BNB로 낸 수수료가 끼면 모름.
     fees: Option<f64>,
     /// 전일 대비 등락률(%) — 업비트·빗썸 시세에 함께 옴. 모르면 null.

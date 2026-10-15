@@ -109,110 +109,213 @@
   border-radius: 0 3px 3px 0;
   background: var(--brand-hover);
 }
+/* 카드는 두 줄(1줄 28px · 2줄 30px) — 글자는 줄바꿈하지 않아 카드 높이가 바뀌지 않음.
+   고르기 버튼이 카드 전체이고, ×(1줄 오른쪽)·주 버튼(2줄 오른쪽)은 버튼 안에 비워 둔 자리 위에 놓인 형제.
+   --act-w: 주 버튼 너비(종류마다 고정) — 2줄 글자가 이만큼 비켜 감. */
+.run-card {
+  --act-w: 66px;
+  --x-size: 28px;
+  --card-pad: 10px;
+  container: run-card / inline-size;
+}
+.run-card.act-stop {
+  --act-w: 66px;
+}
+.run-card.act-stop-menu {
+  --act-w: 82px;
+}
+.run-card.act-busy {
+  --act-w: 30px;
+}
 .run-card-select {
   display: grid;
-  gap: 4px;
+  grid-template-rows: 28px 30px;
+  row-gap: 4px;
   width: 100%;
-  padding: 11px 38px 12px 16px;
+  padding: var(--card-pad) var(--card-pad) var(--card-pad) 16px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 .run-card-select:focus-visible {
   outline-offset: -2px;
   border-radius: var(--radius);
 }
-.run-card-head {
+/* 1줄 — 머리(로고·종목·방향·모드)와 오른쪽 칸 */
+.run-card-top {
   display: flex;
   align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* 줄이는 순서(글자 길이를 재지 않고 격자 크기 계산으로): 종목 칸(minmax)이 먼저 제 너비를 받고 남는 만큼 모드 칸(1fr)이 받음
+   → 모자라면 모드 배지가 먼저 점으로 줄고, 그래도 모자라면 종목이 줄임표(…)로 잘림. 로고·방향 배지는 줄지 않음.
+   머리는 제 글자 너비보다 넓어지지 않아(flex 0 1 auto) 모드 칸이 남는 자리를 차지하지 않음. */
+.run-card-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content) auto minmax(10px, 1fr);
+  align-items: center;
   gap: 6px;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .run-card-symbol {
   font-size: var(--fs-title);
   font-weight: var(--fw-bold);
   letter-spacing: -0.01em;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.run-card-mid {
+/* 모드 — 색 점 위에 글자 배지를 겹쳐 둠(점은 바깥 너비 0). 칸이 배지보다 좁으면 배지가 둘째 줄로 밀려 가려지고 점만 남음. */
+.run-card-mode {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 26px;
-  min-width: 0;
+  height: 20px;
+  overflow: hidden;
 }
-.run-card-status {
-  display: inline-flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  font-size: var(--fs-small);
-  font-weight: var(--fw-bold);
-}
-.run-card-status.tone-muted .status-dot {
+.mode-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin: 5px -10px 5px 0;
+  border-radius: 50%;
   background: var(--faint);
 }
-.run-card-status-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.run-card-mode.mode-testnet .mode-dot {
+  background: var(--info);
+}
+.run-card-mode.mode-live .mode-dot {
+  background: var(--live);
+}
+/* 겹친 점이 비치지 않게 모의 배지도 바탕을 칠함 */
+.run-card-mode .mode-badge.mode-mock {
+  background: var(--card);
+}
+/* 오른쪽 칸 — 늘 줄지 않음. 대기·끝남은 × 자리(가리킬 때만 ×가 보여도 자리는 늘 비워 둠) */
+.run-card-top > :last-child:not(.run-card-head) {
+  flex: none;
+  margin-left: auto;
+}
+.run-card-x-slot {
+  width: var(--x-size);
+  height: var(--x-size);
 }
 .run-card-pct {
-  font-size: 22px;
+  font-size: var(--fs-title);
   font-weight: var(--fw-bold);
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 .run-card-flat {
   font-size: var(--fs-small);
   font-weight: var(--fw-bold);
   color: var(--muted);
 }
-/* 아래 줄(전략·경과) — 오른쪽 아래 주 버튼 밑으로 들어가지 않게 버튼 너비만큼 비우고 줄임표(…)로 자름.
-   block이어야 text-overflow가 내용 상자 끝에서 걸림(flex면 여백 칸까지 글자가 흘러 버튼에 가려짐). */
-.run-card-sub {
-  --sub-reserve: 84px;
-  display: block;
-  height: 32px;
-  line-height: 32px;
-  margin-right: calc(var(--sub-reserve) - 38px);
+/* 2줄 — 상태 앞부분 | 상태 뒷부분 | 경과 | 전략, 오른쪽은 주 버튼 자리.
+   줄이는 순서: 전략(1fr)이 먼저 줄임표로 줄고, 그다음 상태 뒷부분(minmax)이 통째로 사라짐. 상태 앞부분·경과는 줄지 않음. */
+.run-card-meta {
+  display: grid;
+  grid-template-columns: auto minmax(0, max-content) auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  padding-right: calc(var(--act-w) + 10px);
   color: var(--muted);
   font-size: var(--fs-small);
+  line-height: 18px;
+}
+.run-card-status {
+  grid-column: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: var(--fw-bold);
+}
+.run-card-status.tone-muted .status-dot {
+  background: var(--faint);
+}
+/* 상태 뒷부분 — 칸이 글자보다 좁으면 둘째 줄로 밀려 가려짐(앞의 빈 ::before가 첫 줄을 지킴). 전체 문구는 title. */
+.run-card-status-rest {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  height: 18px;
+  overflow: hidden;
+  font-weight: var(--fw-bold);
+}
+.run-card-status-rest::before {
+  content: "";
+}
+.run-card-status-more::before,
+.run-card-elapsed::before,
+.run-card-strategy::before {
+  content: "·";
+  margin: 0 5px;
+  color: var(--faint);
+  font-weight: var(--fw-regular);
+}
+.run-card-elapsed {
+  grid-column: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.run-card-elapsed::before {
+  margin-right: 2px;
+}
+.run-card-elapsed > svg {
+  flex: none;
+  color: var(--faint);
+}
+.run-card-strategy {
+  grid-column: 4;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.run-card.act-stop .run-card-sub {
-  --sub-reserve: 100px;
-}
-.run-card.act-busy .run-card-sub {
-  --sub-reserve: 136px;
+/* 주 버튼·× 자리 — 네모난 감싸개가 비워 둔 자리를 덮음(둥근 단추 모서리로 고르기 버튼이 눌리지 않게) */
+.run-card-action,
+.run-card-remove-slot {
+  position: absolute;
+  right: var(--card-pad);
+  display: flex;
 }
 .run-card-action {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
+  bottom: var(--card-pad);
+  width: var(--act-w);
+  height: 30px;
 }
 .run-card-action .btn-sm {
-  min-height: 32px;
+  width: var(--act-w);
+  min-height: 30px;
+  padding: 0;
+}
+.run-card-remove-slot {
+  top: var(--card-pad);
+  width: var(--x-size);
+  height: var(--x-size);
 }
 .run-card-remove {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 32px;
-  height: 32px;
-  opacity: 0.6;
+  width: var(--x-size);
+  height: var(--x-size);
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
 }
 .run-card:hover .run-card-remove,
+.run-card:has(:focus-visible) .run-card-remove,
 .run-card-remove:focus-visible {
   opacity: 1;
+}
+/* 아주 좁은 카드(작은 창의 한 열) — 모드는 점으로, 2줄은 상태 앞부분·경과만 */
+@container run-card (max-width: 260px) {
+  .run-card-mode {
+    width: 10px;
+  }
+  .run-card-status-rest,
+  .run-card-strategy {
+    display: none;
+  }
 }
 /* 순서 손잡이 — 카드 왼쪽 끝. 가리킬 때·끄는 동안·카드 안에 키보드 포커스가 있을 때만 보임.
    고른 카드라도 늘 보이지는 않음(목록이 어수선해짐). 끄는 동안 놓을 자리에 선을 그림. */
@@ -346,22 +449,17 @@
   white-space: nowrap;
   font-size: var(--fs-small);
 }
-/* 모드·시작/종료 — 세그먼트와 버튼은 한 줄에서 같은 높이(40px), 모드 설명은 그 아래 줄. */
+/* 모드·시작/종료 — 세그먼트와 버튼은 한 줄에서 같은 높이(40px). 모드 설명은 세그먼트 단추의 풍선 도움말. */
 .detail-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-}
-.detail-controls-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
 }
 .detail-mode {
   flex: 1 1 260px;
@@ -374,7 +472,7 @@
 .detail-mode .segment {
   height: 34px;
 }
-.detail-controls-row .btn {
+.detail-controls .btn {
   min-height: 40px;
 }
 .detail-start {
@@ -473,14 +571,18 @@
   height: 3px;
   background: linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 20%, transparent));
 }
-.pnl-top {
+/* 맨 윗줄 — 상태 라벨 옆에 경과 시간·서버 연결. 좁으면 줄바꿈(라벨은 한 줄, 나머지는 다음 줄로). */
+.status-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 4px 14px;
   min-width: 0;
 }
-.pnl-top .eyebrow {
-  flex: 0 0 auto;
+.status-meta {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
   white-space: nowrap;
 }
 .run-label {
@@ -550,6 +652,16 @@
 }
 .pnl-amount {
   font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+}
+/* 큰 %의 기준(투입금 대비·평단 대비)과 선물의 증거금 대비 % — 작게 한 줄씩. */
+.pnl-basis {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+}
+.pnl-margin {
+  font-size: var(--fs-small);
   font-weight: var(--fw-bold);
 }
 .pnl-flat {
@@ -720,9 +832,152 @@
   font-weight: var(--fw-regular);
   font-size: var(--fs-small);
 }
+.run-table .is-unknown {
+  color: var(--muted);
+  font-weight: var(--fw-regular);
+}
 .run-note {
   font-size: var(--fs-small);
   color: var(--muted);
+}
+.run-foot {
+  margin: -6px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+/* 청산 기준 막대 — 위: 평단·현재가 꼬리표, 가운데: 막대(평단 눈금·현재가 점), 아래: 양 끝 손절·익절.
+   꼬리표 가로 위치는 %(ExitBar.tsx). 왼쪽 끝은 손절, 오른쪽 끝은 익절(숏도 같음). */
+.exit-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.exit-head,
+.exit-line-head {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  letter-spacing: 0.02em;
+}
+.exit-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+.exit-line-head {
+  margin-right: 4px;
+}
+.exit-tags {
+  position: relative;
+  height: 20px;
+}
+.exit-tag {
+  position: absolute;
+  top: 0;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 18px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+.exit-tag.is-entry {
+  border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent);
+  background: var(--card);
+  color: var(--muted);
+  line-height: 16px;
+}
+.exit-tag.is-price {
+  background: var(--ok);
+  color: var(--on-accent);
+}
+.exit-tag.is-price.tone-down {
+  background: var(--danger);
+}
+.exit-track {
+  position: relative;
+  height: 6px;
+  margin: 0 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--danger) 26%, transparent),
+    var(--line) 50%,
+    color-mix(in srgb, var(--ok) 26%, transparent)
+  );
+}
+.exit-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+}
+.exit-fill.is-up {
+  background: color-mix(in srgb, var(--ok) 70%, transparent);
+}
+.exit-fill.is-down {
+  background: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+.exit-tick {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 14px;
+  border-radius: 1px;
+  background: var(--muted);
+  transform: translateX(-50%);
+}
+.exit-dot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px var(--card);
+  transform: translate(-50%, -50%);
+}
+.exit-dot.is-up {
+  color: var(--ok);
+}
+.exit-dot.is-down {
+  color: var(--danger);
+}
+/* 현재가가 손절·익절 밖 — 끝에 붙인 점에 고리를 둘러 '밖'임을 보임. */
+.exit-dot.is-beyond {
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px currentColor;
+}
+.exit-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: 11px;
+}
+.exit-end {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-weight: var(--fw-bold);
+}
+.exit-end.is-right {
+  align-items: flex-end;
+  text-align: right;
+}
+.exit-end.tone-muted {
+  color: var(--faint);
+}
+.exit-end-price {
+  color: var(--ink);
+  font-size: var(--fs-small);
+}
+.exit-end.tone-muted .exit-end-price {
+  color: inherit;
 }
 .idle-card {
   display: flex;

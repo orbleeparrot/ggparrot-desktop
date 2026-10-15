@@ -168,44 +168,31 @@
   width: min(360px, calc(100vw - var(--pad) * 2));
   pointer-events: none;
 }
+/* 알림 — 앱 기본색(노랑) 바탕의 단순한 카드. 색띠·아이콘 원 없이 바탕색으로 눈에 띄게.
+   오류는 같은 모양에 붉은 바탕(옅은 빨강·진한 글자). */
 .toast {
-  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  min-height: 48px;
-  padding: 10px 6px 10px 14px;
-  border: 1px solid var(--border);
+  min-height: 46px;
+  padding: 11px 6px 11px 14px;
   border-radius: var(--radius);
-  background: var(--card);
-  color: var(--ink);
+  background: var(--brand);
+  color: var(--brand-ink);
   box-shadow: var(--shadow-lift);
-  overflow: hidden;
   pointer-events: auto;
   animation: toast-in 220ms var(--ease);
 }
-.toast::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: var(--toast-tone);
-}
-.toast-info {
-  --toast-tone: var(--info);
-}
 .toast-error {
-  --toast-tone: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
 .toast-icon {
   display: grid;
   place-items: center;
   flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--toast-tone) 14%, var(--card));
-  color: var(--toast-tone);
+  height: 22px;
 }
 .toast-text {
   display: flex;
@@ -213,27 +200,40 @@
   gap: 1px;
   flex: 1;
   min-width: 0;
-  padding-top: 3px;
+  padding-top: 2px;
   font-size: var(--fs-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .toast-text strong {
   font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
 }
-/* 제목이 있으면 본문은 흐리게, 본문뿐이면 진하게 */
+/* 제목이 있으면 본문은 조금 옅게(같은 색 계열) */
 .toast-text strong + span {
-  color: var(--muted);
+  opacity: 0.8;
 }
 .toast-detail {
   align-self: flex-start;
-  margin-top: 1px;
+  margin-top: 2px;
+  color: inherit;
+  font-weight: var(--fw-bold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .toast .icon-btn {
   flex: none;
   width: 32px;
   height: 32px;
   margin: -4px 0 -4px;
+  color: inherit;
+  opacity: 0.7;
+}
+.toast .icon-btn:hover,
+.toast .icon-btn:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: inherit;
+  opacity: 1;
 }
 @media (min-width: 900px) {
   body:has(.scrim-side) .toasts {

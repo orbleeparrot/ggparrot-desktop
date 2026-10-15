@@ -59,31 +59,6 @@
   background: var(--info);
   color: var(--on-accent);
 }
-/* 모드 설명 — 세그먼트·버튼 줄 아래 한 줄 안내. 실전만 위험 톤. */
-.mode-note {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--card-sunken);
-  color: var(--muted);
-  font-size: var(--fs-small);
-  line-height: 1.4;
-}
-.mode-note > svg {
-  flex: none;
-  color: var(--faint);
-}
-.mode-note-live {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
-  font-weight: var(--fw-bold);
-}
-.mode-note-live > svg {
-  color: var(--danger);
-}
 
 /* --- 비밀 칸 ------------------------------------------------------------------ */
 .secret-row {

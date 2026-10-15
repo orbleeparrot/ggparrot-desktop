@@ -3,16 +3,23 @@ import type { KeySlot, RunMode, RunSlot, StopMode } from "../types";
 
 export const MODE_LABELS: Record<RunMode, string> = { mock: "모의", testnet: "테스트넷", live: "실전" };
 
+/** 모드 세그먼트 단추의 설명(풍선 도움말·접근성 설명). */
 export const MODE_NOTES: Record<RunMode, string> = {
-  mock: "주문을 보내지 않고 현재가로 연습해요",
-  testnet: "바이낸스 테스트넷에서 가상 자금으로 주문해요",
-  live: "실제 자금으로 주문해요",
+  mock: "주문을 보내지 않고 현재가로 연습해요.",
+  testnet: "바이낸스 테스트넷 키로 연습 주문을 보내요.",
+  live: "실제 자금으로 주문해요. 시작할 때 한 번 더 확인해요.",
 };
 
 export const SIDE_LABELS = { long: "롱", short: "숏" } as const;
 export const MARKET_LABELS = { spot: "현물", futures: "선물" } as const;
 
 export type Phase = RunSlot["phase"];
+
+/** 상태 문구 → [앞부분, 뒷부분]. "실행 중 · 서버 재시도 중" → ["실행 중", "서버 재시도 중"]. 카드가 좁으면 뒷부분을 숨김. */
+export function statusParts(text: string): [string, string] {
+  const i = text.indexOf(" · ");
+  return i < 0 ? [text, ""] : [text.slice(0, i), text.slice(i + 3)];
+}
 
 /** 대기 중이거나 끝난 슬롯만 모드를 바꾸고, 시작하고, 목록에서 뺄 수 있음. */
 export function isIdle(phase: Phase): boolean {

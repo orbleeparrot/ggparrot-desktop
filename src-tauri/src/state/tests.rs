@@ -595,6 +595,52 @@ fn run_status_carries_fees_day_change_and_macro_origin_for_the_screen() {
     assert!(v["fees"].is_null() && v["dayChangePct"].is_null());
 }
 
+#[test]
+fn run_status_shows_fee_aware_pnl_and_keeps_the_server_values() {
+    // 바이낸스 현물 10개 100 → 100.15, 진입 수수료 1 USDT — 봇이 보낸 수수료 반영 값을 그대로 화면 값으로 씀.
+    let mut d = RunData::started(1, Some(1));
+    d.snapshot = json!({"in_position": true, "last_price": 100.15, "entry_price": 100.0, "position_qty": 10.0,
+        "realized_pnl": 5.0, "unrealized_pct": 0.15, "fees_paid": 1.0, "realized_net": 4.0,
+        "invested": 1001.0, "unrealized_net": -0.5015, "unrealized_net_pct": -0.0501});
+    let v = serde_json::to_value(render_run_data(&d, Side::Long)).unwrap();
+    assert_eq!(v["unrealizedFeeAware"], true);
+    assert_eq!(v["unrealized"], -0.5015);
+    assert_eq!(v["unrealizedPct"], -0.0501, "목록 카드·상태 카드가 함께 쓰는 % — 수수료 반영");
+    assert_eq!(v["invested"], 1001.0);
+    assert_eq!(v["realized"], 5.0, "서버 값(수수료 전) 그대로");
+    assert_eq!(v["realizedNet"], 4.0);
+    // 수수료를 모르면(선물) 수수료 전 값을 보이고 그렇다고 표시.
+    d.snapshot = json!({"in_position": true, "last_price": 99.0, "entry_price": 100.0, "position_qty": 1.0,
+        "realized_pnl": 0.0, "unrealized_pct": -1.0, "fees_paid": null, "realized_net": null,
+        "invested": 100.0, "unrealized_net": null, "unrealized_net_pct": null});
+    let v = serde_json::to_value(render_run_data(&d, Side::Long)).unwrap();
+    assert_eq!(v["unrealizedFeeAware"], false);
+    assert_eq!(v["unrealized"], -1.0);
+    assert_eq!(v["unrealizedPct"], -1.0);
+    assert!(v["realizedNet"].is_null() && v["fees"].is_null());
+    // 옛 스냅샷(투입금 칸 없음)은 수량×평단.
+    d.snapshot = json!({"in_position": true, "last_price": 99.0, "entry_price": 100.0, "position_qty": 2.0});
+    let v = serde_json::to_value(render_run_data(&d, Side::Long)).unwrap();
+    assert_eq!(v["invested"], 200.0);
+}
+
+#[test]
+fn macro_carries_its_exit_rules_for_the_status_card() {
+    let mut c = core();
+    let mut r = run("a", "BTCUSDT", "binance");
+    r.macro_ = json!({"symbol": "BTCUSDT", "exchange": "binance", "rule_type": "A",
+        "params": {"take_profit_pct": 5}, "risk": {"stop_loss_pct": 3}});
+    c.runs.push(r);
+    let v = serde_json::to_value(c.render_run(&c.runs[0])).unwrap();
+    let exits = &v["macro"]["exits"];
+    assert_eq!(exits["summary"], "익절 +5% · 손절 -3%");
+    assert_eq!(exits["kind"], "two");
+    assert_eq!(exits["sl"]["pct"], 3.0);
+    assert_eq!(exits["tp"]["pct"], 5.0);
+    assert!(exits["trailing"].is_null());
+    assert_eq!(v["macro"]["risk"][0], "손절 평단 대비 가격 -3%");
+}
+
 // --- 앱 기록 ---------------------------------------------------------------------
 
 #[test]
