@@ -213,31 +213,21 @@ docs/                     규칙 · 다음 작업 · 설계 문서
 | 업데이트 목록(`latest.json`) | 같은 릴리스. 앱은 `releases/latest/download/latest.json`을 읽음 |
 | 업데이트 서명 키 | Settings › Secrets and variables › Actions의 `TAURI_SIGNING_PRIVATE_KEY`·`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`(로컬 키 파일: `~/.tauri/ggparrot-desktop-updater.key`, 공개키는 `tauri.conf.json`) |
 
-순서(버튼으로):
+순서(자동):
 
-1. 릴리스 본문을 미리 봄: `npm run release:notes -- v<버전> --preview`.
-   - 사용자에게 나갈 내용만 보임. `### 개발`은 빠지고, 지난 배포 뒤 배포하지 않은 버전 칸은 분류별로 합쳐짐.
+1. 커밋마다 버전을 올리고 `CHANGELOG.md`에 그 버전 칸을 적어 `main`에 푸시함.
+2. CI가 통과하면 **release** 워크플로가 그 버전의 릴리스 **초안**을 자동으로 만듦.
+   - macOS(universal)·Windows 설치 파일과 앱 업데이트 파일을 붙임 — 초안에서 바로 내려받아 시험할 수 있음.
+   - 본문은 CHANGELOG에서 자동으로(사용자용 분류만, 지난 배포 뒤 배포하지 않은 버전 칸을 합침, `### 개발`은 뺌).
    - 맨 아래 설치 안내(`<!-- web-only -->` 아래)는 웹 릴리스 페이지에만 보이고 앱의 '바뀐 점'에는 보이지 않음.
-2. GitHub › Actions › **release-prepare** › [Run workflow]: 브랜치 `main`, 버전(예: `0.18.23`) 입력.
-   - 저장소 관리자만 실행할 수 있음.
-   - 버전이 앱 버전과 같은지·태그가 없는지 확인 → CHANGELOG 배포 표시(한국 시간 오늘) → main에 커밋 → `v<버전>` 태그 → **release** 워크플로 실행.
-   - 실행 요약에 릴리스 본문이 보임.
-3. **release** 워크플로가 macOS(universal)·Windows 설치 파일과 업데이트 파일을 만들어 릴리스 **초안**에 붙임(본문은 CHANGELOG에서 자동으로).
-   - 초안은 사용자에게 보이지 않음. 앱도 초안을 업데이트로 보지 않음.
-4. Releases에서 초안을 확인하고 [Publish release]를 누름 — **이때 배포됨.**
-   - Publish해야 앱이 새 버전을 봄(latest 릴리스만 읽음).
-   - 초안 본문을 GitHub에서 고치면 웹 페이지만 바뀜. 앱의 '바뀐 점'은 빌드 때 CHANGELOG 내용 — 고치려면 CHANGELOG를 고치고 버전을 올려 다시 배포.
-   - Publish한 릴리스는 파일을 바꿀 수 없음(Settings › General › Releases › Enable release immutability). 잘못 만들었으면 버전을 올려 다시 배포.
-
-순서(로컬에서 직접): 2 대신
-
-- `npm run release:mark -- v<버전>`(날짜를 정하려면 `2026-10-20`처럼 덧붙임) → 확인 → 커밋·푸시 → `git tag v<버전> && git push origin v<버전>`.
-- 태그를 올리면 **release** 워크플로가 바로 돎. `v*.*.*` 태그는 저장소 관리자만 만들 수 있음(Settings › Rules › Rulesets › `release-tags`).
-
-시험용 설치 파일(배포 아님):
-
-- GitHub › Actions › **test-build** › [Run workflow]: 고른 브랜치를 macOS·Windows 설치 파일로 만듦.
-- 실행 결과의 Artifacts에서 내려받음(7일 보관). 업데이트 서명·코드 서명 없음(macOS는 임시 서명), 릴리스를 만들지 않음.
+   - 이전 초안은 지우고 최신 커밋의 초안 하나만 남김. 초안은 사용자와 앱 업데이트에 보이지 않음.
+3. Releases에서 초안을 확인하고 [Publish release]를 누름 — **이때 배포됨.**
+   - 태그 `v<버전>`이 이때 생기고, 앱의 업데이트 확인이 새 버전을 봄(latest 릴리스만 읽음).
+   - **release-published** 워크플로가 CHANGELOG에 배포 표시(날짜, 함께 나간 칸은 `배포하지 않음(<버전>에 포함)`)를 하고 `main`에 커밋함.
+4. 주의
+   - 초안 본문을 GitHub에서 고치면 웹 페이지만 바뀜. 앱의 '바뀐 점'은 빌드 때 CHANGELOG 내용 — 고치려면 CHANGELOG를 고쳐 다시 푸시(초안이 새로 만들어짐).
+   - Publish한 릴리스는 파일을 바꿀 수 없음(Settings › General › Releases › Enable release immutability). 잘못 나갔으면 버전을 올려 다시 배포.
+   - 미리 보기: `npm run release:notes -- v<버전> --preview`. 초안을 다시 만들려면 Actions › release › [Run workflow](main).
 
 참고:
 
