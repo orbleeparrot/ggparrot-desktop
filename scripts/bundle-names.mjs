@@ -21,11 +21,17 @@ export function assetName(binary, version, { platform, arch, setup, ext }) {
     .replace("[ext]", ext);
 }
 
-/** 저장소의 앱 정보 — 화면 이름(productName)·기술 이름(mainBinaryName)·버전(Cargo 워크스페이스). */
+/** 저장소의 앱 정보 — 화면 이름(productName, Windows는 tauri.windows.conf.json 값)·기술 이름(mainBinaryName)·버전. */
 export function readAppInfo(root = new URL("..", import.meta.url)) {
   const conf = JSON.parse(readFileSync(new URL("src-tauri/tauri.conf.json", root), "utf8"));
+  const win = JSON.parse(readFileSync(new URL("src-tauri/tauri.windows.conf.json", root), "utf8"));
   const cargo = readFileSync(new URL("src-tauri/Cargo.toml", root), "utf8");
   const version = cargo.match(/^\[workspace\.package\][^[]*?^version\s*=\s*"([^"]+)"/ms)?.[1];
   if (!version) throw new Error("src-tauri/Cargo.toml에서 [workspace.package] version을 찾지 못했어요.");
-  return { product: conf.productName, binary: conf.mainBinaryName, version };
+  return {
+    product: conf.productName,
+    productWindows: win.productName ?? conf.productName,
+    binary: conf.mainBinaryName,
+    version,
+  };
 }

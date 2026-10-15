@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { binanceMacro, makeRun } from "../../test/fixtures";
+import { binanceMacro, makeRun, upbitMacro } from "../../test/fixtures";
 import { StatusCard } from "./StatusCard";
 
 afterEach(cleanup);
@@ -54,5 +54,49 @@ describe("실행 상태 카드", () => {
       />,
     );
     expect(screen.getByText(/45초 전 갱신/)).toBeTruthy();
+  });
+
+  it("실현손익은 수수료를 뺀 값으로 보이고, 수수료를 모르면 그렇다고 밝힌다", () => {
+    const spot = { ...binanceMacro, market: "spot" as const, leverage: 1 };
+    const { rerender } = render(
+      <StatusCard run={makeRun({ realized: 5, fees: 0.1 })} macro={spot} phase="running" status={ok} prices={[]} />,
+    );
+    const cell = screen.getByText("이번 실행 실현손익").nextElementSibling;
+    expect(cell?.textContent).toBe("+4.90 USDT수수료 0.10 USDT 반영");
+    rerender(
+      <StatusCard
+        run={makeRun({ realized: 5, fees: null })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    expect(screen.getByText("이번 실행 실현손익").nextElementSibling?.textContent).toBe("+5.00 USDT수수료 제외 전");
+    rerender(
+      <StatusCard
+        run={makeRun({ realized: 0, fees: null })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    expect(screen.getByText("이번 실행 실현손익").nextElementSibling?.textContent).toBe("+0.00 USDT");
+  });
+
+  it("국내 시세에 함께 온 전일 대비 등락률을 현재가 옆에 보인다", () => {
+    render(
+      <StatusCard
+        run={makeRun({ price: 118_350_000, dayChangePct: -1.234 })}
+        macro={upbitMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    const change = screen.getByText(/전일/);
+    expect(change.textContent?.trim()).toBe("전일 -1.23%");
+    expect(change.className).toContain("tone-down");
   });
 });

@@ -46,6 +46,7 @@
   gap: 2px;
 }
 .wz-body {
+  position: relative; /* 안의 .sr-only 등이 이 스크롤 영역 밖(문서)으로 새지 않게 */
   flex: 1;
   min-height: 0;
   overflow-y: auto;

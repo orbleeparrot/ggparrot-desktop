@@ -42,7 +42,14 @@ impl Shared {
             me.lock().claim_busy = false;
             match claimed {
                 Ok(claimed) => me.apply_claim(claimed, base),
-                Err(()) => {
+                Err(server::ClaimError::UpdateRequired(detail)) => {
+                    // 서버가 이 앱의 서버 연동 레벨으로는 이 매크로를 열지 않음 — 이유와 함께 업데이트 화면으로 데려감.
+                    me.emit();
+                    me.navigate("settings:about");
+                    me.update_check(false);
+                    me.notice("warn", update_required_message(&detail));
+                }
+                Err(server::ClaimError::Failed) => {
                     me.emit();
                     me.notice("warn", "웹 연결 요청을 확인하지 못했어요. 사이트로 돌아가 다시 시도해 주세요.");
                 }
@@ -114,5 +121,25 @@ impl Shared {
             );
             self.navigate("settings");
         }
+    }
+}
+
+/// 웹 연결이 426(업데이트 필요)으로 막혔을 때의 안내. 서버 안내가 있으면 그대로 앞에 둠.
+fn update_required_message(detail: &str) -> String {
+    let tail = "설정 › 정보에서 껄무새 앱을 최신 버전으로 업데이트한 뒤 사이트에서 다시 시도하세요.";
+    if detail.trim().is_empty() {
+        format!("이 웹 매크로를 열려면 새 버전의 껄무새 앱이 필요해요.\n{tail}")
+    } else {
+        format!("{}\n{tail}", detail.trim())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn an_update_notice_keeps_the_server_reason_and_says_what_to_do() {
+        let m = super::update_required_message("바이낸스 빠른 실행은 실행기 v19 이상이 필요해요.");
+        assert!(m.starts_with("바이낸스 빠른 실행은") && m.contains("업데이트"));
+        assert!(super::update_required_message(" ").contains("새 버전의 껄무새 앱"));
     }
 }

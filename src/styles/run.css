@@ -12,6 +12,7 @@
 
 /* --- 목록 -------------------------------------------------------------------- */
 .run-list-panel {
+  position: relative; /* 안의 .sr-only 등이 이 스크롤 영역 밖(문서)으로 새지 않게 */
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -164,6 +165,51 @@
 .run-card-remove:focus-visible {
   opacity: 1;
 }
+/* 순서 손잡이 — 카드 왼쪽 끝, 가리키거나 고른 카드에서만 보임. 끄는 동안 놓을 자리에 선을 그림. */
+.run-card-grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  color: var(--faint);
+  cursor: grab;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity 120ms var(--ease);
+}
+.run-card:hover .run-card-grip,
+.run-card.is-selected .run-card-grip,
+.run-list.is-sorting .run-card-grip {
+  opacity: 1;
+}
+.run-list.is-sorting,
+.run-list.is-sorting * {
+  cursor: grabbing;
+  user-select: none;
+}
+.run-card.is-dragging {
+  opacity: 0.55;
+}
+.run-card.is-drop-before::after,
+.run-card.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--brand-hover);
+}
+.run-card.is-drop-before::after {
+  top: -6px;
+}
+.run-card.is-drop-after::after {
+  bottom: -6px;
+}
 .add-run {
   display: inline-flex;
   align-items: center;
@@ -189,6 +235,7 @@
 
 /* --- 상세 -------------------------------------------------------------------- */
 .run-detail {
+  position: relative; /* 안의 .sr-only 등이 이 스크롤 영역 밖(문서)으로 새지 않게 */
   display: flex;
   flex-direction: column;
   gap: var(--gap);
@@ -205,6 +252,15 @@
 }
 .detail-back {
   margin-left: -6px;
+}
+/* 웹 실행 기록·거래소 종목 화면 — 머리줄 오른쪽 끝 */
+.detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 .detail-name {
   min-width: 0;
@@ -677,4 +733,35 @@
 .capital-risk {
   margin: 0;
   font-size: var(--fs-small);
+}
+
+/* 실현손익 아래 수수료 반영 여부 — 값 한 줄을 지키며 작게 덧붙임 */
+.run-table .realized-note {
+  display: block;
+  color: var(--muted);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-small);
+}
+/* 현재가 옆 전일 대비 등락률 */
+.run-table .day-change {
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-small);
+}
+/* 실행 중 매크로 설명 — 한 줄로 줄임 */
+.macro-summary.is-compact {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+}
+/* 좁은 창 — 두 단추가 종목 이름을 누르지 않게 머리줄 아래 줄로 내림 */
+@media (max-width: 560px) {
+  .detail-head {
+    flex-wrap: wrap;
+  }
+  .detail-links {
+    justify-content: flex-start;
+    width: 100%;
+    margin-left: 0;
+  }
 }

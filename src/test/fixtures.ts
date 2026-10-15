@@ -51,6 +51,8 @@ export function makeSlot(over: Partial<RunSlot> = {}): RunSlot {
     readiness: { canStart: true, blocker: "", needs: null },
     run: null,
     webLinked: false,
+    marketPage: "바이낸스에서 보기",
+    webRunPage: false,
     status: { text: "시작 전", tone: "muted" },
     ...over,
   };
@@ -59,6 +61,7 @@ export function makeSlot(over: Partial<RunSlot> = {}): RunSlot {
 const LABELS: Record<KeySlot, string> = {
   binance: "바이낸스",
   binance_testnet: "바이낸스 테스트넷",
+  binance_demo: "바이낸스 데모",
   upbit: "업비트",
   bithumb: "빗썸",
 };
@@ -82,6 +85,9 @@ export function makeRun(over: Partial<RunStatus> = {}): RunStatus {
     unrealizedPct: 0,
     unrealized: 0,
     realized: 0,
+    fees: null,
+    dayChangePct: null,
+    macroOrigin: "",
     note: "",
     finished: null,
     ...over,
@@ -89,7 +95,7 @@ export function makeRun(over: Partial<RunStatus> = {}): RunStatus {
 }
 
 export function slotCard(slot: KeySlot, over: Partial<SlotCard> = {}): SlotCard {
-  const exchange = slot === "binance_testnet" ? "binance" : slot;
+  const exchange = slot === "binance_testnet" || slot === "binance_demo" ? "binance" : slot;
   return {
     slot,
     exchange,
@@ -111,7 +117,7 @@ export function slotCard(slot: KeySlot, over: Partial<SlotCard> = {}): SlotCard 
 
 export function makeSettings(over: Partial<SettingsState> = {}): SettingsState {
   return {
-    slots: (["binance", "binance_testnet", "upbit", "bithumb"] as const).map((s) => slotCard(s)),
+    slots: (["binance", "binance_testnet", "binance_demo", "upbit", "bithumb"] as const).map((s) => slotCard(s)),
     memberKeyFilled: true,
     memberKeyPending: "",
     memberInUseBy: 0,
@@ -119,7 +125,10 @@ export function makeSettings(over: Partial<SettingsState> = {}): SettingsState {
     showDevLog: false,
     closeToTray: true,
     serverBase: "https://api.example.com",
-    protocolVersion: "18",
+    serverCustom: true,
+    os: "macOS 15.6.1 (arm64)",
+    publicIp: { status: "ok", address: "203.0.113.7" },
+    serverLinkLevel: "19",
     ...over,
   };
 }

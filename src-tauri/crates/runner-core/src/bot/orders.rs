@@ -93,6 +93,12 @@ impl Bot {
         self.last_fill_qty = executed;
         self.last_fill_price = average;
         self.position_uncertain = result_uncertain;
+        if executed > 0.0 {
+            match &order.fee {
+                Some(fee) if fee.other.is_empty() => self.fees_quote += fee.quote,
+                _ => self.fees_complete = false,
+            }
+        }
         let mut dust_only = false;
         if executed != 0.0 {
             if closing {
@@ -153,7 +159,7 @@ impl Bot {
                 order.raw_status
             );
             self.logger.ui(&raw);
-            self.fill_activity(side, closing, executed, average, realized_before, raw);
+            self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
             return Err(format!(
                 "주문이 일부만 체결되고 끝났어요(거래소 상태: {}). 체결된 {} {}만 보유에 반영했어요.",
                 order.raw_status,
@@ -175,11 +181,13 @@ impl Bot {
             py_num(executed)
         );
         self.logger.ui(&raw);
-        self.fill_activity(side, closing, executed, average, realized_before, raw);
+        self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
         Ok(true)
     }
 
     /// 체결을 사람이 읽는 문장으로 — "BTC 0.00122개를 81,806 USDT에 샀어요"(자산 이름 뒤에 조사를 붙이지 않음).
+    /// 자세히에는 신호가와의 차이·수수료를 덧붙임(서버 명령으로 낸 주문·수수료를 아는 체결만).
+    #[allow(clippy::too_many_arguments)] // 체결 한 건의 값들 — 묶으면 부르는 곳마다 구조체만 늘어남.
     pub(super) fn fill_activity(
         &self,
         side: OrderSide,
@@ -187,19 +195,28 @@ impl Bot {
         qty: f64,
         price: f64,
         realized_before: f64,
+        fee: Option<&FeePaid>,
         raw: String,
     ) {
         let asset = base_asset(&self.symbol);
         let what = format!("{asset} {}개를 {}에", qty_text(qty), price_text(price, self.quote));
         let mock = self.mode == RunMode::Mock;
-        let mock_note = if mock { "모의 체결 · 실제 주문은 보내지 않았어요" } else { "" };
+        let extras: Vec<String> =
+            [slippage_text(self.signal_price, price), fee_text(fee, self.quote)].into_iter().flatten().collect();
         if !closing {
             let verb = if side == OrderSide::Buy { "샀어요" } else { "공매도했어요" };
-            self.logger.activity("buy", format!("{what} {verb}"), mock_note, raw, "ok");
+            let mut parts = extras;
+            if mock {
+                parts.push("모의 체결 · 실제 주문은 보내지 않았어요".into());
+            }
+            self.logger.activity("buy", format!("{what} {verb}"), parts.join(" · "), raw, "ok");
         } else {
             let verb = if side == OrderSide::Sell { "팔았어요" } else { "되사서 정리했어요" };
             let pnl = self.realized - realized_before;
             let mut detail = format!("손익 {} · 누적 {}", money(pnl, self.quote), money(self.realized, self.quote));
+            for extra in extras {
+                detail.push_str(&format!(" · {extra}"));
+            }
             if mock {
                 detail.push_str(" · 모의 체결");
             }
@@ -240,4 +257,27 @@ impl Bot {
             Side::Short => price >= self.entry_price * (1.0 + sl),
         }
     }
+}
+
+/// 신호가 대비 체결가 차이 — "신호가 대비 +0.12%"(체결가가 높으면 +). 신호가가 없으면 None.
+pub(super) fn slippage_text(signal: f64, fill: f64) -> Option<String> {
+    if !(signal.is_finite() && signal > 0.0 && fill.is_finite() && fill > 0.0) {
+        return None;
+    }
+    let pct = (fill / signal - 1.0) * 100.0;
+    let pct = if pct.abs() < 0.005 { 0.0 } else { pct };
+    Some(format!("신호가 대비 {}{:.2}%", if pct >= 0.0 { "+" } else { "-" }, pct.abs()))
+}
+
+/// 낸 수수료 — "수수료 0.04 USDT"·"수수료 12 KRW + 0.00002 BNB". 모르거나 0이면 None.
+pub(super) fn fee_text(fee: Option<&FeePaid>, quote: &str) -> Option<String> {
+    let fee = fee?;
+    let mut parts = vec![];
+    if fee.quote > 0.0 {
+        parts.push(price_text(fee.quote, quote));
+    }
+    for (asset, amount) in &fee.other {
+        parts.push(format!("{} {asset}", qty_text(*amount)));
+    }
+    (!parts.is_empty()).then(|| format!("수수료 {}", parts.join(" + ")))
 }

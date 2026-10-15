@@ -15,7 +15,7 @@ import { call, errorText } from "../../ipc";
 import { detectPlatform } from "../../platform";
 import { useRunnerContext } from "../../state/context";
 import { formatWhen } from "../../state/format";
-import { euro, iga } from "../../state/particle";
+import { iga } from "../../state/particle";
 import type { UpdateState } from "../../types";
 
 const ACTIVE = new Set(["checking", "starting", "running", "stopping"]);
@@ -82,9 +82,43 @@ export function UpdatePanel() {
     </button>
   );
 
-  const sub =
+  // 앱 버전 줄 아래 두 줄 — 상태(무엇이 일어났나)와 덧붙임(다음에 할 일·마지막 확인).
+  const headline =
+    u.status === "none" ? (
+      u.updatedFrom ? (
+        <>
+          <PartyPopper size={14} className="tone-ok" aria-hidden="true" /> v{u.updatedFrom}에서 업데이트했어요
+        </>
+      ) : (
+        <>
+          <CircleCheck size={14} className="tone-ok" aria-hidden="true" /> 최신 버전이에요
+        </>
+      )
+    ) : u.status === "available" ? (
+      `새 버전 ${iga(`v${u.version}`)} 나왔어요`
+    ) : u.status === "downloading" ? (
+      `v${u.version} 내려받는 중`
+    ) : u.status === "ready" ? (
+      `v${u.version} 설치 준비가 끝났어요`
+    ) : u.status === "installing" ? (
+      <>
+        <LoaderCircle size={14} className="spin" aria-hidden="true" /> v{u.version} 설치하는 중
+      </>
+    ) : u.status === "error" ? (
+      <>
+        <TriangleAlert size={14} className="tone-warn" aria-hidden="true" /> 업데이트 중 문제가 생겼어요
+      </>
+    ) : u.status === "unsupported" ? (
+      "이 빌드는 자동 업데이트를 쓰지 않아요"
+    ) : u.status === "checking" ? (
+      "새 버전을 확인하는 중…"
+    ) : (
+      "아직 업데이트를 확인하지 않았어요"
+    );
+
+  const detail =
     u.status === "available"
-      ? `지금 버전 v${u.current} · 내려받는 동안에도 매크로는 계속 돌아요.`
+      ? "내려받는 동안에도 매크로는 계속 돌아요."
       : u.status === "downloading"
         ? "다 받으면 서명을 확인해요. 매크로는 계속 돌아요."
         : u.status === "ready"
@@ -99,42 +133,18 @@ export function UpdatePanel() {
               : "곧 앱이 다시 켜져요."
             : u.status === "unsupported"
               ? "개발용 빌드예요."
-              : u.updatedFrom && u.status !== "error"
-                ? `v${u.updatedFrom}에서 ${euro(`v${u.current}`)} 업데이트했어요 · ${checked}`
-                : checked;
+              : u.status === "none" || u.status === "error"
+                ? checked
+                : "";
 
   return (
     <div className={`update-panel is-${u.status}`} aria-live="polite">
       <div className="update-row">
+        <span className="about-label">앱 버전</span>
         <div className="update-text">
-          <span className="strong">
-            {u.status === "none" &&
-              (u.updatedFrom ? (
-                <>
-                  <PartyPopper size={15} className="tone-ok" aria-hidden="true" /> 최신 버전으로 업데이트했어요
-                </>
-              ) : (
-                <>
-                  <CircleCheck size={15} className="tone-ok" aria-hidden="true" /> 최신 버전이에요
-                </>
-              ))}
-            {u.status === "available" && `새 버전 ${iga(`v${u.version}`)} 나왔어요`}
-            {u.status === "downloading" && `v${u.version} 내려받는 중`}
-            {u.status === "ready" && `v${u.version} 설치 준비가 끝났어요`}
-            {u.status === "installing" && (
-              <>
-                <LoaderCircle size={15} className="spin" aria-hidden="true" /> v{u.version} 설치하는 중
-              </>
-            )}
-            {u.status === "error" && (
-              <>
-                <TriangleAlert size={15} className="tone-warn" aria-hidden="true" /> 업데이트 중 문제가 생겼어요
-              </>
-            )}
-            {u.status === "unsupported" && "이 빌드는 자동 업데이트를 쓰지 않아요"}
-            {(u.status === "idle" || u.status === "checking") && `현재 버전 v${u.current}`}
-          </span>
-          <span className="muted">{sub}</span>
+          <span className="strong num">v{state.version}</span>
+          <span className="update-headline">{headline}</span>
+          {detail && <span className="muted">{detail}</span>}
         </div>
         {(u.status === "idle" || u.status === "checking" || u.status === "none" || u.status === "error") && checkButton}
         {u.status === "available" && !u.blocked && (

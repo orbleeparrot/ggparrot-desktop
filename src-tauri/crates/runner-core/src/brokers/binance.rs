@@ -13,14 +13,17 @@ use std::time::{Duration, Instant};
 
 use super::{
     cool, cooling, exc_text, is_close, lookup_delay, network_error, positive_number, py_float_repr, py_str, py_truthy,
-    retry_after_secs, Broker, BrokerError, LogFn, Order, OrderRules, SubmitRequest, LOOKUP_ATTEMPTS, TERMINAL_STATUSES,
+    retry_after_secs, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, SubmitRequest, LOOKUP_ATTEMPTS,
+    TERMINAL_STATUSES,
 };
+use crate::money::{price_text, qty_text};
 use crate::types::{Market, Side};
 
 pub const SPOT_BASE: &str = "https://api.binance.com";
 pub const FUTURES_BASE: &str = "https://fapi.binance.com";
 pub const SPOT_TESTNET_BASE: &str = "https://testnet.binance.vision";
-pub const FUTURES_TESTNET_BASE: &str = "https://testnet.binancefuture.com";
+/// 선물 연습 주소 — 선물 연습 키는 demo.binance.com에서만 만들므로 공식 데모 주소로 보냄.
+pub const FUTURES_DEMO_BASE: &str = "https://demo-fapi.binance.com";
 
 /// 바이낸스가 주문 조회에 돌려주는 '더 조회해도 같은' 상태. TERMINAL_STATUSES보다 넓음.
 /// 선물 거래소 정보(심볼별)를 함께 쓰는 시간.
@@ -128,6 +131,48 @@ fn get_pos(obj: &Map<String, Value>, key: &str) -> f64 {
     obj.get(key).map(positive_number).unwrap_or(0.0)
 }
 
+/// 자산 줄 하나(현물 balances·선물 잔고 목록 모두 `asset` 칸으로 찾음).
+fn asset_row<'a>(rows: &'a Value, asset: &str) -> Option<&'a Map<String, Value>> {
+    rows.as_array()?.iter().filter_map(Value::as_object).find(|r| r.get("asset").and_then(Value::as_str) == Some(asset))
+}
+
+/// 선물 잔고 줄의 사용 가능 증거금. availableBalance가 없는 응답이면 balance로 물러남.
+fn futures_available(row: &Map<String, Value>) -> Option<f64> {
+    row.get("availableBalance").or_else(|| row.get("balance")).and_then(py_float)
+}
+
+/// 선물 첫 주문에 더 남겨 두는 몫(주문 금액 대비) — 시장가 수수료(0.05%)와 체결가 차이.
+const FUTURES_MARGIN_BUFFER: f64 = 0.001;
+
+/// 현물 체결 목록의 수수료. 체결이 주문 수량을 다 덮지 못하거나 수수료 칸이 빠졌으면 None.
+/// 견적 통화로 낸 것은 그대로, 기초자산으로 낸 것은 그 체결가로 옮기고, 그 밖(BNB 등)은 따로 둠.
+pub fn spot_fills_fee(fills: &[Value], executed: f64, base: &str, quote: &str) -> Option<FeePaid> {
+    if fills.is_empty() {
+        return None;
+    }
+    let mut fee = FeePaid::default();
+    let mut covered = 0.0;
+    for fill in fills {
+        let f = fill.as_object()?;
+        let asset = f.get("commissionAsset").and_then(Value::as_str)?;
+        let amount = py_float(f.get("commission")?)?;
+        covered += get_pos(f, "qty");
+        if amount <= 0.0 {
+            continue;
+        }
+        if !quote.is_empty() && asset == quote {
+            fee.quote += amount;
+        } else if !base.is_empty() && asset == base {
+            fee.quote += amount * get_pos(f, "price");
+        } else if let Some(row) = fee.other.iter_mut().find(|(a, _)| a == asset) {
+            row.1 += amount;
+        } else {
+            fee.other.push((asset.to_string(), amount));
+        }
+    }
+    is_close(covered, executed).then_some(fee)
+}
+
 fn now_ms() -> u128 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
@@ -150,7 +195,15 @@ pub struct BinanceBroker {
     last_error_name: Mutex<String>,
     /// 거래소 시계 - 이 기기 시계(ms). 서명 요청의 timestamp에 더함(-1021 방지).
     time_offset: AtomicI64,
+    /// 연습 환경(현물 테스트넷·선물 데모) 키인지. 연습 환경에는 IP 제한·키 권한 조회가 없음.
+    testnet: bool,
+    /// 마지막으로 읽은 잔고 목록(현물 balances·선물 잔고). 시작 전 잔고 확인과 잔고 한 줄에 씀.
+    balances: Mutex<Option<Value>>,
 }
+
+/// 키 권한 조회(실거래 전용) — IP 제한·주문 권한을 읽음.
+const API_RESTRICTIONS_PATH: &str = "/sapi/v1/account/apiRestrictions";
+const REHEARSE_OK: &str = "바이낸스 계정과 주문 규격을 확인했어요. 주문 권한은 첫 주문 때 알 수 있어요.";
 
 /// 주문이 거래소에 닿았는지 알 수 없는 오류 코드 — 거절의 증거가 아님.
 /// -1000 알 수 없음·-1001 연결 끊김·-1006 예상 못 한 응답·-1007 처리 시간 초과·-1008 서버 과부하.
@@ -195,7 +248,7 @@ impl BinanceBroker {
     ) -> Self {
         let urls = urls.unwrap_or_else(|| {
             if testnet {
-                BinanceUrls { spot: SPOT_TESTNET_BASE.into(), futures: FUTURES_TESTNET_BASE.into() }
+                BinanceUrls { spot: SPOT_TESTNET_BASE.into(), futures: FUTURES_DEMO_BASE.into() }
             } else {
                 BinanceUrls { spot: SPOT_BASE.into(), futures: FUTURES_BASE.into() }
             }
@@ -215,6 +268,60 @@ impl BinanceBroker {
             rules: Mutex::new(OrderRules::default()),
             last_error_name: Mutex::new(String::new()),
             time_offset: AtomicI64::new(0),
+            testnet,
+            balances: Mutex::new(None),
+        }
+    }
+
+    fn set_error_name(&self, name: &str) {
+        *self.last_error_name.lock().unwrap() = name.into();
+    }
+
+    /// 실거래 키의 IP 제한·주문 권한을 키 권한 조회(GET /sapi/v1/account/apiRestrictions)로 읽음.
+    ///
+    /// - IP 제한이 없는 키는 바이낸스가 'Enable Reading'만 허락함 — 조회는 통과해도 첫 주문에서 막힘.
+    /// - 주문 권한이 켜져 있으면 IP 제한이 없어도 통과(Default Security Controls를 끈 계정은 켤 수 있음).
+    /// - 조회 자체가 안 되면(일시 오류·응답 모양 다름) 막지 않고 '주문 권한은 첫 주문 때'로 둠.
+    async fn check_live_restrictions(&self) -> (bool, String) {
+        let perms = match self.get(false, API_RESTRICTIONS_PATH, &[], true).await {
+            Ok(Value::Object(perms)) => perms,
+            _ => return (true, REHEARSE_OK.into()),
+        };
+        let flag = |key: &str| perms.get(key).is_some_and(py_truthy);
+        let (wanted, label) = if self.futures() {
+            ("enableFutures", "Enable Futures")
+        } else {
+            ("enableSpotAndMarginTrading", "Enable Spot & Margin & Stock Trading")
+        };
+        let restricted = flag("ipRestrict");
+        if !flag(wanted) {
+            if !restricted {
+                self.set_error_name("binance_ip_unrestricted");
+                return (
+                    false,
+                    format!("이 키에는 허용 IP와 주문 권한({label})이 없어요. 허용 IP를 등록하고 주문 권한을 켜세요."),
+                );
+            }
+            if self.futures() {
+                // 선물 계정을 열기 전에 만든 키에는 Enable Futures 항목 자체가 없음.
+                self.set_error_name("binance_no_futures");
+                return (
+                    false,
+                    "이 키에 Enable Futures가 꺼져 있어요. 키 카드에 그 항목이 없으면 선물 계정을 열기 전에 만든 키예요. 선물 계정을 연 뒤 키를 새로 만드세요.".into(),
+                );
+            }
+            self.set_error_name("binance_no_trade");
+            return (
+                false,
+                format!("이 키에 주문 권한({label})이 꺼져 있어요. API Management의 Edit restrictions에서 켜세요."),
+            );
+        }
+        if restricted {
+            self.set_error_name("binance_verified");
+            (true, "바이낸스 키 · 허용 IP · 주문 권한을 확인했어요.".into())
+        } else {
+            self.set_error_name("binance_verified_open");
+            (true, "바이낸스 키 · 주문 권한을 확인했어요(IP 제한 없는 키).".into())
         }
     }
 
@@ -397,21 +504,65 @@ impl BinanceBroker {
     }
 
     async fn futures_balance_rows(&self) -> Result<Value, BrokerError> {
-        self.get(true, "/fapi/v2/balance", &[], true).await
+        let rows = self.get(true, "/fapi/v2/balance", &[], true).await?;
+        *self.balances.lock().unwrap() = Some(rows.clone());
+        Ok(rows)
     }
 
-    /// 선물 USDT 증거금. 조회 실패는 None, USDT 줄이 없으면 0.
+    /// 선물 USDT 사용 가능 증거금(주문에 쓸 수 있는 몫). 조회 실패는 None, USDT 줄이 없으면 0.
     async fn futures_usdt_balance(&self) -> Option<f64> {
         let rows = self.futures_balance_rows().await.ok()?;
-        for b in rows.as_array().map(Vec::as_slice).unwrap_or(&[]) {
-            if b.get("asset").and_then(Value::as_str) == Some("USDT") {
-                return match b.get("balance") {
-                    None => Some(0.0),
-                    Some(v) => py_float(v),
-                };
-            }
+        match asset_row(&rows, "USDT") {
+            Some(row) if row.contains_key("availableBalance") || row.contains_key("balance") => futures_available(row),
+            _ => Some(0.0),
         }
-        Some(0.0)
+    }
+
+    /// 견적 통화 이름 — 모르면 USDT.
+    fn quote_or_usdt(&self) -> &str {
+        match self.quote_asset() {
+            "" => "USDT",
+            q => q,
+        }
+    }
+
+    /// 첫 주문에 쓸 돈(현물: 견적 통화 잔고, 선물: 사용 가능 증거금)과 필요한 몫. 잔고를 읽지 않았으면 None.
+    fn funds_for(&self, notional: f64) -> Option<(f64, f64)> {
+        let rows = self.balances.lock().unwrap().clone()?;
+        let quote = self.quote_or_usdt();
+        let row = asset_row(&rows, quote);
+        if self.futures() {
+            let available = row.and_then(futures_available).unwrap_or(0.0);
+            let need = notional / f64::from(self.leverage.max(1)) + notional * FUTURES_MARGIN_BUFFER;
+            Some((available, need))
+        } else {
+            // 수량을 단위로 내려 주문하므로 실제 쓰는 금액은 이보다 크지 않음. 수수료는 기초자산·BNB에서 빠짐.
+            let free = row.and_then(|r| r.get("free")).and_then(py_float).unwrap_or(0.0);
+            Some((free, notional))
+        }
+    }
+
+    /// 잔고가 첫 주문에 모자라면 사람이 읽을 이유. 넉넉하거나 잔고를 모르면 None(모르면 막지 않음).
+    fn funds_shortfall(&self, notional: f64) -> Option<String> {
+        let (available, need) = self.funds_for(notional)?;
+        if notional <= 0.0 || available + 1e-9 >= need {
+            return None;
+        }
+        let quote = self.quote_or_usdt();
+        let need_text = price_text((need * 100.0).ceil() / 100.0, quote);
+        let have_text = price_text((available.max(0.0) * 100.0).floor() / 100.0, quote);
+        Some(if self.futures() {
+            format!(
+                "선물 증거금이 모자라요. 첫 주문({}배)에 수수료 여유까지 증거금 {need_text}가 필요한데 \
+                 사용 가능한 증거금은 {have_text}예요. 바이낸스 선물 지갑으로 {quote}를 옮기거나 매크로 투자 금액을 줄이세요.",
+                self.leverage.max(1)
+            )
+        } else {
+            format!(
+                "주문할 {quote} 잔고가 모자라요. 첫 주문에 {need_text}가 필요한데 사용 가능한 {quote}는 {have_text}예요. \
+                 바이낸스 현물 지갑에 {quote}를 채우거나 매크로 투자 금액을 줄이세요."
+            )
+        })
     }
 
     /// 격리 마진·레버리지를 맞춤. 맞추지 못하면 시작하지 않음 —
@@ -507,13 +658,13 @@ impl BinanceBroker {
 
         let mut acquired = executed;
         let mut fees_known = true;
+        // ensure_ready() 전이라도 심볼에서 기초자산을 끌어냄 — 이게 없으면 수수료가 조용히 안 빠짐.
+        let mut base_asset = self.base_asset();
+        if base_asset.is_empty() && (self.symbol.ends_with("USDT") || self.symbol.ends_with("USDC")) {
+            base_asset = self.symbol[..self.symbol.len() - 4].to_string();
+        }
+        let mut fills = response_fills;
         if self.market == Market::Spot && !closing && executed != 0.0 {
-            // ensure_ready() 전이라도 심볼에서 기초자산을 끌어냄 — 이게 없으면 수수료가 조용히 안 빠짐.
-            let mut base_asset = self.base_asset();
-            if base_asset.is_empty() && (self.symbol.ends_with("USDT") || self.symbol.ends_with("USDC")) {
-                base_asset = self.symbol[..self.symbol.len() - 4].to_string();
-            }
-            let mut fills = response_fills;
             let order_id = obj.get("orderId").filter(|v| !v.is_null());
             if fills.is_empty() {
                 if let Some(order_id) = order_id {
@@ -547,6 +698,14 @@ impl BinanceBroker {
                 acquired = (executed - base_fee).max(0.0);
             }
         }
+        // 화면에 보일 수수료 — 이미 받은 체결 목록만 씀(정리 주문을 위해 더 조회하지 않음). 선물은 모름.
+        let fee = if self.market == Market::Spot && executed != 0.0 {
+            spot_fills_fee(&fills, executed, &base_asset, self.quote_asset())
+        } else if executed == 0.0 {
+            Some(FeePaid::default())
+        } else {
+            None
+        };
         Order {
             status: fold_status(obj.get("status")).to_string(),
             executed_qty: executed,
@@ -555,6 +714,7 @@ impl BinanceBroker {
             fees_known,
             order_id: obj.get("orderId").filter(|v| !v.is_null()).map(py_str),
             raw_status: obj.get("status").map(py_str).unwrap_or_else(|| "unknown".into()),
+            fee,
         }
     }
 }
@@ -595,6 +755,7 @@ impl Broker for BinanceBroker {
             let Some(balances) = acc.get("balances") else {
                 return Err(BrokerError::Other("'balances'".into()));
             };
+            *self.balances.lock().unwrap() = Some(balances.clone());
             let usdt = balances
                 .as_array()
                 .and_then(|rows| rows.iter().find(|b| b.get("asset").and_then(Value::as_str) == Some("USDT")));
@@ -657,23 +818,36 @@ impl Broker for BinanceBroker {
     }
 
     /// 주문 없이 검증하는 호출이 없어 계정 확인과 주문 규격 읽기로 갈음함.
+    /// 실거래는 그 뒤 키 권한 조회로 허용 IP·주문 권한까지 봄(`check_live_restrictions`).
     async fn rehearse(&self, notional: f64, _spend: Option<f64>) -> (bool, String) {
-        *self.last_error_name.lock().unwrap() = String::new();
+        self.set_error_name("");
+        *self.balances.lock().unwrap() = None;
         let minimum = match self.rehearse_reads().await {
             Ok(Ok(minimum)) => minimum,
             Ok(Err(reason)) => return (false, reason),
             Err(e) => {
-                // -2015는 '키·허용 IP·권한' 중 무엇인지 거래소가 가르지 않고 한 코드로 돌려줌.
                 if let BrokerError::Api { name, .. } = &e {
-                    if name == "-2014" || name == "-2015" {
-                        *self.last_error_name.lock().unwrap() = "binance_access".into();
+                    // 키 형식(-2014)·서명 = 시크릿 짝(-1022)·없는 키(-2008) — 키를 다시 복사하면 됨.
+                    if ["-2014", "-1022", "-2008"].contains(&name.as_str()) {
+                        self.set_error_name("binance_key");
                         return (
                             false,
                             format!(
-                                "바이낸스에서 키를 거절했어요({}). 키 · 허용 IP · 권한 설정을 확인하세요.",
+                                "바이낸스에서 키를 받지 않았어요({}). API Key · Secret Key를 다시 복사해 넣으세요.",
                                 exc_text(&e)
                             ),
                         );
+                    }
+                    // -2015는 '키·허용 IP·권한' 중 무엇인지 거래소가 가르지 않고 한 코드로 돌려줌.
+                    // 테스트넷·데모에는 IP 제한이 없으니 키(또는 다른 환경에서 만든 키)임.
+                    if name == "-2015" {
+                        self.set_error_name(if self.testnet { "binance_access_test" } else { "binance_access" });
+                        let hint = if self.testnet {
+                            "이 사이트(테스트넷 · 데모)에서 만든 키인지 확인하세요."
+                        } else {
+                            "키 · 허용 IP · 권한 설정을 확인하세요."
+                        };
+                        return (false, format!("바이낸스에서 키를 거절했어요({}). {hint}", exc_text(&e)));
                     }
                 }
                 return (false, format!("바이낸스 확인에 실패했어요: {}", exc_text(&e)));
@@ -682,7 +856,7 @@ impl Broker for BinanceBroker {
         let amount =
             serde_json::Number::from_f64(notional).map(Value::Number).map(|v| positive_number(&v)).unwrap_or(0.0);
         if minimum != 0.0 && amount < minimum {
-            *self.last_error_name.lock().unwrap() = "under_min_total".into();
+            self.set_error_name("under_min_total");
             return (
                 false,
                 format!(
@@ -696,7 +870,28 @@ impl Broker for BinanceBroker {
                 ),
             );
         }
-        (true, "바이낸스 계정과 주문 규격을 확인했어요. 주문 권한은 첫 주문 때 알 수 있어요.".into())
+        if self.testnet {
+            if let Some(short) = self.funds_shortfall(amount) {
+                self.set_error_name("binance_funds_test");
+                return (false, short);
+            }
+            self.set_error_name("binance_test_ok");
+            return (true, REHEARSE_OK.into());
+        }
+        // 잔고는 키 권한을 확인한 뒤에 봄 — 모자라도 허용 IP·주문 권한 결과는 남기려고.
+        let (ok, reason) = self.check_live_restrictions().await;
+        if ok {
+            if let Some(short) = self.funds_shortfall(amount) {
+                let name = match self.last_error_name().as_str() {
+                    "binance_verified" => "binance_funds",
+                    "binance_verified_open" => "binance_funds_open",
+                    _ => "insufficient_funds",
+                };
+                self.set_error_name(name);
+                return (false, short);
+            }
+        }
+        (ok, reason)
     }
 
     async fn price(&self) -> Result<f64, BrokerError> {
@@ -755,6 +950,7 @@ impl Broker for BinanceBroker {
                 fees_known: true,
                 order_id: None,
                 raw_status: reason,
+                fee: Some(FeePaid::default()),
             });
         }
         for attempt in 0..LOOKUP_ATTEMPTS {
@@ -769,6 +965,30 @@ impl Broker for BinanceBroker {
             }
         }
         Ok(self.normalize(&order, closing).await)
+    }
+
+    /// 현물: 견적 통화 잔고와 보유 기초자산. 선물: 사용 가능 증거금.
+    fn balance_note(&self) -> String {
+        let Some(rows) = self.balances.lock().unwrap().clone() else {
+            return String::new();
+        };
+        let quote = self.quote_or_usdt();
+        let row = asset_row(&rows, quote);
+        if self.futures() {
+            let available = row.and_then(futures_available).unwrap_or(0.0);
+            return format!("사용 가능 증거금 {}", price_text(available, quote));
+        }
+        let free = row.and_then(|r| r.get("free")).and_then(py_float).unwrap_or(0.0);
+        let mut text = format!("사용 가능 잔고 {}", price_text(free, quote));
+        let base = match self.base_asset() {
+            b if b.is_empty() => crate::types::base_asset(&self.symbol),
+            b => b,
+        };
+        let held = asset_row(&rows, &base).and_then(|r| r.get("free")).and_then(py_float).unwrap_or(0.0);
+        if held > 0.0 {
+            text.push_str(&format!(" · 보유 {base} {}", qty_text(held)));
+        }
+        text
     }
 }
 

@@ -3,6 +3,22 @@
 use super::*;
 
 impl Shared {
+    /// 바이낸스 실거래 칸의 지금 확인 지문 — 실행 목록이 바뀌기 전에 떠 두고 `recheck_live_slot_if_moved`에 넘김.
+    pub(crate) fn live_probe_fingerprint(&self) -> String {
+        self.lock().slot_check_snapshot(KeySlot::Binance).3
+    }
+
+    /// 실행 추가·빼기·모드 변경으로 실거래 칸의 확인 시장(`Core::probe_market`)이 바뀌었으면 그 시장으로 다시 확인.
+    pub(crate) fn recheck_live_slot_if_moved(self: &S, before: &str) {
+        let moved = {
+            let c = self.lock();
+            c.slot_pair(KeySlot::Binance).is_some() && c.slot_check_snapshot(KeySlot::Binance).3 != before
+        };
+        if moved {
+            self.schedule_slot_check(KeySlot::Binance, 700);
+        }
+    }
+
     pub fn schedule_slot_check(self: &S, slot: KeySlot, delay_ms: u64) {
         let timer = {
             let mut c = self.lock();

@@ -8,6 +8,15 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 type Logs = Arc<Mutex<Vec<String>>>;
 
 fn make(server: &MockServer, market: Market, leverage: u32) -> (BinanceBroker, Logs) {
+    make_in(server, market, leverage, true)
+}
+
+/// 실거래 키 — 키 권한 조회까지 함.
+fn make_live(server: &MockServer, market: Market) -> BinanceBroker {
+    make_in(server, market, 1, false).0
+}
+
+fn make_in(server: &MockServer, market: Market, leverage: u32, testnet: bool) -> (BinanceBroker, Logs) {
     let logs: Logs = Arc::new(Mutex::new(Vec::new()));
     let sink = logs.clone();
     let log: LogFn = Arc::new(move |m: String| sink.lock().unwrap().push(m));
@@ -18,7 +27,7 @@ fn make(server: &MockServer, market: Market, leverage: u32) -> (BinanceBroker, L
         market,
         "BTCUSDT",
         Side::Long,
-        true,
+        testnet,
         leverage,
         log,
         reqwest::Client::new(),
@@ -534,23 +543,106 @@ async fn spot_rehearsal_passes_on_account_and_rules_without_any_order() {
     assert_eq!(reason, "바이낸스 계정과 주문 규격을 확인했어요. 주문 권한은 첫 주문 때 알 수 있어요.");
     let all = server.received_requests().await.unwrap();
     assert!(all.iter().all(|r| r.method.as_str() == "GET"));
-    assert_eq!(b.last_error_name(), "");
+    // 연습 환경에는 키 권한 조회가 없음.
+    assert!(requests(&server, "GET", API_RESTRICTIONS_PATH).await.is_empty());
+    assert_eq!(b.last_error_name(), "binance_test_ok");
 }
 
 #[tokio::test]
-async fn invalid_key_code_points_at_key_ip_and_permission() {
-    for code in [-2015, -2014] {
-        let server = MockServer::start().await;
-        mount(&server, "GET", "/api/v3/account", api_err(code, "Invalid API-key, IP, or permissions for action")).await;
-        let (b, _) = make(&server, Market::Spot, 1);
-        let (ok_, reason) = b.rehearse(10.0, None).await;
-        assert!(!ok_);
-        assert_eq!(
-            reason,
-            format!("바이낸스에서 키를 거절했어요(APIError(code={code}): Invalid API-key, IP, or permissions for action). 키 · 허용 IP · 권한 설정을 확인하세요.")
-        );
-        assert_eq!(b.last_error_name(), "binance_access");
+async fn access_code_points_at_ip_on_live_and_at_the_key_on_practice() {
+    let msg = "Invalid API-key, IP, or permissions for action";
+    let server = MockServer::start().await;
+    mount(&server, "GET", "/api/v3/account", api_err(-2015, msg)).await;
+    let b = make_live(&server, Market::Spot);
+    let (ok_, reason) = b.rehearse(10.0, None).await;
+    assert!(!ok_);
+    assert_eq!(
+        reason,
+        format!("바이낸스에서 키를 거절했어요(APIError(code=-2015): {msg}). 키 · 허용 IP · 권한 설정을 확인하세요.")
+    );
+    assert_eq!(b.last_error_name(), "binance_access");
+
+    let (practice, _) = make(&server, Market::Spot, 1);
+    let (ok_, reason) = practice.rehearse(10.0, None).await;
+    assert!(!ok_ && reason.contains("테스트넷 · 데모"), "{reason}");
+    assert_eq!(practice.last_error_name(), "binance_access_test");
+}
+
+#[tokio::test]
+async fn format_signature_and_unknown_key_codes_are_key_errors() {
+    for code in [-2014, -1022, -2008] {
+        for testnet in [true, false] {
+            let server = MockServer::start().await;
+            mount(&server, "GET", "/api/v3/account", api_err(code, "bad key")).await;
+            let (b, _) = make_in(&server, Market::Spot, 1, testnet);
+            let (ok_, reason) = b.rehearse(10.0, None).await;
+            assert!(!ok_);
+            assert_eq!(
+                reason,
+                format!("바이낸스에서 키를 받지 않았어요(APIError(code={code}): bad key). API Key · Secret Key를 다시 복사해 넣으세요.")
+            );
+            assert_eq!(b.last_error_name(), "binance_key", "{code}");
+        }
     }
+}
+
+async fn restrictions(server: &MockServer, body: Value) {
+    mount(server, "GET", API_RESTRICTIONS_PATH, ok(body)).await;
+}
+
+#[tokio::test]
+async fn live_spot_reads_the_key_permissions_after_the_account() {
+    let cases = [
+        (json!({"ipRestrict": true, "enableSpotAndMarginTrading": true}), true, "binance_verified"),
+        (json!({"ipRestrict": false, "enableSpotAndMarginTrading": true}), true, "binance_verified_open"),
+        (json!({"ipRestrict": false, "enableSpotAndMarginTrading": false}), false, "binance_ip_unrestricted"),
+        (
+            json!({"ipRestrict": true, "enableSpotAndMarginTrading": false, "enableFutures": true}),
+            false,
+            "binance_no_trade",
+        ),
+    ];
+    for (body, passed, name) in cases {
+        let server = spot_server("5").await;
+        restrictions(&server, body).await;
+        let b = make_live(&server, Market::Spot);
+        let (ok_, reason) = b.rehearse(10.0, None).await;
+        assert_eq!(ok_, passed, "{name}: {reason}");
+        assert_eq!(b.last_error_name(), name);
+        let lookups = requests(&server, "GET", API_RESTRICTIONS_PATH).await;
+        assert_eq!(lookups.len(), 1);
+        assert!(param(&lookups[0], "signature").is_some(), "서명한 조회");
+    }
+}
+
+#[tokio::test]
+async fn live_futures_checks_the_futures_switch() {
+    let server = futures_server().await;
+    restrictions(&server, json!({"ipRestrict": true, "enableSpotAndMarginTrading": true, "enableFutures": false}))
+        .await;
+    let b = make_live(&server, Market::Futures);
+    let (ok_, reason) = b.rehearse(10.0, None).await;
+    assert!(!ok_);
+    assert!(reason.contains("Enable Futures") && reason.contains("새로 만드세요"), "{reason}");
+    assert_eq!(b.last_error_name(), "binance_no_futures");
+
+    let server = futures_server().await;
+    restrictions(&server, json!({"ipRestrict": true, "enableSpotAndMarginTrading": false, "enableFutures": true}))
+        .await;
+    let b = make_live(&server, Market::Futures);
+    assert!(b.rehearse(10.0, None).await.0);
+    assert_eq!(b.last_error_name(), "binance_verified");
+}
+
+#[tokio::test]
+async fn a_failed_permission_lookup_does_not_block() {
+    let server = spot_server("5").await;
+    mount(&server, "GET", API_RESTRICTIONS_PATH, api_err(-1000, "boom")).await;
+    let b = make_live(&server, Market::Spot);
+    let (ok_, reason) = b.rehearse(10.0, None).await;
+    assert!(ok_);
+    assert!(reason.contains("첫 주문"), "{reason}");
+    assert_eq!(b.last_error_name(), "");
 }
 
 #[tokio::test]
@@ -612,8 +704,8 @@ async fn futures_bad_key_fails_even_though_check_account_would_swallow_it() {
     mount(&server, "GET", "/fapi/v1/exchangeInfo", ok(futures_info())).await;
     let (b, _) = make(&server, Market::Futures, 1);
     let (ok_, reason) = b.rehearse(10.0, None).await;
-    assert!(!ok_ && reason.contains("허용 IP"));
-    assert_eq!(b.last_error_name(), "binance_access");
+    assert!(!ok_ && reason.contains("키를 거절"), "{reason}");
+    assert_eq!(b.last_error_name(), "binance_access_test");
 }
 
 #[tokio::test]
@@ -647,7 +739,8 @@ fn default_urls_follow_testnet() {
         reqwest::Client::new(),
         None,
     );
-    assert_eq!((b.spot_base.as_str(), b.futures_base.as_str()), (SPOT_TESTNET_BASE, FUTURES_TESTNET_BASE));
+    assert_eq!((b.spot_base.as_str(), b.futures_base.as_str()), (SPOT_TESTNET_BASE, FUTURES_DEMO_BASE));
+    assert_eq!(b.futures_base, "https://demo-fapi.binance.com");
     let b =
         BinanceBroker::new("k", "s", Market::Spot, "BTCUSDT", Side::Long, false, 1, log, reqwest::Client::new(), None);
     assert_eq!((b.spot_base.as_str(), b.futures_base.as_str()), (SPOT_BASE, FUTURES_BASE));
@@ -667,4 +760,144 @@ async fn an_ip_ban_seen_by_one_run_pauses_every_run_on_that_address() {
     let e = b.price().await.unwrap_err();
     assert!(exc_text(&e).contains("쉬는 중"), "{}", exc_text(&e));
     assert_eq!(server.received_requests().await.unwrap().len(), before);
+}
+
+// --- 시작 전 잔고 확인 --------------------------------------------------------
+
+async fn spot_with_balances(balances: Value) -> MockServer {
+    let server = MockServer::start().await;
+    mount(&server, "GET", "/api/v3/account", ok(json!({ "balances": balances }))).await;
+    mount(&server, "GET", "/api/v3/exchangeInfo", ok(spot_info())).await;
+    server
+}
+
+#[tokio::test]
+async fn spot_start_is_blocked_when_the_quote_balance_cannot_cover_the_first_order() {
+    let server = spot_with_balances(json!([{"asset": "USDT", "free": "5.5"}, {"asset": "BTC", "free": "0"}])).await;
+    let (b, _) = make(&server, Market::Spot, 1);
+    let (ok_, reason) = b.rehearse(10.0, None).await;
+    assert!(!ok_);
+    assert_eq!(
+        reason,
+        "주문할 USDT 잔고가 모자라요. 첫 주문에 10 USDT가 필요한데 사용 가능한 USDT는 5.5 USDT예요. \
+         바이낸스 현물 지갑에 USDT를 채우거나 매크로 투자 금액을 줄이세요."
+    );
+    assert_eq!(b.last_error_name(), "binance_funds_test");
+    assert_eq!(requests(&server, "GET", "/api/v3/account").await.len(), 1, "계정 확인에서 읽은 잔고를 그대로 씀");
+
+    // 딱 맞으면 통과 — 수량을 단위로 내려 주문하므로 이보다 더 쓰지 않음.
+    let server = spot_with_balances(json!([{"asset": "USDT", "free": "10"}, {"asset": "BTC", "free": "0.01"}])).await;
+    let (b, _) = make(&server, Market::Spot, 1);
+    assert!(b.rehearse(10.0, None).await.0);
+    assert_eq!(b.balance_note(), "사용 가능 잔고 10 USDT · 보유 BTC 0.01");
+}
+
+#[tokio::test]
+async fn live_spot_shortfall_keeps_what_the_permission_lookup_found() {
+    let cases = [
+        (json!({"ipRestrict": true, "enableSpotAndMarginTrading": true}), "binance_funds"),
+        (json!({"ipRestrict": false, "enableSpotAndMarginTrading": true}), "binance_funds_open"),
+    ];
+    for (perms, name) in cases {
+        let server = spot_with_balances(json!([{"asset": "USDT", "free": "1"}])).await;
+        restrictions(&server, perms).await;
+        let b = make_live(&server, Market::Spot);
+        let (ok_, reason) = b.rehearse(10.0, None).await;
+        assert!(!ok_ && reason.contains("잔고가 모자라요"), "{reason}");
+        assert_eq!(b.last_error_name(), name);
+    }
+    // 주문 권한이 꺼져 있으면 그 이유가 먼저임(잔고는 보지 않음).
+    let server = spot_with_balances(json!([{"asset": "USDT", "free": "1"}])).await;
+    restrictions(&server, json!({"ipRestrict": true, "enableSpotAndMarginTrading": false})).await;
+    let b = make_live(&server, Market::Spot);
+    assert!(!b.rehearse(10.0, None).await.0);
+    assert_eq!(b.last_error_name(), "binance_no_trade");
+}
+
+#[tokio::test]
+async fn futures_start_checks_the_available_margin_for_the_leverage() {
+    // 증거금 잔액(balance)은 넉넉해도 주문에 쓸 수 있는 몫(availableBalance)이 모자람.
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "GET",
+        "/fapi/v2/balance",
+        ok(json!([{"asset": "USDT", "balance": "100", "availableBalance": "1.5"}])),
+    )
+    .await;
+    mount(&server, "GET", "/fapi/v1/exchangeInfo", ok(futures_info())).await;
+    let (b, logs) = make(&server, Market::Futures, 5);
+    let (ok_, reason) = b.rehearse(10.0, None).await;
+    assert!(!ok_);
+    assert_eq!(
+        reason,
+        "선물 증거금이 모자라요. 첫 주문(5배)에 수수료 여유까지 증거금 2.01 USDT가 필요한데 \
+         사용 가능한 증거금은 1.5 USDT예요. 바이낸스 선물 지갑으로 USDT를 옮기거나 매크로 투자 금액을 줄이세요."
+    );
+    assert_eq!(b.last_error_name(), "binance_funds_test");
+    assert_eq!(requests(&server, "GET", "/fapi/v2/balance").await.len(), 1);
+    assert_eq!(b.balance_note(), "사용 가능 증거금 1.5 USDT");
+    // 계정 확인 로그도 주문에 쓸 수 있는 몫을 알림.
+    b.check_account().await.unwrap();
+    assert_eq!(logs.lock().unwrap().last().unwrap(), "연결 성공 · 선물 USDT 증거금: 1.5");
+
+    let server = MockServer::start().await;
+    mount(&server, "GET", "/fapi/v2/balance", ok(json!([{"asset": "USDT", "availableBalance": "2.01"}]))).await;
+    mount(&server, "GET", "/fapi/v1/exchangeInfo", ok(futures_info())).await;
+    let (b, _) = make(&server, Market::Futures, 5);
+    assert!(b.rehearse(10.0, None).await.0);
+}
+
+// --- 수수료 ---------------------------------------------------------------
+
+#[test]
+fn spot_fill_fees_are_converted_to_the_quote_where_possible() {
+    let fills = [
+        json!({"price": "100", "qty": "1", "commission": "0.001", "commissionAsset": "BTC"}),
+        json!({"price": "110", "qty": "1", "commission": "0.11", "commissionAsset": "USDT"}),
+        json!({"price": "110", "qty": "0.5", "commission": "0.0001", "commissionAsset": "BNB"}),
+        json!({"price": "110", "qty": "0.5", "commission": "0.0002", "commissionAsset": "BNB"}),
+    ];
+    let fee = spot_fills_fee(&fills, 3.0, "BTC", "USDT").unwrap();
+    assert!((fee.quote - 0.21).abs() < 1e-12, "{fee:?}");
+    assert_eq!(fee.other.len(), 1);
+    assert_eq!(fee.other[0].0, "BNB");
+    assert!((fee.other[0].1 - 0.0003).abs() < 1e-12);
+    // 체결 목록이 없거나, 수량을 다 덮지 못하거나, 수수료 칸이 빠지면 모름.
+    assert_eq!(spot_fills_fee(&[], 1.0, "BTC", "USDT"), None);
+    assert_eq!(spot_fills_fee(&fills[..1], 3.0, "BTC", "USDT"), None);
+    assert_eq!(
+        spot_fills_fee(&[json!({"price": "100", "qty": "1", "commissionAsset": "BTC"})], 1.0, "BTC", "USDT"),
+        None
+    );
+}
+
+#[tokio::test]
+async fn orders_carry_the_fee_from_the_fills_already_received() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "POST",
+        "/api/v3/order",
+        ok(json!({"orderId": 9, "status": "FILLED", "executedQty": "2", "avgPrice": "100",
+        "fills": [{"price": "100", "qty": "2", "commission": "0.2", "commissionAsset": "USDT"}]})),
+    )
+    .await;
+    let (b, _) = make(&server, Market::Spot, 1);
+    let o = b.submit(order(OrderSide::Sell, 2.0, "ggp-s")).await.unwrap();
+    assert_eq!(o.fee, Some(FeePaid { quote: 0.2, other: vec![] }));
+
+    // 선물은 체결 응답에 수수료가 없음 — 따로 조회하지 않고 모름으로 둠.
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "POST",
+        "/fapi/v1/order",
+        ok(json!({"orderId": 3, "status": "FILLED", "executedQty": "1", "avgPrice": "100"})),
+    )
+    .await;
+    let (b, _) = make(&server, Market::Futures, 1);
+    let o = b.submit(order(OrderSide::Buy, 1.0, "ggp-f")).await.unwrap();
+    assert_eq!(o.fee, None);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }

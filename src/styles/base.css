@@ -10,6 +10,17 @@ body,
 #root {
   height: 100%;
 }
+/* 넓은 창(두 칸 배치)에서는 문서를 스크롤하지 않음 — 목록·상세·설정 본문이 각자 스크롤함.
+   문서가 넘치면 Windows에서 스크롤바가 둘이 되고, 목차 이동(scrollIntoView)이 문서까지 굴려 머리줄이 가려짐.
+   clip은 스크립트 스크롤도 막음(지원하지 않는 옛 WebKit은 hidden).
+   좁은 창(899px 이하)은 한 칸 배치라 문서 하나만 스크롤함(머리줄 sticky) — 여기서 막으면 아래로 못 내려감. */
+@media (min-width: 900px) {
+  html,
+  body {
+    overflow: hidden;
+    overflow: clip;
+  }
+}
 
 body {
   margin: 0;

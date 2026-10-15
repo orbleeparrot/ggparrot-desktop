@@ -28,7 +28,7 @@ use tauri_plugin_opener::OpenerExt;
 /// 껄무새 웹 주소 — 매크로를 만들고 받는 곳.
 pub const WEB_URL: &str = "https://gg-parrot.vercel.app/";
 
-use crate::state::{now_ms, Core, KeyCheckRecord, Notice, Run, RunData, SavedRun, StartReply};
+use crate::state::{now_ms, Core, KeyCheckRecord, Notice, Run, RunData, SavedRun, StartReply, WizardTarget};
 
 pub const EV_STATE: &str = "runner:state";
 pub const EV_ACTIVITY: &str = "runner:activity";
@@ -136,6 +136,8 @@ impl Shared {
 mod alerts;
 mod bot_events;
 mod checks;
+mod support;
+pub use support::os_summary;
 mod deep_link;
 mod keys;
 mod launch;

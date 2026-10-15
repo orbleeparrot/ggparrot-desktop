@@ -81,6 +81,15 @@ pub struct OrderRules {
     pub min_notional: f64,
 }
 
+/// 주문 하나에서 낸 수수료. 화면 표시용(서버로 보내는 값에는 넣지 않음).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FeePaid {
+    /// 견적 통화(USDT·KRW)로 옮긴 수수료. 기초자산으로 낸 수수료는 체결가로 옮김.
+    pub quote: f64,
+    /// 견적 통화로 옮기지 못한 수수료(BNB 등) — (자산, 수량).
+    pub other: Vec<(String, f64)>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Order {
     /// FILLED | CANCELED | REJECTED | OPEN | UNKNOWN
@@ -91,6 +100,8 @@ pub struct Order {
     pub fees_known: bool,
     pub order_id: Option<String>,
     pub raw_status: String,
+    /// 거래소가 알려 준 수수료. None이면 모름(선물·체결 목록이 없는 응답 등).
+    pub fee: Option<FeePaid>,
 }
 
 impl Order {
@@ -105,6 +116,7 @@ impl Order {
             fees_known: false,
             order_id: None,
             raw_status: "unknown".into(),
+            fee: None,
         }
     }
 }
@@ -184,6 +196,15 @@ pub trait Broker: Send + Sync {
     async fn rehearse(&self, notional: f64, spend: Option<f64>) -> (bool, String);
     async fn price(&self) -> Result<f64, BrokerError>;
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError>;
+
+    /// 마지막 확인에서 읽은 잔고 한 줄("사용 가능 잔고 1,234.5 USDT · 보유 BTC 0.01"). 읽지 않았으면 "".
+    fn balance_note(&self) -> String {
+        String::new()
+    }
+    /// 마지막 시세 조회에 함께 온 전일 대비 등락률(0.012 = +1.2%). 모르면 None.
+    fn day_change(&self) -> Option<f64> {
+        None
+    }
 }
 
 // --- 어댑터들이 함께 쓰는 서버 형식 도우미 ----------------------------------

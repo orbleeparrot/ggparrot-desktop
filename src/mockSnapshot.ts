@@ -24,8 +24,33 @@ export function isActive(r: MockRun): boolean {
 export function keySlotOf(r: Pick<MockRun, "macro" | "mode">): KeySlot | null {
   const ex = r.macro.exchange;
   if (!ex) return null;
-  if (ex === "binance") return r.mode === "testnet" ? "binance_testnet" : "binance";
+  if (ex === "binance") {
+    if (r.mode !== "testnet") return "binance";
+    return r.macro.market === "futures" ? "binance_demo" : "binance_testnet";
+  }
   return ex;
+}
+
+/** 거래소 종목 화면 — runner-core `market_page`와 같은 규칙(미리보기용). */
+export function marketPageOf(r: Pick<MockRun, "macro" | "mode">): { label: string; url: string } | null {
+  const { exchange, symbol, baseAsset, market } = r.macro;
+  const s = symbol.toUpperCase();
+  const base = baseAsset.toUpperCase();
+  if (!/^[A-Z0-9]{1,20}$/.test(base)) return null;
+  if (exchange === "upbit" || exchange === "bithumb") {
+    if (s !== `KRW-${base}`) return null;
+    return exchange === "upbit"
+      ? { label: "업비트에서 보기", url: `https://upbit.com/exchange?code=CRIX.UPBIT.KRW-${base}` }
+      : { label: "빗썸에서 보기", url: `https://www.bithumb.com/react/trade/order/${base}-KRW` };
+  }
+  if (exchange !== "binance") return null;
+  const quote = s.startsWith(base) ? s.slice(base.length) : "";
+  if (!/^[A-Z0-9]{1,20}$/.test(quote)) return null;
+  if (market === "futures" && r.mode === "testnet")
+    return { label: "바이낸스 데모에서 보기", url: `https://demo.binance.com/futures/${base}${quote}` };
+  if (market === "futures")
+    return { label: "바이낸스에서 보기", url: `https://www.binance.com/futures/${base}${quote}` };
+  return { label: "바이낸스에서 보기", url: `https://www.binance.com/trade/${base}_${quote}?type=spot` };
 }
 
 export function filled(m: Model, slot: KeySlot): boolean {
@@ -135,7 +160,7 @@ export function slotCard(m: Model, slot: KeySlot): SlotCard {
     headline: headlineOf(m, slot),
     note: noteOf(m, slot),
     checks: checksOf(m, slot),
-    wizardAvailable: DOMESTIC.includes(slot),
+    wizardAvailable: true,
     inUseBy: m.runs.filter((r) => isActive(r) && r.mode !== "mock" && keySlotOf(r) === slot).length,
   };
 }
@@ -143,10 +168,11 @@ export function slotCard(m: Model, slot: KeySlot): SlotCard {
 export function syncWizard(m: Model): WizardState | null {
   const w = m.wizard;
   if (!w) return null;
-  const k = m.keys[w.exchange];
+  const k = m.keys[w.slot];
   return {
     ...w,
     slots: { access: k.access !== "", secret: k.secret !== "" },
+    keysReady: k.access !== "" && k.secret !== "",
     remembered: k.remembered,
     rememberSupported: m.storage.status !== "unsupported",
   };
@@ -175,6 +201,8 @@ export function snapshot(m: Model): AppState {
       readiness: readinessOf(m, r),
       run: r.run ? { ...r.run, finished: r.run.finished ? { ...r.run.finished } : null } : null,
       webLinked: r.webLinked,
+      marketPage: marketPageOf(r)?.label ?? "",
+      webRunPage: Boolean(r.run?.sessionId),
       status: statusOf(m, r),
     })),
     settings: {
@@ -185,8 +213,11 @@ export function snapshot(m: Model): AppState {
       storage: m.storage,
       showDevLog: m.showDevLog,
       closeToTray: m.closeToTray,
-      serverBase: "https://api.ggparrot.com",
-      protocolVersion: "18",
+      serverBase: "https://gg-parrot.onrender.com",
+      serverCustom: false,
+      os: "macOS 15.6.1 (arm64)",
+      publicIp: m.publicIp,
+      serverLinkLevel: "19",
     },
     library: {
       dir: LIBRARY_DIR,

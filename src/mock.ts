@@ -1,24 +1,27 @@
 // 브라우저 미리보기용 mock 백엔드 — `window.__TAURI_INTERNALS__`가 없을 때만 ipc.ts가 불러옴.
 // 계약 v2(types.ts)를 그대로 흉내 냄: 실행 목록·모드·시작/실전 확인·실행 루프와 활동·종료·설정 키 칸·자동 연결 확인·
-// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | settings | wizard | library.
+// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | settings | wizard | library
+// | wizard-testnet | wizard-demo | wizard-live(바이낸스 도우미).
 import type { Backend, ConfirmPayload, Unlisten } from "./ipc";
 import {
+  emptyKey,
   initialModel,
   IMPORT_SAMPLES,
   MOCK_NEXT_VERSION,
+  MOCK_VERSION,
   newRun,
   uniqueName,
   type MockRun,
   type Model,
 } from "./mockData";
 import { activityText, beginRun, stopActivities, tickRun, type Emit } from "./mockActivity";
-import { conflictMessage, filled, isActive, keySlotOf, snapshot } from "./mockSnapshot";
-import { createWizard } from "./mockWizard";
+import { conflictMessage, filled, isActive, keySlotOf, marketPageOf, snapshot } from "./mockSnapshot";
+import { createWizard, type WizardTarget } from "./mockWizard";
 import { formatClock } from "./state/format";
 import { MAX_ACTIVITY } from "./state/activity";
-import type { Activity, KeyField, KeySlot, Notice, RunMode, StartReply, StopMode } from "./types";
+import type { Activity, Exchange, KeyField, KeySlot, Market, Notice, RunMode, StartReply, StopMode } from "./types";
 import { EV_ACTIVITY, EV_CONFIRM, EV_NOTICE, EV_STATE } from "./types";
-import { EXCHANGE_LABELS } from "./mockData";
+import { EXCHANGE_LABELS, SLOT_EXCHANGE, SLOT_LABELS } from "./mockData";
 import { WEB_URL } from "./platform";
 
 type Handler = (payload: unknown) => void;
@@ -124,6 +127,23 @@ export function createMockBackend(
   }
 
   const wizard = createWizard(m, { later, info, checkNow });
+
+  /** 이 실행으로 연 도우미의 대상 — 실행이 쓰는 칸(keySlotOf)과 그 칸의 사이트. 모의는 키가 필요 없어 없음. */
+  function runTarget(r: MockRun): WizardTarget | null {
+    const slot = keySlotOf(r);
+    if (!slot || r.mode === "mock") return null;
+    return slotTarget(SLOT_EXCHANGE[slot], slot, r.macro.market);
+  }
+
+  /** 설정 카드에서 연 도우미의 대상 — 칸이 곧 사이트(Rust `KeySlot::binance_env`).
+   *  연습 칸은 시장도 칸이 정하고, 실거래 칸은 그 칸을 쓰는 맨 앞 실행(실전 · 모의)의 시장. */
+  function slotTarget(exchange: Exchange, slot: KeySlot, market?: Market): WizardTarget {
+    if (exchange !== "binance") return { exchange, slot, env: "", market: "spot" };
+    if (slot === "binance_testnet") return { exchange, slot, env: "testnet", market: "spot" };
+    if (slot === "binance_demo") return { exchange, slot, env: "demo", market: "futures" };
+    const first = m.runs.find((r) => keySlotOf(r) === slot)?.macro.market ?? "spot";
+    return { exchange, slot, env: "live", market: market ?? first };
+  }
 
   // --- 실행 ---------------------------------------------------------------------
   function liveConfirm(r: MockRun): { kind: "confirm_live"; title: string; message: string } {
@@ -243,6 +263,12 @@ export function createMockBackend(
         signature: next === original ? (r.macro.signature === "modified" ? "signed" : r.macro.signature) : "modified",
       };
     },
+    move_run: ({ runId, index }) => {
+      const from = m.runs.findIndex((r) => r.id === runId);
+      if (from < 0) return;
+      const [r] = m.runs.splice(from, 1);
+      m.runs.splice(Math.max(0, Math.min(Number(index), m.runs.length)), 0, r);
+    },
     remove_run: ({ runId }) => {
       const r = findRun(runId);
       if (isActive(r)) throw "실행 중인 매크로는 목록에서 뺄 수 없어요. 먼저 종료하세요.";
@@ -268,11 +294,12 @@ export function createMockBackend(
       if (conflict) return { kind: "blocked", message: conflict };
       const slot = keySlotOf(r)!;
       if (r.mode !== "mock" && !filled(m, slot)) {
-        if (slot === "upbit" || slot === "bithumb") {
-          wizard.open(slot, "ask");
+        const target = runTarget(r);
+        if (target) {
+          wizard.open(target, "ask");
           return { kind: "wizard" };
         }
-        const label = slot === "binance_testnet" ? "바이낸스 테스트넷" : "바이낸스";
+        const label = SLOT_LABELS[slot];
         return {
           kind: "blocked",
           message: `이 매크로를 시작하려면 ${label} API 키가 필요해요.\n\n설정 › 거래소 연결에서 입력하세요.`,
@@ -299,6 +326,32 @@ export function createMockBackend(
     copy_activity: ({ runId }) => {
       const text = activityText(activity.get(String(runId)) ?? [], formatClock);
       void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);
+    },
+    refresh_public_ip: ({ force }) => {
+      if (m.publicIp.status === "ok" && !force) return;
+      m.publicIp = { status: "loading", address: "" };
+      later(700, () => {
+        m.publicIp = { status: "ok", address: "211.234.101.57" };
+      });
+    },
+    copy_support_info: () => {
+      const s = snapshot(m).settings;
+      const text = [
+        "[껄무새 문의용 정보] (미리보기)",
+        `앱 버전: v${MOCK_VERSION}`,
+        `서버 연동 레벨: ${s.serverLinkLevel}`,
+        `OS: ${s.os}`,
+        `공인 IP: ${s.publicIp.address || "확인 전"}`,
+      ].join("\n");
+      void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);
+    },
+    open_market_page: ({ runId }) => {
+      const page = marketPageOf(findRun(runId));
+      if (page) window.open(page.url, "_blank", "noopener");
+    },
+    open_run_web_page: ({ runId }) => {
+      const sid = findRun(runId).run?.sessionId;
+      if (sid) window.open(`${WEB_URL}agents?session=${sid}`, "_blank", "noopener");
     },
     set_slot_key: ({ slot, field, value }) => {
       const s = slot as KeySlot;
@@ -371,6 +424,11 @@ export function createMockBackend(
       return 1;
     },
     ...wizard.commands,
+    wizard_open: ({ exchange, slot, stage }) => {
+      const ex = exchange as Exchange;
+      const s = (slot as KeySlot | undefined) ?? (ex === "binance" ? "binance" : ex);
+      wizard.open(slotTarget(ex, s), (stage as Parameters<typeof wizard.open>[1]) || "ask");
+    },
   };
 
   // 창에 끌어다 놓기(브라우저 미리보기에서만) — Rust처럼 폴더로 가져오고 알림을 냄.
@@ -392,7 +450,16 @@ export function createMockBackend(
   // 디자인 검토용 바로가기
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
-  if (demo === "wizard") wizard.open("upbit", "ask");
+  if (demo === "wizard") wizard.open(slotTarget("upbit", "upbit"), "ask");
+  // 바이낸스 도우미: ?demo=wizard-testnet | wizard-demo | wizard-live
+  const site = /^wizard-(testnet|demo|live)$/.exec(demo ?? "")?.[1];
+  if (site) {
+    // 처음 만드는 길을 보이도록 그 칸은 비워 둠(견본은 실거래 칸에 키가 있음).
+    const sites: Record<string, KeySlot> = { testnet: "binance_testnet", demo: "binance_demo", live: "binance" };
+    const slot = sites[site];
+    m.keys[slot] = emptyKey();
+    wizard.open(slotTarget("binance", slot), "ask");
+  }
 
   function seedRunning() {
     const now = Date.now();

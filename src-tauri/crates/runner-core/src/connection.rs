@@ -11,20 +11,56 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::brokers::Broker;
 use crate::outbox::py_dumps;
-use crate::types::{Credentials, IpObservation, RunMode};
+use crate::types::{Credentials, IpObservation, Market, RunMode};
 
 pub const PUBLIC_IPV4_URL: &str = "https://api4.ipify.org?format=json";
 pub const PUBLIC_IP_MAX_AGE_SECS: f64 = 120.0;
 pub const PREFLIGHT_MAX_AGE_SECS: f64 = 120.0;
 
 /// 정적 허용 목록 — 다른 주소는 열지 않음.
-pub const API_MANAGEMENT_PAGES: [(&str, &str); 2] = [
+/// 바이낸스는 실행 환경(`binance_env`)마다 키를 만드는 곳이 달라 `binance:{env}`로 찾음.
+/// 테스트넷은 첫 화면이 곧 API Keys 목록임.
+pub const API_MANAGEMENT_PAGES: [(&str, &str); 5] = [
     ("upbit", "https://www.upbit.com/mypage/open_api_management"),
     ("bithumb", "https://www.bithumb.com/react/api-support/management-api"),
+    ("binance:testnet", "https://testnet.binance.vision/"),
+    ("binance:demo", "https://demo.binance.com/en/my/settings/api-management"),
+    ("binance:live", "https://www.binance.com/en/my/settings/api-management"),
 ];
 /// 연결 도우미의 모든 단계 맨 위에 두는 '거래소 열기' 바로가기.
-pub const EXCHANGE_HOME_PAGES: [(&str, &str); 2] =
-    [("upbit", "https://upbit.com/"), ("bithumb", "https://www.bithumb.com/")];
+pub const EXCHANGE_HOME_PAGES: [(&str, &str); 5] = [
+    ("upbit", "https://upbit.com/"),
+    ("bithumb", "https://www.bithumb.com/"),
+    ("binance:testnet", "https://testnet.binance.vision/"),
+    ("binance:demo", "https://demo.binance.com/en/futures/BTCUSDT"),
+    ("binance:live", "https://www.binance.com/en"),
+];
+
+/// 바이낸스 실행 환경 — 키는 환경끼리 통하지 않음.
+/// - testnet: 현물 테스트넷 testnet.binance.vision(GitHub 로그인, 바이낸스 계정과 무관)
+/// - demo: 선물 데모 demo.binance.com(바이낸스 계정 로그인)
+/// - live: binance.com 실거래. IP 제한 없는 키는 'Enable Reading'만 켤 수 있어 허용 IP가 필요함
+pub const BINANCE_ENVS: [&str; 3] = ["testnet", "demo", "live"];
+
+/// 실행 모드·시장으로 바이낸스 키를 만들 곳을 고름. 실전이 아니면(모의 포함) 연습 환경임.
+pub fn binance_env(mode: RunMode, market: Market) -> &'static str {
+    match (mode, market) {
+        (RunMode::Live, _) => "live",
+        (_, Market::Futures) => "demo",
+        (_, Market::Spot) => "testnet",
+    }
+}
+
+/// 허용 목록에서 찾을 이름. 거래소 이름에 ':'가 섞인 값(`binance:live` 등)은 받지 않음.
+fn page_key(ex: &str, env: &str) -> String {
+    if ex == "binance" {
+        format!("{ex}:{env}")
+    } else if ex.contains(':') {
+        String::new()
+    } else {
+        ex.to_string()
+    }
+}
 
 pub const VALIDATE_IP_FAILURE: &str =
     "이 기기 주소를 확인하지 못했어요. 네트워크를 확인한 뒤 [다시 확인]을 눌러 주세요.";
@@ -70,6 +106,16 @@ pub struct CheckView {
     pub connected: bool,
     pub problem: String,
     pub headline: String,
+    /// 줄 오른쪽 글자를 바꿀 때만 채움(바이낸스). 비면 화면의 기본 글자.
+    pub notes: CheckNotes,
+}
+
+/// 세 줄 오른쪽에 보일 짧은 글자 — 빈 값은 기본 글자('키가 맞지 않음'·'확인 불가' 등).
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct CheckNotes {
+    pub auth: String,
+    pub ip: String,
+    pub order: String,
 }
 
 // 키는 받아들였지만 호출한 IP가 허용 목록에 없음 — 업비트 no_authorization_ip, 빗썸 NotAllowIP.
@@ -84,13 +130,71 @@ const ORDER_EVALUATED: [&str; 5] =
     ["insufficient_funds_bid", "insufficient_funds_ask", "insufficient_funds", "over_krw_funds_bid", "under_min_total"];
 
 fn view(auth: Check, ip: Check, order: Check, connected: bool, problem: &str, headline: &str) -> CheckView {
-    CheckView { auth, ip, order, connected, problem: problem.into(), headline: headline.into() }
+    CheckView {
+        auth,
+        ip,
+        order,
+        connected,
+        problem: problem.into(),
+        headline: headline.into(),
+        notes: CheckNotes::default(),
+    }
+}
+
+fn noted(mut v: CheckView, ip: &str, order: &str) -> CheckView {
+    v.notes.ip = ip.into();
+    v.notes.order = order.into();
+    v
+}
+
+/// 바이낸스(`BinanceBroker::last_error_name`)의 세 줄.
+/// 오류 코드는 '키·IP·권한'을 한 코드(-2015)로 뭉쳐 돌려주므로, 실거래는 조회가 통과한 뒤
+/// 키 권한 조회(apiRestrictions)로 IP 제한·주문 권한을 따로 읽음(테스트넷·데모에는 그 조회가 없음).
+fn binance_view(ok: bool, name: &str) -> Option<CheckView> {
+    use Check::*;
+    let v = match (ok, name) {
+        // 실거래: 키 권한 조회로 IP 제한·주문 권한까지 확인함.
+        (true, "binance_verified") => view(Ok, Ok, Ok, true, "", "연결 완료"),
+        (true, "binance_verified_open") => noted(view(Ok, Na, Ok, true, "", "연결 완료"), "IP 제한 없음", ""),
+        (true, "binance_test_ok") => noted(view(Ok, Na, Na, true, "", "연결 완료"), "필요 없음", ""),
+        // 키 형식·서명(시크릿 짝)·없는 키 — 키를 다시 복사하면 됨.
+        (_, "binance_key") => view(Bad, Wait, Wait, false, "auth", "키 확인 필요"),
+        // 테스트넷·데모의 -2015 — IP 제한이 없는 곳이라 키(또는 다른 환경에서 만든 키)임.
+        (_, "binance_access_test") => noted(view(Bad, Na, Wait, false, "auth", "키 확인 필요"), "필요 없음", ""),
+        // 실거래 -2015 — 방금 복사한 키라면 대개 허용 IP임. 거래소가 둘을 가르지 않아 IP 쪽으로 안내함.
+        (_, "binance_access") => {
+            noted(view(Wait, Bad, Wait, false, "ip", "허용 IP 확인 필요"), "IP 또는 키 불일치", "")
+        }
+        // 주문 권한이 꺼져 있고 IP 제한도 없음 — IP를 걸어야 주문 권한을 켤 수 있음.
+        (_, "binance_ip_unrestricted") => {
+            noted(view(Ok, Bad, Bad, false, "ip", "허용 IP 등록 필요"), "IP 제한 없음", "주문 권한 꺼짐")
+        }
+        (_, "binance_no_trade") => {
+            noted(view(Ok, Ok, Bad, false, "order", "주문 권한 확인 필요"), "", "Spot & Margin & Stock Trading 꺼짐")
+        }
+        (_, "binance_no_futures") => {
+            noted(view(Ok, Ok, Bad, false, "order", "주문 권한 확인 필요"), "", "Enable Futures 꺼짐")
+        }
+        // 키·허용 IP·주문 권한은 통했고 첫 주문에 쓸 잔고(증거금)가 모자람 — 국내 잔고 부족과 같은 'order_size'.
+        (_, "binance_funds") => view(Ok, Ok, Ok, true, "order_size", "연결 완료"),
+        (_, "binance_funds_open") => noted(view(Ok, Na, Ok, true, "order_size", "연결 완료"), "IP 제한 없음", ""),
+        (_, "binance_funds_test") => noted(view(Ok, Na, Na, true, "order_size", "연결 완료"), "필요 없음", ""),
+        _ => return None,
+    };
+    Some(v)
 }
 
 /// 검사 결과 하나를 도우미의 세 줄(키 인증·허용 IP·주문 권한)과 제목으로 옮김.
+/// connected는 '키·IP·권한이 통하는가'임 — 잔고 부족처럼 주문 내용 때문에 실패한 검사도 연결은 된 것임.
+/// 빗썸·바이낸스(연습 환경)는 주문 없이 주문 권한을 확인할 길이 없어 성공해도 그 줄은 '확인 불가'(na)로 둠.
 pub fn check_view(exchange: &str, ok: bool, error_name: &str) -> CheckView {
     use Check::*;
     let name = error_name;
+    if exchange == "binance" {
+        if let Some(v) = binance_view(ok, name) {
+            return v;
+        }
+    }
     let order_ok = if exchange == "upbit" { Ok } else { Na };
     if ok || ORDER_EVALUATED.contains(&name) || name.starts_with("under_min_total") {
         return view(Ok, Ok, order_ok, true, if ok { "" } else { "order_size" }, "연결 완료");
@@ -115,6 +219,9 @@ static UPBIT_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{30,100}$"
 /// 모양으로 어느 칸인지도 가림(시크릿을 먼저 복사해도 맞는 칸에). 다른 모양이면 직접 붙여 넣음.
 static BITHUMB_ACCESS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{46}$").unwrap());
 static BITHUMB_SECRET: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9+/]{82}==$").unwrap());
+/// 바이낸스 HMAC 키 모양 — API Key·Secret Key 모두 영문·숫자 64자(테스트넷·데모·실거래 같음).
+/// 두 칸이 같은 모양이라 어느 칸인지는 복사한 순서로 정함. 길이가 바뀌어도 받게 조금 넓게 둠.
+static BINANCE_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{60,100}$").unwrap());
 
 /// 클립보드 키가 어느 칸 것인지 — 모양으로 알 수 있으면 Some(true: Secret, false: Access), 모르면 None(복사 순서).
 pub fn clipboard_key_is_secret(exchange: &str, key: &str) -> Option<bool> {
@@ -139,10 +246,10 @@ pub(crate) fn py_strip(text: &str) -> &str {
 /// 무작위로 발급된 키라 영문과 숫자가 함께 섞여 있어야 함.
 pub fn clipboard_key(exchange: &str, text: &str) -> String {
     let value = py_strip(text);
-    let shaped = if exchange == "upbit" {
-        UPBIT_KEY.is_match(value)
-    } else {
-        BITHUMB_ACCESS.is_match(value) || BITHUMB_SECRET.is_match(value)
+    let shaped = match exchange {
+        "upbit" => UPBIT_KEY.is_match(value),
+        "binance" => BINANCE_KEY.is_match(value),
+        _ => BITHUMB_ACCESS.is_match(value) || BITHUMB_SECRET.is_match(value),
     };
     let mixed = value.chars().any(|c| c.is_ascii_digit()) && value.chars().any(|c| c.is_ascii_alphabetic());
     if shaped && mixed {
@@ -152,18 +259,21 @@ pub fn clipboard_key(exchange: &str, text: &str) -> String {
     }
 }
 
-pub fn api_management_url(ex: &str) -> Result<&'static str, String> {
+/// 공식 API 관리 주소. 바이낸스는 `env`(testnet·demo·live)가 있어야 찾음, 국내는 `env`를 보지 않음.
+pub fn api_management_url(ex: &str, env: &str) -> Result<&'static str, String> {
+    let key = page_key(ex, env);
     API_MANAGEMENT_PAGES
         .iter()
-        .find(|(name, _)| *name == ex)
+        .find(|(name, _)| *name == key)
         .map(|(_, url)| *url)
         .ok_or_else(|| "이 거래소의 공식 API 관리 페이지를 확인하지 못했어요.".to_string())
 }
 
-pub fn exchange_home_url(ex: &str) -> Result<&'static str, String> {
+pub fn exchange_home_url(ex: &str, env: &str) -> Result<&'static str, String> {
+    let key = page_key(ex, env);
     EXCHANGE_HOME_PAGES
         .iter()
-        .find(|(name, _)| *name == ex)
+        .find(|(name, _)| *name == key)
         .map(|(_, url)| *url)
         .ok_or_else(|| "이 거래소의 공식 홈페이지를 확인하지 못했어요.".to_string())
 }
@@ -526,6 +636,8 @@ pub struct PreflightResult {
     pub checked_wall: f64,
     pub error_name: String,
     pub broker: Option<Arc<dyn Broker>>,
+    /// 확인하며 읽은 잔고 한 줄(`Broker::balance_note`). 읽지 않았으면 "".
+    pub balance: String,
 }
 
 impl PreflightResult {
@@ -538,6 +650,7 @@ impl PreflightResult {
             checked_wall: unix_now(),
             error_name: String::new(),
             broker: None,
+            balance: String::new(),
         }
     }
     pub fn matches(&self, fingerprint: &str) -> bool {
@@ -577,7 +690,8 @@ pub fn with_successful_ip_history_at(
         return None;
     }
     let exchange = macro_exchange(m);
-    api_management_url(&exchange).ok()?;
+    // 허용 IP 관측은 국내 거래소만 남김(바이낸스는 환경 없이 찾으면 없음).
+    api_management_url(&exchange, "").ok()?;
     let saved_pair = remembered.exchanges.get(&exchange)?;
     if current.exchanges.get(&exchange) != Some(saved_pair)
         || saved_pair.api_key.is_empty()

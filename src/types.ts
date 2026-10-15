@@ -3,8 +3,8 @@
 // 거래소 키·시크릿·회원 키 원문은 이 타입 어디에도 없음(`reveal_*`의 1회 반환만 예외).
 
 export type Exchange = "binance" | "upbit" | "bithumb";
-/** 설정의 키 칸. 테스트넷으로 도는 바이낸스 매크로는 binance_testnet 칸을 씀. */
-export type KeySlot = "binance" | "binance_testnet" | "upbit" | "bithumb";
+/** 설정의 키 칸. 테스트넷으로 도는 바이낸스 매크로는 현물이면 binance_testnet, 선물이면 binance_demo 칸을 씀. */
+export type KeySlot = "binance" | "binance_testnet" | "binance_demo" | "upbit" | "bithumb";
 export type RunMode = "mock" | "testnet" | "live";
 export type Market = "spot" | "futures";
 export type Check = "ok" | "bad" | "wait" | "na";
@@ -67,7 +67,14 @@ export interface RunStatus {
   qty: number;
   unrealizedPct: number;
   unrealized: number;
+  /** 서버에 보고하는 실현손익 그대로(수수료를 빼지 않음). */
   realized: number;
+  /** 이번 실행에서 낸 수수료(견적 통화). 모르면 null — 선물·BNB로 낸 수수료가 끼면 모름. */
+  fees: number | null;
+  /** 전일 대비 등락률(%) — 업비트·빗썸 시세에 함께 옴. 모르면 null. */
+  dayChangePct: number | null;
+  /** 서버가 알려 준 매크로 출처(예: "웹 저장본"). 없으면 "". */
+  macroOrigin: string;
   note: string;
   /** 끝났으면 종료 결과. 실행 중이면 null. */
   finished: null | { status: "stopped" | "error"; note: string; at: number };
@@ -87,6 +94,10 @@ export interface RunSlot {
   run: RunStatus | null;
   /** 웹 [실행기 열기]로 들어온 슬롯. */
   webLinked: boolean;
+  /** 거래소 종목 화면 단추 글자("업비트에서 보기" 등). 열 화면이 없으면 "". 주소는 `open_market_page`가 만듦. */
+  marketPage: string;
+  /** 껄무새 웹에서 이 실행 기록을 열 수 있는지 여부. 주소는 `open_run_web_page`가 만듦. */
+  webRunPage: boolean;
   /** 카드 머리 한 줄 상태. */
   status: { text: string; tone: Tone };
 }
@@ -107,7 +118,7 @@ export interface SlotCard {
   /** 칸 아래 한두 줄(막힌 이유·저장 문제). 없으면 "". */
   note: string;
   checks: { auth: Check; ip: Check; order: Check };
-  /** 연결 도우미(업비트·빗썸). */
+  /** 연결 도우미(업비트·빗썸·바이낸스). 바이낸스는 칸(실거래·테스트넷·데모)이 곧 사이트임. */
   wizardAvailable: boolean;
   /** 이 칸의 키로 실행 중인 매크로 수. 키는 언제든 바꿀 수 있고, 실행 중인 매크로는 시작할 때의 키를 계속 씀. */
   inUseBy: number;
@@ -128,13 +139,29 @@ export interface SettingsState {
   /** 창을 닫으면 트레이(메뉴 막대·알림 영역)로 숨기고 매크로는 계속 실행함. */
   closeToTray: boolean;
   serverBase: string;
-  /** 서버 계약 버전(정수 문자열, "18"). */
-  protocolVersion: string;
+  /** 기본 운영 서버가 아닌 곳에 연결됨 — 정보 화면에 서버 주소를 보여 줌. */
+  serverCustom: boolean;
+  /** "macOS 15.6.1 (arm64)" 등 — 정보 화면·문의용 정보. */
+  os: string;
+  /** 공인 IP — 연결 도우미와 같은 조회 결과(120초가 지나면 expired). */
+  publicIp: { status: "idle" | "loading" | "ok" | "expired" | "error"; address: string };
+  /** 서버 연동 레벨(정수 문자열, "19") — 서버가 기능별 최소 레벨과 비교하는 값. */
+  serverLinkLevel: string;
 }
 
+/** 바이낸스 연결 도우미가 안내하는 사이트 — 현물 테스트넷·선물 데모·실거래. 국내는 "". */
+export type BinanceEnv = "" | "testnet" | "demo" | "live";
+
 export interface WizardState {
-  exchange: "upbit" | "bithumb";
+  exchange: Exchange;
+  /** 키를 넣는 칸(바이낸스는 실거래·테스트넷·데모). */
+  slot: KeySlot;
+  env: BinanceEnv;
+  market: Market;
+  /** 사이트 이름 — "바이낸스 테스트넷"·"바이낸스 데모"·"바이낸스"·"업비트"·"빗썸". */
   label: string;
+  /** 머리줄 '… 열기' 단추의 이름("테스트넷"·"데모"·거래소 이름). */
+  homeLabel: string;
   stage: "ask" | "ip" | "perm" | "keys" | "existing" | "manual" | "checking" | "result_ok" | "result_fail";
   path: "" | "new" | "existing";
   ip: { status: "idle" | "loading" | "ok" | "error" | "expired"; address: string; note: string; changed: boolean };
@@ -142,6 +169,10 @@ export interface WizardState {
   fieldLabels: [string, string];
   checks: { auth: Check; ip: Check; order: Check };
   headline: string;
+  /** 세 줄 오른쪽 글자(바이낸스, 예 "필요 없음"). 빈 값은 기본 글자. */
+  notes: { auth: string; ip: string; order: string };
+  /** 키 칸 두 개가 다 찼는지(복사로 받았든 직접 넣었든). */
+  keysReady: boolean;
   reason: string;
   problem: "" | "ip" | "auth" | "order" | "order_size" | "network" | "other";
   watchingClipboard: boolean;
@@ -275,6 +306,7 @@ export const EV_NAVIGATE = "runner:navigate";
  *  start_run_confirmed({ runId }) -> StartReply
  *  stop_run({ runId, mode: StopMode }) -> void
  *  copy_activity({ runId }) -> void
+ *  open_run_web_page({ runId }) -> void       (껄무새 웹의 이 실행 기록 화면을 기본 브라우저로 엶)
  * 설정
  *  set_slot_key({ slot, field, value }) -> void
  *  reveal_slot_key({ slot, field }) -> string
@@ -293,8 +325,8 @@ export const EV_NAVIGATE = "runner:navigate";
  *  library_open_folder() -> void              (Finder·탐색기로 엶)
  *  library_import() -> number                 (파일을 골라 폴더로 복사, 가져온 수. 같은 이름은 "이름 (2).ggm.json")
  *  창에 파일을 끌어다 놓으면 Rust가 폴더로 가져오고 runner:notice(info)로 알림.
- * 연결 도우미(업비트·빗썸)
- *  wizard_open({ exchange, stage? }) -> void
+ * 연결 도우미(업비트·빗썸·바이낸스)
+ *  wizard_open({ exchange, slot?, stage? }) -> void  (slot: 바이낸스 실거래·테스트넷·데모 칸)
  *  wizard_choose({ path: "new" | "existing" }) -> void
  *  wizard_go({ stage }) -> void
  *  wizard_back() -> void

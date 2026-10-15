@@ -27,11 +27,12 @@ impl Shared {
             );
         }
         let run = c.run(id).unwrap();
-        let slot = KeySlot::for_run(ex, run.mode);
+        let slot = KeySlot::for_run(ex, run.mode, run.market());
         if run.mode != RunMode::Mock && c.slot_pair(slot).is_none() {
-            if ex.is_domestic() {
+            // 키가 없으면 오류 창 대신 연결 도우미 — '키를 발급받은 적 있나요?'부터 이어서 마침.
+            if let Some(target) = run.wizard_target() {
                 drop(c);
-                self.wizard_open(slot, "ask");
+                self.wizard_open(target, "ask");
                 return StartReply::Wizard;
             }
             return blocked(&runner_core::types::exchange_key_needed_message(slot.label()));
@@ -305,7 +306,18 @@ impl Shared {
             let exchange = runner_core::types::exchange_name_of(&m);
             let symbol = runner_core::types::macro_symbol(&m);
             let Some(r) = c.run_mut(&id) else { return };
-            r.data = Some(RunData::started(now_ms(), sid));
+            let env = r.binance_env();
+            let mut data = RunData::started(now_ms(), sid);
+            // 서버가 알려 준 매크로 출처 — 상세 머리줄에 보임.
+            data.macro_origin = started
+                .get("macro_origin_label")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim()
+                .chars()
+                .take(60)
+                .collect();
+            r.data = Some(data);
             // 취소 확인과 봇 띄우기 사이에 누른 종료도 놓치지 않음.
             let late_cancel = r.cancel_requested.take();
             if let Some(mode) = late_cancel {
@@ -327,12 +339,19 @@ impl Shared {
             );
             // 실행 중이라는 표시를 저장해 둠 — 앱이 도중에 꺼지면 다음에 켤 때 알 수 있게.
             self.save_runs(&c);
-            reporter.map(|rep| (rep, exchange))
+            reporter.map(|rep| (rep, exchange, env))
         };
-        if let Some((rep, exchange)) = reporter {
-            if let Ok(p) =
-                runner_core::setup_progress::progress_payload("started", &exchange, "", (false, false), None, "", false)
-            {
+        if let Some((rep, exchange, env)) = reporter {
+            if let Ok(p) = runner_core::setup_progress::progress_payload(
+                "started",
+                &exchange,
+                env,
+                "",
+                (false, false),
+                None,
+                "",
+                false,
+            ) {
                 rep.report(p);
             }
             rep.close();

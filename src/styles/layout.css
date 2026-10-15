@@ -261,6 +261,12 @@
 }
 
 @media (max-width: 899px) {
+  /* 한 칸 배치 — 문서 하나로 스크롤. 앱 높이를 내용만큼 늘려야 sticky 머리줄이 끝까지 붙어 있음
+     (100vh로 두면 그 높이를 지나 스크롤할 때 머리줄도 함께 밀려 올라감). */
+  .app {
+    height: auto;
+    min-height: 100vh;
+  }
   .app-header {
     position: sticky;
     top: 0;

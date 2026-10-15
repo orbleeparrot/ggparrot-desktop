@@ -91,9 +91,10 @@ export function ActivityFeed({
           className="btn btn-quiet btn-sm feed-copy"
           onClick={async () => (await ok("copy_activity", { runId })) && setCopied(true)}
           disabled={items.length === 0}
+          title="최근 기록부터 6만 자까지 복사해요(문의 글에 붙여 넣기 좋은 크기)"
         >
           {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-          {copied ? "복사됨" : "전체 기록 복사"}
+          {copied ? "복사했어요" : "기록 복사"}
         </button>
       </div>
       <div

@@ -2,15 +2,49 @@ use super::*;
 
 #[test]
 fn key_slots_follow_mode() {
-    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Testnet), KeySlot::BinanceTestnet);
-    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Live), KeySlot::Binance);
-    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Mock), KeySlot::Binance);
-    assert_eq!(KeySlot::for_run(Exchange::Upbit, RunMode::Live), KeySlot::Upbit);
+    let (spot, futures) = (Market::Spot, Market::Futures);
+    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Testnet, spot), KeySlot::BinanceTestnet);
+    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Testnet, futures), KeySlot::BinanceDemo);
+    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Live, futures), KeySlot::Binance);
+    assert_eq!(KeySlot::for_run(Exchange::Binance, RunMode::Mock, futures), KeySlot::Binance);
+    assert_eq!(KeySlot::for_run(Exchange::Upbit, RunMode::Live, spot), KeySlot::Upbit);
     assert_eq!(KeySlot::parse("binance_testnet"), Some(KeySlot::BinanceTestnet));
+    assert_eq!(KeySlot::parse("binance_demo"), Some(KeySlot::BinanceDemo));
     assert_eq!(KeySlot::BinanceTestnet.check_mode(), RunMode::Testnet);
+    assert_eq!(KeySlot::BinanceDemo.check_mode(), RunMode::Testnet);
+    assert_eq!(KeySlot::Binance.check_mode(), RunMode::Live);
     assert_eq!(KeySlot::Upbit.probe_macro()["symbol"], "KRW-BTC");
     assert_eq!(base_asset("BTCUSDT"), "BTC");
     assert_eq!(base_asset("krw-eth"), "ETH");
+}
+
+#[test]
+fn every_slot_round_trips_and_practice_slots_fix_the_market() {
+    for s in KeySlot::ALL {
+        assert_eq!(KeySlot::parse(s.as_str()), Some(s));
+        assert_eq!(serde_json::to_value(s).unwrap(), s.as_str());
+    }
+    assert_eq!(KeySlot::BinanceDemo.label(), "바이낸스 데모");
+    assert_eq!(KeySlot::BinanceDemo.as_str(), "binance_demo");
+    assert_eq!(KeySlot::BinanceTestnet.fixed_market(), Some(Market::Spot));
+    assert_eq!(KeySlot::BinanceDemo.fixed_market(), Some(Market::Futures));
+    assert_eq!(KeySlot::Binance.fixed_market(), None, "실거래 칸은 쓰는 실행에 따름");
+    assert_eq!(KeySlot::Upbit.fixed_market(), Some(Market::Spot));
+}
+
+#[test]
+fn binance_env_and_slot_agree_both_ways() {
+    for env in crate::connection::BINANCE_ENVS {
+        assert_eq!(KeySlot::for_binance_env(env).binance_env(), env);
+    }
+    assert_eq!(KeySlot::Upbit.binance_env(), "");
+    // 연습 실행의 칸은 도우미가 안내하는 사이트의 칸과 같음.
+    for market in [Market::Spot, Market::Futures] {
+        for mode in [RunMode::Testnet, RunMode::Live] {
+            let env = crate::connection::binance_env(mode, market);
+            assert_eq!(KeySlot::for_run(Exchange::Binance, mode, market), KeySlot::for_binance_env(env));
+        }
+    }
 }
 
 #[test]
@@ -51,7 +85,7 @@ fn payload_has_no_secrets_and_version() {
     let p = session_payload(&m, true, RunMode::Testnet);
     assert_eq!(p["symbol"], "BTCUSDT");
     assert_eq!(p["market"], "futures");
-    assert_eq!(p["runner_version"], "18");
+    assert_eq!(p["runner_version"], "19");
     assert_eq!(p["mode"], "testnet");
     assert!(p.get("api_key").is_none());
 }

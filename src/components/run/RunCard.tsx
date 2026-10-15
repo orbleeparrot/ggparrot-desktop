@@ -1,6 +1,6 @@
-// '내 매크로' 카드 하나 — 고르기 버튼(카드 전체)·주 버튼·빼기(×).
-import { X } from "lucide-react";
-import { forwardRef, type KeyboardEvent } from "react";
+// '내 매크로' 카드 하나 — 고르기 버튼(카드 전체)·주 버튼·빼기(×)·순서 손잡이(왼쪽 끝, 두 개 이상일 때).
+import { GripVertical, X } from "lucide-react";
+import { forwardRef, type KeyboardEvent, type PointerEventHandler } from "react";
 import { useRunnerContext } from "../../state/context";
 import { formatElapsed, formatPercent, toneOf } from "../../state/format";
 import { isIdle, isLive, SIDE_LABELS } from "../../state/runs";
@@ -10,10 +10,21 @@ import { ModeBadge } from "./ModeBadge";
 import { RunAction } from "./RunAction";
 import { useElapsed } from "./useElapsed";
 
+interface Grab {
+  onPointerDown: PointerEventHandler<HTMLElement>;
+  onPointerMove: PointerEventHandler<HTMLElement>;
+  onPointerUp: PointerEventHandler<HTMLElement>;
+  onPointerCancel: PointerEventHandler<HTMLElement>;
+}
+
 interface Props {
   slot: RunSlot;
   selected: boolean;
   onKeyNav(e: KeyboardEvent<HTMLButtonElement>): void;
+  /** 순서 손잡이 — 목록이 하나뿐이면 없음. */
+  grab?: Grab;
+  /** 끄는 중 표시: "is-dragging"(끄는 카드)·"is-drop-before"·"is-drop-after"(놓을 자리). */
+  sorting?: string;
 }
 
 function Figure({ slot }: { slot: RunSlot }) {
@@ -25,7 +36,10 @@ function Figure({ slot }: { slot: RunSlot }) {
   );
 }
 
-export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard({ slot, selected, onKeyNav }, ref) {
+export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
+  { slot, selected, onKeyNav, grab, sorting = "" },
+  ref,
+) {
   const { select, askRemove } = useRunnerContext();
   const elapsed = useElapsed(slot.run);
   const m = slot.macro;
@@ -33,7 +47,12 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard({ s
   const sub = live || slot.run?.finished ? `경과 ${formatElapsed(elapsed)}` : m.title;
 
   return (
-    <li className={`run-card mode-${slot.mode} ${selected ? "is-selected" : ""} ${live ? "is-live" : ""}`}>
+    <li className={`run-card mode-${slot.mode} ${selected ? "is-selected" : ""} ${live ? "is-live" : ""} ${sorting}`}>
+      {grab && (
+        <span className="run-card-grip" title="끌어서 순서 바꾸기 (Alt+↑·↓)" aria-hidden="true" {...grab}>
+          <GripVertical size={14} />
+        </span>
+      )}
       <button
         ref={ref}
         type="button"
@@ -41,6 +60,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard({ s
         data-run-id={slot.id}
         aria-current={selected ? "true" : undefined}
         aria-controls="run-detail"
+        aria-keyshortcuts={grab ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
         tabIndex={selected ? 0 : -1}
         onClick={() => select(slot.id)}
         onKeyDown={onKeyNav}

@@ -7,7 +7,9 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use super::{exc_text, positive_number, Broker, BrokerError, LogFn, Order, OrderRules, OrderSide, SubmitRequest};
+use super::{
+    exc_text, positive_number, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest,
+};
 use crate::types::{Market, Side};
 
 const MOCK_DEFAULT_FEE: f64 = 0.0005;
@@ -151,6 +153,9 @@ impl Broker for MockBroker {
         if buying && !closing && self.inner.fee_from_base_asset() {
             acquired = executed * (1.0 - self.fee_rate());
         }
+        // 모의 수수료(견적 통화) — 현물만. 선물은 실전에서도 수수료를 읽지 않으므로 맞춰 둠.
+        let fee = (self.inner.market() == Market::Spot)
+            .then(|| FeePaid { quote: executed * price * self.fee_rate(), other: vec![] });
         Ok(Order {
             status: "FILLED".into(),
             executed_qty: executed,
@@ -159,7 +164,16 @@ impl Broker for MockBroker {
             fees_known: true,
             order_id: Some(format!("mock-{}", req.client_id)),
             raw_status: "MOCK_FILLED".into(),
+            fee,
         })
+    }
+
+    fn balance_note(&self) -> String {
+        self.inner.balance_note()
+    }
+
+    fn day_change(&self) -> Option<f64> {
+        self.inner.day_change()
     }
 }
 

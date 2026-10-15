@@ -3,21 +3,22 @@ import { ExternalLink, RefreshCw } from "lucide-react";
 import { useRunnerContext } from "../../state/context";
 import type { WizardState } from "../../types";
 import { CheckRows } from "../CheckRows";
-import { ExchangeScreen } from "../screens";
+import { ExchangeScreen, siteOf } from "../screens";
 import { keyStoreName } from "../../platform";
+import { restrictLead } from "./IpStage";
 
 export function ResultStage({ wizard }: { wizard: WizardState }) {
   const { act } = useRunnerContext();
   const ip = wizard.ip.status === "ok" ? wizard.ip.address : "";
 
   if (wizard.stage === "checking") {
-    return <CheckRows checks={wizard.checks} ip={ip} spinning />;
+    return <CheckRows checks={wizard.checks} notes={wizard.notes} ip={ip} spinning />;
   }
 
   if (wizard.stage === "result_ok") {
     return (
       <>
-        <CheckRows checks={wizard.checks} ip={ip} />
+        <CheckRows checks={wizard.checks} notes={wizard.notes} ip={ip} />
         {wizard.problem === "order_size" && wizard.reason && <p className="wz-reason">{wizard.reason}</p>}
         {wizard.rememberSupported && (
           <label className="check-row">
@@ -34,13 +35,15 @@ export function ResultStage({ wizard }: { wizard: WizardState }) {
   }
 
   const problem = wizard.problem;
+  const binance = wizard.exchange === "binance";
+  // 바이낸스는 주문 권한이 막혔을 때 어느 권한을 켤지(선물은 키를 새로 만들어야 하는 경우까지)가 이유에 있음.
+  const showReason = problem === "order" ? binance : problem !== "ip" && problem !== "auth";
   return (
     <>
-      <CheckRows checks={wizard.checks} ip={ip} />
-      {problem === "ip" && <ExchangeScreen exchange={wizard.exchange} kind="fix" ip={ip} />}
-      {wizard.reason && problem !== "ip" && problem !== "auth" && problem !== "order" && (
-        <p className="wz-reason">{wizard.reason}</p>
-      )}
+      <CheckRows checks={wizard.checks} notes={wizard.notes} ip={ip} />
+      {problem === "ip" && binance && <p className="wz-lead">{restrictLead(wizard.market)}</p>}
+      {problem === "ip" && <ExchangeScreen site={siteOf(wizard)} kind={binance ? "restrict" : "fix"} ip={ip} />}
+      {wizard.reason && showReason && <p className="wz-reason">{wizard.reason}</p>}
       <div className="wz-fix-actions">
         {problem === "ip" && (
           <button type="button" className="btn btn-primary" onClick={() => act("wizard_copy_and_open")}>

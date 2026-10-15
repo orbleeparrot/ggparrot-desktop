@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::brokers::LogFn;
 use crate::outbox::{self, EventOutbox};
 use crate::protocol::PROTOCOL_CLAIM_PATH;
-use crate::RUNNER_VERSION;
+use crate::SERVER_LINK_LEVEL;
 
 pub const START_ATTEMPTS: usize = 4;
 pub const MAX_RETRIES: usize = 3;
@@ -114,8 +114,11 @@ impl HeartbeatReply {
     }
 }
 
-/// 하트비트 하나의 제한. 실행 루프 안에서 기다리므로 짧게 — 손절 확인이 늦어지지 않게.
-const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(6);
+/// 하트비트 하나의 제한 — 파이썬 실행기와 같은 10초.
+/// - 서버가 명령을 실어 답하는 중에 끊으면 그 답(명령)을 놓치고 다음 하트비트까지 늦어짐 — 느린 서버에도 답을 받게.
+/// - 실행 루프 안에서 기다리지만 손절 확인이 길게 밀리지 않음: 실패 뒤에는 백오프로 하트비트를 건너뛰고(`heartbeat_backoff`)
+///   손절은 매 틱 따로 봄.
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// 연속 실패 n번째 뒤 다음 하트비트까지 쉬는 시간: 5·10·20·40·60초(+ 최대 20% 흔들기).
 /// 서버가 내려간 동안 여러 실행이 같은 박자로 두드리지 않게 함. 손절은 그동안에도 매 틱 봄.
@@ -694,7 +697,7 @@ impl ServerClient {
 
 mod claim;
 mod recovery;
-pub use claim::{claim_ticket, ClaimedLaunch};
+pub use claim::{claim_ticket, ClaimError, ClaimedLaunch};
 
 #[cfg(test)]
 mod tests;

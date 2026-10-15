@@ -15,6 +15,9 @@ export type Emit = (
   at: number,
 ) => void;
 
+/** 모의 수수료율 — 현물만 셈(선물은 실전에서도 수수료를 읽지 않음). */
+const MOCK_FEE = 0.0005;
+
 const START_PRICE: Record<string, number> = {
   BTCUSDT: 81806,
   ETHUSDT: 3120.4,
@@ -48,6 +51,14 @@ function say(
   emit(r, { kind, title, detail, raw, tone }, at);
 }
 
+/** 모의 체결 수수료를 더하고 활동 문구("수수료 0.04 USDT")를 돌려줌. 모르는 시장(선물)이면 "". */
+function payFee(run: NonNullable<MockRun["run"]>, notional: number, q: "USDT" | "KRW"): string {
+  if (run.fees === null) return "";
+  const fee = notional * MOCK_FEE;
+  run.fees += fee;
+  return `수수료 ${formatPrice(fee, q)} ${q}`;
+}
+
 export function beginRun(emit: Emit, r: MockRun, at: number) {
   const m = r.macro;
   const price = START_PRICE[m.symbol] ?? (m.quote === "USDT" ? 100 : 10_000);
@@ -70,6 +81,9 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     unrealizedPct: 0,
     unrealized: 0,
     realized: 0,
+    fees: m.market === "spot" ? 0 : null,
+    dayChangePct: m.exchange === "upbit" || m.exchange === "bithumb" ? 1.24 : null,
+    macroOrigin: m.source === "web" ? "웹에서 바로 실행" : m.signature === "signed" ? "원본 파일(서명 확인)" : "",
     note: "",
     finished: null,
   };
@@ -85,6 +99,10 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     `세션 시작 (id=${r.run.sessionId}) · ${ex} · ${m.symbol} · ${m.market} · ${MODE_LABELS[r.mode]}`,
     "ok",
   );
+  if (r.mode !== "mock") {
+    const balance = m.quote === "KRW" ? "사용 가능 잔고 1,234,567 KRW" : "사용 가능 잔고 1,234.5 USDT";
+    say(emit, r, at, "info", "잔고를 확인했어요", balance, `잔고: ${balance}`);
+  }
   const cap = formatMoney(orderCap(r), m.quote).slice(1);
   say(
     emit,
@@ -106,7 +124,9 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
   // 슬롯마다 박자를 어긋나게 해서 두 매크로가 같은 순간에 같은 일을 겪지 않게 함.
   const t = r.tick + Number(r.id.replace(/\D/g, "")) * 4;
   const wasOnline = run.online;
+  const before = run.price;
   run.price = round(run.price * (1 + (Math.random() - 0.48) * 0.0024), q);
+  if (run.dayChangePct !== null) run.dayChangePct += ((run.price - before) / before) * 100;
   run.online = t % 13 !== 9;
   run.updatedAt = at;
   run.offlineSince = run.online ? 0 : run.offlineSince || at;
@@ -149,7 +169,9 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
       at,
       "buy",
       `${m.baseAsset} ${formatQty(qty)}개를 ${p} ${q}에 ${verb}`,
-      `시장가 · 주문 금액 ${formatMoney(qty * run.price, q).slice(1)}`,
+      [`신호가 대비 +0.00%`, payFee(run, qty * run.price, q), "모의 체결 · 실제 주문은 보내지 않았어요"]
+        .filter(Boolean)
+        .join(" · "),
       `${m.side === "long" ? "BUY" : "SELL"} 체결: id=mock-ggp-${(at % 1e8).toString(16)} 수량=${qty}`,
       "ok",
     );
@@ -158,7 +180,10 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
     const pct = ((run.price - run.entryPrice) / run.entryPrice) * 100 * dir;
     const pnl = (run.price - run.entryPrice) * run.qty * dir;
     const close = (kind: "sell" | "stop_loss", title: string, rawHead: string) => {
-      const detail = `손익 ${formatMoney(pnl, q)} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`;
+      const fee = payFee(run, run.qty * run.price, q);
+      const detail = [`손익 ${formatMoney(pnl, q)} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`, fee]
+        .filter(Boolean)
+        .join(" · ");
       say(
         emit,
         r,
@@ -239,7 +264,7 @@ export function stopActivities(emit: Emit, r: MockRun, at: number, closeFirst: b
       at,
       "sell",
       `${plain(run.price, m.quote)} ${m.quote}에 ${formatQty(run.qty)} ${m.baseAsset} 정리했어요`,
-      `손익 ${formatMoney(pnl, m.quote)}`,
+      [`손익 ${formatMoney(pnl, m.quote)}`, payFee(run, run.qty * run.price, m.quote)].filter(Boolean).join(" · "),
       `[청산] 시장가 ${run.qty} ${m.symbol} @ ${run.price}`,
       pnl >= 0 ? "ok" : "danger",
     );

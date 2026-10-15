@@ -31,6 +31,7 @@ impl Bot {
         // 이 명령에서 생긴 체결만 ack에 실음.
         self.last_fill_qty = 0.0;
         self.last_fill_price = 0.0;
+        self.signal_price = num(cmd.get("signal_price"));
         let outcome: Result<(), String> = async {
             if !["buy", "short", "sell", "cover"].contains(&action.as_str()) {
                 return Err(format!("알 수 없는 명령 {action}"));
@@ -116,6 +117,7 @@ impl Bot {
             Ok(())
         }
         .await;
+        self.signal_price = 0.0;
 
         let is_exit = action == "sell" || action == "cover";
         if outcome.is_ok() && is_exit && ack["outcome"] == "execution_not_reported" && !uncertain_before {

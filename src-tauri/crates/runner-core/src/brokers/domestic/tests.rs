@@ -984,3 +984,64 @@ async fn a_rate_limit_pauses_public_requests_but_not_order_lookups() {
     assert!(b.price().await.is_err());
     assert_eq!(server.received_requests().await.unwrap().len(), before, "다른 실행의 시세 요청도 쉰다");
 }
+
+// --- 화면 정보: 수수료·잔고·전일 대비 -----------------------------------------
+
+#[test]
+fn the_paid_fee_of_an_order_is_kept_in_krw_or_left_unknown() {
+    let o = normalize_domestic(&json!({"state": "done", "executed_volume": "0.01", "paid_fee": "500.25",
+        "trades": [{"price": "100000000", "volume": "0.01", "funds": "1000000"}]}));
+    assert_eq!(o.fee, Some(FeePaid { quote: 500.25, other: vec![] }));
+    // 칸이 없는 응답이면 모름(0원으로 보이지 않게).
+    assert_eq!(normalize_domestic(&filled()).fee, None);
+    assert_eq!(normalize_domestic(&json!({"state": "done", "paid_fee": null})).fee, None);
+}
+
+#[tokio::test]
+async fn chance_balances_become_the_balance_line() {
+    let server = MockServer::start().await;
+    let mut body = chance();
+    body["bid_account"] = json!({"currency": "KRW", "balance": "1234567.8", "locked": "0"});
+    body["ask_account"] = json!({"currency": "BTC", "balance": "0.01", "locked": "0"});
+    mount(&server, "GET", "/v1/orders/chance", ResponseTemplate::new(200).set_body_json(body)).await;
+    let (b, _) = make(Exchange::Upbit, &server.uri());
+    assert_eq!(b.balance_note(), "", "읽기 전에는 비어 있음");
+    assert!(b.ensure_ready().await.unwrap());
+    assert_eq!(b.balance_note(), "사용 가능 잔고 1,234,567 KRW · 보유 BTC 0.01");
+    assert_eq!(requests(&server, "GET", "/v1/orders/chance").await.len(), 1, "잔고 때문에 더 묻지 않음");
+
+    // 코인이 없으면 원화만.
+    let server = MockServer::start().await;
+    let mut body = chance();
+    body["bid_account"] = json!({"currency": "KRW", "balance": "5000"});
+    body["ask_account"] = json!({"currency": "BTC", "balance": "0"});
+    mount(&server, "GET", "/v1/orders/chance", ResponseTemplate::new(200).set_body_json(body)).await;
+    let (b, _) = make(Exchange::Upbit, &server.uri());
+    b.ensure_ready().await.unwrap();
+    assert_eq!(b.balance_note(), "사용 가능 잔고 5,000 KRW");
+}
+
+#[tokio::test]
+async fn bithumb_falls_back_to_the_accounts_it_already_read() {
+    let (_s, b) = bithumb(json!([{"currency": "KRW", "balance": "250000"}]), chance()).await;
+    assert!(b.rehearse(10_000.0, None).await.0);
+    assert_eq!(b.balance_note(), "사용 가능 잔고 250,000 KRW");
+}
+
+#[tokio::test]
+async fn the_ticker_change_rate_rides_along_with_the_price() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "GET",
+        "/v1/ticker",
+        ResponseTemplate::new(200)
+            .set_body_json(json!([{"market": "KRW-BTC", "trade_price": 101500000.0, "signed_change_rate": -0.0123}])),
+    )
+    .await;
+    let (b, _) = make(Exchange::Bithumb, &server.uri());
+    assert_eq!(b.day_change(), None);
+    b.price().await.unwrap();
+    assert_eq!(b.day_change(), Some(-0.0123));
+    assert_eq!(requests(&server, "GET", "/v1/ticker").await.len(), 1);
+}

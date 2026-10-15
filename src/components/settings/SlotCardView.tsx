@@ -2,11 +2,22 @@
 import { LoaderCircle, RefreshCw, Wand2 } from "lucide-react";
 import { useRunnerContext } from "../../state/context";
 import type { SlotCard } from "../../types";
-import { CheckRows } from "../../wizard/CheckRows";
+import { CheckChips } from "../../wizard/CheckRows";
 import { ExchangeLogo } from "../ExchangeLogo";
 import { SecretField } from "../SecretField";
 import { InUseNote } from "./InUseNote";
 import { keyStoreName } from "../../platform";
+
+// 바이낸스 연습 칸의 로고 꼬리표.
+const PRACTICE_TAG: Partial<Record<SlotCard["slot"], string>> = { binance_testnet: "TEST", binance_demo: "DEMO" };
+
+// 바이낸스 칸마다 어느 사이트 키를 넣는지·어느 시장으로 확인하는지.
+const BINANCE_NOTES: Partial<Record<SlotCard["slot"], string>> = {
+  binance:
+    "연결 확인은 이 칸을 쓰는 첫 매크로의 시장(현물 · 선물) 기준이에요. 시장이 다른 매크로는 시작할 때 다시 확인해요.",
+  binance_testnet: "현물 테스트넷(testnet.binance.vision) 키를 넣어요. 선물 연습 키는 바이낸스 데모 칸에 넣어요.",
+  binance_demo: "선물 데모(demo.binance.com) 키를 넣어요. 현물 연습 키는 바이낸스 테스트넷 칸에 넣어요.",
+};
 
 function badgeTone(s: SlotCard): string {
   if (s.status === "connected") return "ok";
@@ -20,15 +31,17 @@ export function SlotCardView({ slot }: { slot: SlotCard }) {
   const id = `settings-slot-${slot.slot}`;
   const showChecks = slot.status === "connected" || slot.status === "blocked";
   const fields = ["access", "secret"] as const;
+  const tag = PRACTICE_TAG[slot.slot];
+  const binanceNote = BINANCE_NOTES[slot.slot];
 
   return (
     <article id={id} className={`slot-card status-${slot.status}`} tabIndex={-1} aria-labelledby={`${id}-title`}>
       <header className="slot-head">
         <span className="slot-logo">
           <ExchangeLogo exchange={slot.exchange} size={26} />
-          {slot.slot === "binance_testnet" && (
+          {tag && (
             <span className="slot-test" aria-hidden="true">
-              TEST
+              {tag}
             </span>
           )}
         </span>
@@ -43,7 +56,7 @@ export function SlotCardView({ slot }: { slot: SlotCard }) {
           <button
             type="button"
             className={`btn btn-sm ${slot.status === "connected" ? "btn-ghost" : "btn-primary"} slot-wizard`}
-            onClick={() => act("wizard_open", { exchange: slot.exchange as "upbit" | "bithumb" })}
+            onClick={() => act("wizard_open", { exchange: slot.exchange, slot: slot.slot })}
           >
             <Wand2 size={13} aria-hidden="true" />
             연결 도우미
@@ -75,21 +88,15 @@ export function SlotCardView({ slot }: { slot: SlotCard }) {
         </label>
       )}
       {slot.note && <p className={`note ${slot.status === "blocked" ? "note-warn" : "note-muted"}`}>{slot.note}</p>}
-      {slot.exchange === "binance" && (
-        // 칸의 연결 확인은 현물(BTCUSDT)로만 함 — 선물 키·선물 테스트넷 키는 시작할 때 따로 확인됨.
-        <p className="note note-muted">
-          연결 확인은 현물(BTCUSDT) 기준이에요. 선물 매크로는 시작할 때 다시 확인해요.
-          {slot.slot === "binance_testnet" && " 현물 테스트넷과 선물 테스트넷의 키는 서로 달라요."}
-        </p>
-      )}
+      {binanceNote && <p className="note note-muted">{binanceNote}</p>}
       <InUseNote count={slot.inUseBy} />
 
       {showChecks && (
         <div className="slot-checks">
-          <CheckRows checks={slot.checks} ip="" />
+          <CheckChips checks={slot.checks} />
           <button
             type="button"
-            className="link-btn"
+            className="link-btn slot-recheck"
             onClick={() => act("check_slot", { slot: slot.slot })}
             disabled={!filled}
           >

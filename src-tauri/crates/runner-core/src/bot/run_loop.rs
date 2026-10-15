@@ -21,10 +21,10 @@ impl Bot {
             note = format!("{note} · {dust}");
         }
         // 서버 보고(최대 수십 초)를 기다리기 전에 화면부터 바꿈 — 그동안 '실행 중'으로 보이지 않게.
-        let _ = self.tx.send(BotEvent::Status(self.snapshot()));
+        let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(self.snapshot())));
         let _ = self.tx.send(BotEvent::Ending { status: status.clone(), note: note.clone() });
         self.report_end(&status, &mut note).await;
-        let _ = self.tx.send(BotEvent::Status(self.snapshot()));
+        let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(self.snapshot())));
         let _ = self.tx.send(BotEvent::Finished { status, note });
     }
 
@@ -53,7 +53,7 @@ impl Bot {
             self.enforce_safety_net(&mut guard, price).await?;
             // 4) 하트비트 — 상태·ack을 올리고 명령을 받아 순서대로 실행
             let reply = self.report_status().await;
-            // 하트비트를 기다리는 동안(최대 6초) 시세가 움직였을 수 있음 — 명령이 있으면 새 시세로 안전망을 다시 보고
+            // 하트비트를 기다리는 동안(최대 10초) 시세가 움직였을 수 있음 — 명령이 있으면 새 시세로 안전망을 다시 보고
             // 그 값으로 주문 크기를 정함.
             let price = if reply.commands.is_empty() {
                 price

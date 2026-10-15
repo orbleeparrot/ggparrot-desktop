@@ -22,6 +22,7 @@ impl Shared {
         }
         runner_core::types::macro_leverage(&macro_).map_err(|_| library::NOT_A_MACRO.to_string())?;
         let id = format!("run-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
+        let before = self.live_probe_fingerprint();
         {
             let mut c = self.lock();
             let mut clean = macro_.clone();
@@ -47,6 +48,7 @@ impl Shared {
             self.save_runs(&c);
         }
         self.emit();
+        self.recheck_live_slot_if_moved(&before);
         Ok(id)
     }
 
@@ -57,25 +59,47 @@ impl Shared {
         self.add_run(m, &title, "file", Some(file_name.to_string()), None)
     }
 
-    pub fn remove_run(self: &S, id: &str) -> Result<(), String> {
+    /// 목록 순서 바꾸기(끌어서 옮기기·Alt+↑↓) — 실행 중이어도 됨. 저장해서 다시 켜도 유지.
+    pub fn move_run(self: &S, id: &str, to: usize) {
         {
+            let mut c = self.lock();
+            let Some(from) = c.runs.iter().position(|r| r.id == id) else { return };
+            let to = to.min(c.runs.len() - 1);
+            if from == to {
+                return;
+            }
+            let r = c.runs.remove(from);
+            c.runs.insert(to, r);
+            self.save_runs(&c);
+        }
+        self.emit();
+    }
+
+    pub fn remove_run(self: &S, id: &str) -> Result<(), String> {
+        let before = self.live_probe_fingerprint();
+        let closing = {
             let mut c = self.lock();
             let Some(r) = c.run(id) else { return Ok(()) };
             if r.running() || r.start_pending {
                 return Err("실행 중인 매크로는 목록에서 뺄 수 없어요. 먼저 종료하세요.".into());
             }
-            if let Some(rep) = c.run_mut(id).and_then(|r| r.reporter.take()) {
-                rep.close();
-            }
+            // 앱을 닫을 때처럼 웹 가이드에 '닫힘'을 알림 — 빼고 나면 가이드가 '진행 중'에 멈춰 있지 않게.
+            let closing = c.run_mut(id).and_then(Run::take_closing_report);
             c.runs.retain(|r| r.id != id);
             c.library_rev += 1;
             self.save_runs(&c);
+            closing
+        };
+        if let Some((rep, payload)) = closing {
+            tauri::async_runtime::spawn(lifecycle::finish_report(rep, payload));
         }
         self.emit();
+        self.recheck_live_slot_if_moved(&before);
         Ok(())
     }
 
     pub fn set_run_mode(self: &S, id: &str, mode: RunMode) {
+        let before = self.live_probe_fingerprint();
         {
             let mut c = self.lock();
             let Some(r) = c.run_mut(id) else { return };
@@ -89,6 +113,7 @@ impl Shared {
             self.save_runs(&c);
         }
         self.emit();
+        self.recheck_live_slot_if_moved(&before);
     }
 
     pub fn activity_of(&self, id: &str) -> Vec<crate::state::ActivityDto> {
@@ -99,23 +124,14 @@ impl Shared {
         let text = {
             let c = self.lock();
             let Some(r) = c.run(id) else { return false };
-            r.activity
-                .iter()
-                .map(|a| {
-                    let t = chrono::DateTime::from_timestamp_millis(a.at)
-                        .map(|d| d.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
-                        .unwrap_or_default();
-                    let mut line = format!("{t}  {}", a.title);
-                    if !a.detail.is_empty() {
-                        line.push_str(&format!(" — {}", a.detail));
-                    }
-                    if !a.raw.is_empty() && a.raw != a.title {
-                        line.push_str(&format!("\n          {}", a.raw.trim()));
-                    }
-                    line
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
+            let head = format!(
+                "[껄무새 활동 기록] {} {} · {} · v{}",
+                runner_core::types::exchange_label(&r.exchange_name()),
+                r.symbol(),
+                r.mode.label(),
+                self.version
+            );
+            crate::state::activity_copy_text(&head, &r.activity, crate::state::ACTIVITY_COPY_CHARS)
         };
         self.write_clipboard(&text)
     }

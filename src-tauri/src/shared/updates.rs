@@ -238,9 +238,9 @@ mod tests {
 
     #[test]
     fn mac_blocks_disk_image_and_translocation() {
-        let app = "/Applications/GG Parrot.app/Contents/MacOS/ggparrot-desktop";
+        let app = "/Applications/GGParrot.app/Contents/MacOS/ggparrot-desktop";
         assert!(install_blocker_for(app, true).is_empty());
-        assert!(!install_blocker_for("/Volumes/GG Parrot/GG Parrot.app/Contents/MacOS/x", true).is_empty());
+        assert!(!install_blocker_for("/Volumes/GGParrot/GGParrot.app/Contents/MacOS/x", true).is_empty());
         assert!(!install_blocker_for("/private/var/folders/x/AppTranslocation/ABC/d/a.app/Contents/MacOS/x", true)
             .is_empty());
         assert!(install_blocker_for("/Volumes/x", false).is_empty(), "Windows 는 막지 않는다");

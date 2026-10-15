@@ -29,6 +29,7 @@
   font-weight: var(--fw-bold);
 }
 .settings-body {
+  position: relative; /* 안의 .sr-only 등이 이 스크롤 영역 밖(문서)으로 새지 않게 */
   display: grid;
   grid-template-columns: 176px minmax(0, 1fr);
   min-height: 0;
@@ -161,16 +162,17 @@
   font-weight: var(--fw-bold);
   white-space: nowrap;
 }
+.slot-head {
+  flex-wrap: wrap; /* 좁은 카드에서 상태 글자를 자르지 않고 다음 줄로 */
+  row-gap: 6px;
+}
 .slot-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-width: 0;
-  overflow: hidden;
   font-size: var(--fs-small);
   font-weight: var(--fw-bold);
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .slot-wizard {
   margin-left: auto;
@@ -182,11 +184,70 @@
 }
 .slot-checks {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
 }
-.slot-checks .wz-rows {
-  gap: 0;
+.slot-checks .slot-recheck {
+  align-self: center;
+  margin-left: auto;
+}
+/* 키 확인 결과 칩 — 한 줄(좁으면 줄바꿈). 설명은 title·화면 낭독기용 글자. */
+.check-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.check-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  background: var(--card-sunken);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.check-chip-icon {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #fff;
+}
+.check-chip-icon svg {
+  width: 10px;
+  height: 10px;
+}
+.check-chip.check-ok {
+  background: var(--ok-soft);
+  border-color: transparent;
+  color: var(--ok-ink);
+}
+.check-chip.check-ok .check-chip-icon {
+  background: var(--ok);
+}
+.check-chip.check-bad {
+  background: var(--danger-soft);
+  border-color: transparent;
+  color: var(--danger-ink);
+}
+.check-chip.check-bad .check-chip-icon {
+  background: var(--danger);
+}
+.check-chip.check-na .check-chip-icon {
+  background: color-mix(in srgb, var(--faint) 60%, transparent);
+}
+.check-chip.check-wait .check-chip-icon {
+  border: 1.5px dashed var(--faint);
+  color: var(--faint);
 }
 .slot-card .link-btn {
   align-self: flex-start;
@@ -280,15 +341,61 @@
   gap: 10px;
 }
 .update-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 12px;
+}
+.update-row > .btn {
+  align-self: center;
 }
 .update-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
+}
+.update-headline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+/* 정보 — 앱 버전(업데이트)·환경 표·복사가 한 카드 */
+.about-label {
+  color: var(--muted);
+}
+.about-card .update-panel {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.about-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.icon-btn-sm {
+  width: 24px;
+  height: 24px;
+}
+.about-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--warn);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-regular);
+}
+.about-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.about-copy p {
+  margin: 0;
+  font-size: var(--fs-small);
 }
 .update-text .strong {
   display: inline-flex;
@@ -454,6 +561,13 @@
     gap: 2px;
   }
   .update-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .update-row > .btn {
+    justify-self: start;
+  }
+  .about-copy {
     flex-direction: column;
     align-items: flex-start;
   }

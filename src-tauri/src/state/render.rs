@@ -185,6 +185,8 @@ impl Core {
             readiness: ReadinessDto { can_start, blocker, needs },
             run: r.data.as_ref().map(|d| render_run_data(d, side)),
             web_linked: r.web_linked,
+            market_page: r.market_page().map(|p| p.label).unwrap_or_default(),
+            web_run_page: r.web_run_url().is_some(),
             status: StatusDto { text: status.0, tone: status.1.into() },
         }
     }
@@ -204,7 +206,7 @@ impl Core {
             return (false, Core::conflict_message(r), None);
         }
         if r.mode != RunMode::Mock {
-            let slot = KeySlot::for_run(ex, r.mode);
+            let slot = KeySlot::for_run(ex, r.mode, r.market());
             if self.slot_pair(slot).is_none() {
                 return (
                     false,
@@ -242,7 +244,13 @@ impl Core {
             show_dev_log: self.show_dev_log,
             close_to_tray: self.close_to_tray,
             server_base: self.server_base.clone(),
-            protocol_version: PROTOCOL_VERSION.into(),
+            server_custom: self.server_base.trim_end_matches('/') != runner_core::types::DEFAULT_SERVER_BASE,
+            os: crate::shared::os_summary().into(),
+            public_ip: {
+                let (status, address) = self.public_ip_view();
+                PublicIpDto { status: status.into(), address }
+            },
+            server_link_level: runner_core::SERVER_LINK_LEVEL.into(),
         }
     }
 
@@ -263,10 +271,11 @@ impl Core {
                     String::new()
                 };
                 ("connected", "✓ 연결됨".to_string(), n)
-            } else if ex.is_domestic() {
-                ("blocked", format!("● {}", c.view.headline), String::new())
             } else {
-                ("blocked", "● 연결 안 됨".to_string(), c.reason.clone())
+                // 막힌 곳을 머리줄에 바로 씀 — 고치는 길은 [연결 도우미]에 있음.
+                // 바이낸스는 어느 권한을 켤지(선물은 키를 새로 만들어야 하는 경우까지)가 이유에 있어 아래에 둠.
+                let note = if ex.is_domestic() { String::new() } else { c.reason.clone() };
+                ("blocked", format!("● {}", c.view.headline), note)
             }
         } else {
             ("unchecked", "● 확인 전".to_string(), String::new())
@@ -293,7 +302,8 @@ impl Core {
             headline,
             note,
             checks,
-            wizard_available: ex.is_domestic(),
+            // 업비트·빗썸·바이낸스(실거래·테스트넷·데모 칸 모두) — 바이낸스는 칸이 곧 사이트임.
+            wizard_available: true,
             in_use_by: self
                 .runs
                 .iter()
@@ -302,27 +312,105 @@ impl Core {
         }
     }
 
+    /// 공인 IP 조회 결과(연결 도우미·정보 화면이 함께 씀) — 120초가 지난 주소는 보여 주지 않음.
+    pub(crate) fn public_ip_view(&self) -> (&'static str, String) {
+        if self.ip_cache.busy() {
+            return ("loading", String::new());
+        }
+        match self.ip_cache.result() {
+            Some(r) if r.ok && r.fresh() => ("ok", r.address.clone()),
+            Some(r) if r.ok => ("expired", String::new()),
+            Some(_) => ("error", String::new()),
+            None => ("idle", String::new()),
+        }
+    }
+
+    /// 문의용 정보(설정 › 정보 › [문의용 정보 복사]) — 버전·OS·공인 IP·서버·키 칸 상태·매크로 상태.
+    /// 거래소 키·회원 키 값은 넣지 않음(입력 여부만).
+    pub(crate) fn support_text(&self, version: &str, os: &str, now: chrono::DateTime<chrono::Local>) -> String {
+        let when = |ms: i64| {
+            chrono::DateTime::from_timestamp_millis(ms)
+                .map(|d| d.with_timezone(&chrono::Local).format("%m-%d %H:%M").to_string())
+                .unwrap_or_default()
+        };
+        let u = &self.update;
+        let update = match u.status {
+            "none" => format!("최신 버전 (마지막 확인 {})", when(u.checked_at)),
+            "available" => format!("새 버전 v{} 있음", u.version),
+            "downloading" => format!("v{} 내려받는 중", u.version),
+            "ready" => format!("v{} 설치 대기", u.version),
+            "installing" => format!("v{} 설치 중", u.version),
+            "error" => format!("확인 실패 — {}", u.error),
+            "unsupported" => "자동 업데이트 없음(개발용 빌드)".into(),
+            "checking" => "확인 중".into(),
+            _ => "확인 전".into(),
+        };
+        let ip = match self.public_ip_view() {
+            ("ok", a) => a,
+            ("loading", _) => "확인 중".into(),
+            ("error", _) => "확인하지 못함".into(),
+            _ => "확인 전".into(),
+        };
+        let server = if self.server_base.trim_end_matches('/') == runner_core::types::DEFAULT_SERVER_BASE {
+            format!("{} (기본)", self.server_base)
+        } else {
+            format!("{} (기본 서버 아님)", self.server_base)
+        };
+        let mut lines = vec![
+            format!("[껄무새 문의용 정보] {}", now.format("%Y-%m-%d %H:%M (%:z)")),
+            format!("앱 버전: v{version}"),
+            format!("서버 연동 레벨: {}", runner_core::SERVER_LINK_LEVEL),
+            format!("업데이트: {update}"),
+            format!("OS: {os}"),
+            format!("공인 IP: {ip}"),
+            format!("서버: {server}"),
+            format!("회원 키: {}", if self.member_key.trim().is_empty() { "없음" } else { "입력됨" }),
+            "거래소 연결:".into(),
+        ];
+        for s in KeySlot::ALL {
+            let d = self.render_slot(s);
+            lines.push(format!("- {}: {}", s.label(), d.headline.trim_start_matches(['●', '✓', ' '])));
+        }
+        lines.push(format!("매크로 {}개:", self.runs.len()));
+        for r in &self.runs {
+            let mode = match r.mode {
+                RunMode::Mock => "모의",
+                RunMode::Testnet => "테스트넷",
+                RunMode::Live => "실전",
+            };
+            let d = self.render_run(r);
+            lines.push(format!(
+                "- {} {} · {mode} · {} ({})",
+                exchange_label(&r.exchange_name()),
+                r.symbol(),
+                d.status.text,
+                r.title
+            ));
+        }
+        lines.join("\n")
+    }
+
     pub(crate) fn render_wizard(&self) -> Option<WizardDto> {
         let w = self.wizard.as_ref()?;
         let result = self.ip_cache.result();
-        let busy = self.ip_cache.busy();
-        let (ip_status, address) = if busy {
-            ("loading", String::new())
-        } else {
-            match result {
-                Some(r) if r.ok && r.fresh() => ("ok", r.address.clone()),
-                Some(r) if r.ok => ("expired", String::new()),
-                Some(_) => ("error", String::new()),
-                None => ("idle", String::new()),
-            }
-        };
+        let (ip_status, address) = self.public_ip_view();
         let (state, view, reason) = self.wizard_check(w.slot);
         let show_view = matches!(w.stage.as_str(), "result_ok" | "result_fail") || state == "done";
         let ex = w.slot.exchange();
         let (a, s) = ex.field_labels();
+        // 바이낸스는 키를 만드는 사이트 이름으로 부름(테스트넷·데모·실거래).
+        let (label, home) = match w.env {
+            "testnet" => ("바이낸스 테스트넷", "테스트넷"),
+            "demo" => ("바이낸스 데모", "데모"),
+            _ => (ex.label(), ex.label()),
+        };
         Some(WizardDto {
             exchange: ex,
-            label: ex.label().into(),
+            slot: w.slot,
+            env: w.env.into(),
+            market: w.market,
+            label: label.into(),
+            home_label: home.into(),
             stage: w.stage.clone(),
             path: w.path.clone(),
             ip: IpDto {
@@ -339,6 +427,8 @@ impl Core {
                 ChecksDto { auth: Check::Wait, ip: Check::Wait, order: Check::Wait }
             },
             headline: if show_view { view.headline.clone() } else { String::new() },
+            notes: if show_view { view.notes.clone() } else { CheckNotes::default() },
+            keys_ready: self.slot_pair(w.slot).is_some(),
             reason,
             problem: if show_view { view.problem.clone() } else { String::new() },
             watching_clipboard: WATCH_STAGES.contains(&w.stage.as_str()),
@@ -380,6 +470,9 @@ pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {
         unrealized_pct: f("unrealized_pct"),
         unrealized: if in_position && price > 0.0 && entry > 0.0 { pnl_amount(qty, entry, price, side) } else { 0.0 },
         realized: f("realized_pnl"),
+        fees: s.get("fees_paid").and_then(Value::as_f64).filter(|v| v.is_finite() && *v >= 0.0),
+        day_change_pct: s.get("day_change").and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v * 100.0),
+        macro_origin: d.macro_origin.clone(),
         note: s.get("note").and_then(Value::as_str).unwrap_or("").to_string(),
         finished: d.finished.as_ref().map(|(st, n, at)| FinishedDto { status: st.clone(), note: n.clone(), at: *at }),
     }
@@ -478,6 +571,10 @@ pub(crate) struct RunDto {
     readiness: ReadinessDto,
     run: Option<RunStatusDto>,
     web_linked: bool,
+    /// 거래소 종목 화면 단추 글자("업비트에서 보기" 등). 열 화면이 없으면 "". 주소는 `open_market_page`가 만듦.
+    market_page: String,
+    /// 껄무새 웹에서 이 실행 기록을 열 수 있는지 여부. 주소는 `open_run_web_page`가 만듦.
+    web_run_page: bool,
     status: StatusDto,
 }
 
@@ -507,7 +604,14 @@ pub(crate) struct RunStatusDto {
     qty: f64,
     unrealized_pct: f64,
     unrealized: f64,
+    /// 서버에 보고하는 실현손익 그대로(수수료를 빼지 않음).
     realized: f64,
+    /// 이번 실행에서 낸 수수료(견적 통화). 모르면 null — 선물·BNB로 낸 수수료가 끼면 모름.
+    fees: Option<f64>,
+    /// 전일 대비 등락률(%) — 업비트·빗썸 시세에 함께 옴. 모르면 null.
+    day_change_pct: Option<f64>,
+    /// 서버가 알려 준 매크로 출처(예: "웹 저장본"). 없으면 "".
+    macro_origin: String,
     note: String,
     finished: Option<FinishedDto>,
 }
@@ -548,6 +652,14 @@ pub(crate) struct StorageDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct PublicIpDto {
+    /// "idle"·"loading"·"ok"·"expired"·"error"
+    status: String,
+    address: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SettingsDto {
     slots: Vec<SlotDto>,
     member_key_filled: bool,
@@ -558,7 +670,14 @@ pub(crate) struct SettingsDto {
     show_dev_log: bool,
     close_to_tray: bool,
     server_base: String,
-    protocol_version: String,
+    /// 기본 운영 서버가 아닌 곳(개발 서버·환경 변수)에 연결됨 — 정보 화면에 서버 주소를 보여 줌.
+    server_custom: bool,
+    /// "macOS 15.6.1 (arm64)" 등 — 정보 화면·문의용 정보.
+    os: String,
+    /// 공인 IP(정보 화면) — 연결 도우미와 같은 조회 결과.
+    public_ip: PublicIpDto,
+    /// 서버 연동 레벨(`runner_core::SERVER_LINK_LEVEL`, "19").
+    server_link_level: String,
 }
 
 #[derive(Serialize)]
@@ -625,7 +744,15 @@ pub(crate) struct SlotsDto {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WizardDto {
     exchange: Exchange,
+    /// 키를 넣는 칸(바이낸스는 실거래·테스트넷·데모).
+    slot: KeySlot,
+    /// 바이낸스 사이트(testnet·demo·live). 국내는 "".
+    env: String,
+    market: Market,
+    /// 도우미 이름에 쓰는 사이트 이름(바이낸스 테스트넷·바이낸스 데모·바이낸스·업비트·빗썸).
     label: String,
+    /// 머리줄 '… 열기' 단추의 이름.
+    home_label: String,
     stage: String,
     path: String,
     ip: IpDto,
@@ -633,6 +760,10 @@ pub(crate) struct WizardDto {
     field_labels: [String; 2],
     checks: ChecksDto,
     headline: String,
+    /// 세 줄 오른쪽 글자(바이낸스). 빈 값은 화면의 기본 글자.
+    notes: CheckNotes,
+    /// 키 칸 두 개가 다 찼는지(복사로 받았든 직접 넣었든).
+    keys_ready: bool,
     reason: String,
     problem: String,
     watching_clipboard: bool,

@@ -8,15 +8,19 @@ fn testnet_slot_is_kept_separately() {
     values
         .exchanges
         .insert("binance_testnet".into(), KeyPair { api_key: "test-k".into(), api_secret: "test-s".into() });
+    values.exchanges.insert("binance_demo".into(), KeyPair { api_key: "demo-k".into(), api_secret: "demo-s".into() });
     apply_exchange_choice(&store, KeySlot::BinanceTestnet, true, &values).unwrap();
+    apply_exchange_choice(&store, KeySlot::BinanceDemo, true, &values).unwrap();
     apply_exchange_choice(&store, KeySlot::Binance, true, &values).unwrap();
     let loaded = load_result(&store).values.unwrap();
     assert_eq!(loaded.exchanges["binance_testnet"].api_key, "test-k");
+    assert_eq!(loaded.exchanges["binance_demo"].api_key, "demo-k");
     assert_eq!(loaded.exchanges["binance"].api_key, "live-k");
     // 테스트넷 칸만 지워도 실거래 칸·회원 키는 남음
     let saved = apply_exchange_choice(&store, KeySlot::BinanceTestnet, false, &values).unwrap().unwrap();
     assert!(!saved.exchanges.contains_key("binance_testnet"));
     assert_eq!(saved.exchanges["binance"].api_key, "live-k");
+    assert_eq!(saved.exchanges["binance_demo"].api_key, "demo-k");
     assert_eq!(saved.member_key, "m");
 }
 

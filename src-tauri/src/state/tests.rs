@@ -50,12 +50,24 @@ fn run_uses_the_key_slot_for_its_mode() {
     let mut c = core();
     c.slot_mut(KeySlot::Binance).keys = KeyPair { api_key: "live".into(), api_secret: "ls".into() };
     c.slot_mut(KeySlot::BinanceTestnet).keys = KeyPair { api_key: "test".into(), api_secret: "ts".into() };
+    c.slot_mut(KeySlot::BinanceDemo).keys = KeyPair { api_key: "demo".into(), api_secret: "ds".into() };
     let mut r = run("a", "BTCUSDT", "binance");
     r.mode = RunMode::Testnet;
     assert_eq!(c.run_credentials(&r).exchanges["binance"].api_key, "test");
     r.mode = RunMode::Live;
     assert_eq!(c.run_credentials(&r).exchanges["binance"].api_key, "live");
-    assert_eq!(c.storage_values().exchanges["binance_testnet"].api_key, "test");
+    r.mode = RunMode::Mock;
+    assert_eq!(c.run_credentials(&r).exchanges["binance"].api_key, "live", "모의는 실거래 칸");
+    let mut f = with_macro("f", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 3}), RunMode::Testnet);
+    assert_eq!(f.key_slot(), Some(KeySlot::BinanceDemo));
+    assert_eq!(c.run_credentials(&f).exchanges["binance"].api_key, "demo", "선물 연습은 데모 칸");
+    f.mode = RunMode::Live;
+    assert_eq!(c.run_credentials(&f).exchanges["binance"].api_key, "live");
+    let stored = c.storage_values();
+    assert_eq!(
+        (stored.exchanges["binance_testnet"].api_key.as_str(), stored.exchanges["binance_demo"].api_key.as_str()),
+        ("test", "demo")
+    );
 }
 
 #[test]
@@ -85,6 +97,26 @@ fn saved_runs_carry_no_keys() {
     let back = Run::from_saved(serde_json::from_str(&text).unwrap(), "https://example.test");
     assert_eq!(back.mode, RunMode::Live);
     assert_eq!(back.symbol(), "KRW-BTC");
+}
+
+#[test]
+fn support_text_has_environment_but_no_keys() {
+    let mut c = core();
+    c.member_key = "MEMBERSECRET".into();
+    c.slot_mut(KeySlot::Upbit).keys = KeyPair { api_key: "SECRETKEYVALUE".into(), api_secret: "SECRET2".into() };
+    let mut r = run("a", "KRW-BTC", "upbit");
+    r.mode = RunMode::Live;
+    c.runs.push(r);
+    let now = chrono::Local::now();
+    let text = c.support_text("0.19.0", "macOS 15.6 (arm64)", now);
+    assert!(!text.contains("SECRET"), "키·회원 키 값은 넣지 않음: {text}");
+    for want in
+        ["앱 버전: v0.19.0", "서버 연동 레벨: 19", "OS: macOS 15.6 (arm64)", "공인 IP: 확인 전", "회원 키: 입력됨"]
+    {
+        assert!(text.contains(want), "{want:?} 없음: {text}");
+    }
+    assert!(text.contains("https://example.test (기본 서버 아님)"));
+    assert!(text.contains("- 업비트 KRW-BTC · 실전 · "), "{text}");
 }
 
 #[test]
@@ -285,4 +317,280 @@ fn the_macro_folder_list_is_left_out_unless_asked() {
     assert!(full.get("library").is_some(), "get_state 는 늘 목록을 싣는다");
     assert!(slim.get("library").is_none(), "바뀌지 않았으면 싣지 않는다(화면은 지난 목록을 쓴다)");
     assert_eq!(full["runs"], slim["runs"]);
+}
+
+fn with_macro(id: &str, m: serde_json::Value, mode: RunMode) -> Run {
+    let mut r = Run::new(id.into(), m, id.into(), "web", "https://example.test".into());
+    r.mode = mode;
+    r
+}
+
+#[test]
+fn binance_wizard_target_follows_mode_and_market() {
+    let spot = json!({"symbol": "BTCUSDT", "exchange": "binance"});
+    let futures = json!({"symbol": "BTCUSDT", "exchange": "binance", "position_side": "short"});
+    let cases = [
+        (spot.clone(), RunMode::Testnet, KeySlot::BinanceTestnet, "testnet", Market::Spot),
+        (futures.clone(), RunMode::Testnet, KeySlot::BinanceDemo, "demo", Market::Futures),
+        (futures, RunMode::Live, KeySlot::Binance, "live", Market::Futures),
+        (spot, RunMode::Live, KeySlot::Binance, "live", Market::Spot),
+        (json!({"symbol": "KRW-BTC", "exchange": "upbit"}), RunMode::Live, KeySlot::Upbit, "", Market::Spot),
+    ];
+    for (m, mode, slot, env, market) in cases {
+        let r = with_macro("a", m, mode);
+        assert_eq!(r.wizard_target(), Some(WizardTarget { slot, env, market }), "{mode:?} {env}");
+        assert_eq!(r.key_slot(), Some(slot), "도우미 칸과 실행 키 칸이 같음");
+        assert_eq!(r.guide_target(), r.wizard_target(), "실전·연습은 웹 가이드도 같은 칸");
+    }
+}
+
+#[test]
+fn mock_runs_open_no_wizard_but_the_web_guide_shows_the_practice_site() {
+    let futures = json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 3});
+    let r = with_macro("m", futures, RunMode::Mock);
+    assert_eq!(r.key_slot(), Some(KeySlot::Binance), "모의가 키를 쓰면 실거래 칸");
+    assert_eq!(r.wizard_target(), None, "모의는 키가 필요 없어 도우미로 데려가지 않음");
+    let g = r.guide_target().unwrap();
+    assert_eq!((g.slot, g.env, g.market), (KeySlot::BinanceDemo, "demo", Market::Futures));
+    assert_eq!(g.env, r.binance_env(), "웹 가이드의 사이트는 binance_env와 같음");
+    let spot = with_macro("s", json!({"symbol": "BTCUSDT", "exchange": "binance"}), RunMode::Mock);
+    assert_eq!(spot.guide_target().map(|t| (t.slot, t.env)), Some((KeySlot::BinanceTestnet, "testnet")));
+    let up = with_macro("u", json!({"symbol": "KRW-BTC", "exchange": "upbit"}), RunMode::Mock);
+    assert_eq!(up.guide_target().map(|t| (t.slot, t.env)), Some((KeySlot::Upbit, "")));
+}
+
+#[test]
+fn practice_slots_have_a_fixed_site_and_market() {
+    let mut c = core();
+    let lev = json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 3});
+    c.runs.push(with_macro("t", lev, RunMode::Testnet));
+    let t = c.wizard_target_for_slot(KeySlot::BinanceTestnet);
+    assert_eq!((t.env, t.market), ("testnet", Market::Spot), "선물 실행이 있어도 테스트넷 칸은 현물");
+    let t = c.wizard_target_for_slot(KeySlot::BinanceDemo);
+    assert_eq!((t.env, t.market), ("demo", Market::Futures));
+    assert_eq!(
+        c.wizard_target_for_slot(KeySlot::Bithumb),
+        WizardTarget { slot: KeySlot::Bithumb, env: "", market: Market::Spot }
+    );
+}
+
+#[test]
+fn the_live_slot_is_checked_in_the_market_of_the_first_run_on_it() {
+    let mut c = core();
+    assert_eq!(c.probe_market(KeySlot::Binance), Market::Spot, "실행이 없으면 현물");
+    let futures = json!({"symbol": "BTCUSDT", "exchange": "binance", "position_side": "short"});
+    // 웹 연결로 들어온 실행(모의) — 모의도 키가 있으면 실거래 칸을 써서 바로 따름.
+    c.runs.push(with_macro("web", futures, RunMode::Mock));
+    assert_eq!(c.probe_market(KeySlot::Binance), Market::Futures);
+    c.runs.push(with_macro("spot", json!({"symbol": "ETHUSDT", "exchange": "binance"}), RunMode::Live));
+    assert_eq!(c.probe_market(KeySlot::Binance), Market::Futures, "목록 맨 앞 실행을 따름");
+    assert_eq!(c.wizard_target_for_slot(KeySlot::Binance).market, Market::Futures);
+    // 앞 실행을 연습으로 바꾸면 그 실행은 데모 칸을 써서 다음 실행의 시장으로.
+    c.runs[0].mode = RunMode::Testnet;
+    assert_eq!(c.probe_market(KeySlot::Binance), Market::Spot);
+    assert_eq!(c.probe_market(KeySlot::BinanceDemo), Market::Futures);
+    // 열린 도우미가 이 칸을 보면 도우미의 시장.
+    c.wizard = Some(wizard(KeySlot::Binance, "live", Market::Futures));
+    assert_eq!(c.probe_market(KeySlot::Binance), Market::Futures);
+    c.wizard = None;
+    assert_eq!(c.probe_market(KeySlot::Binance), Market::Spot);
+}
+
+#[test]
+fn binance_slot_checks_use_the_slot_market() {
+    let mut c = core();
+    c.slot_mut(KeySlot::BinanceTestnet).keys = KeyPair { api_key: "k".into(), api_secret: "s".into() };
+    c.slot_mut(KeySlot::BinanceDemo).keys = KeyPair { api_key: "k".into(), api_secret: "s".into() };
+    let (spot, mode, _, spot_fp) = c.slot_check_snapshot(KeySlot::BinanceTestnet);
+    assert_eq!((spot["leverage"].clone(), mode), (json!(1), RunMode::Testnet));
+    let (futures, mode, _, futures_fp) = c.slot_check_snapshot(KeySlot::BinanceDemo);
+    assert_eq!(market_of("binance", macro_side(&futures), macro_leverage(&futures).unwrap()), Market::Futures);
+    assert_eq!(mode, RunMode::Testnet);
+    assert_ne!(spot_fp, futures_fp, "같은 키라도 시장이 다르면 다른 확인");
+    c.slot_mut(KeySlot::Binance).keys = KeyPair { api_key: "k".into(), api_secret: "s".into() };
+    let before = c.slot_check_snapshot(KeySlot::Binance).3;
+    c.runs.push(with_macro("f", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 2}), RunMode::Live));
+    assert_ne!(
+        c.slot_check_snapshot(KeySlot::Binance).3,
+        before,
+        "실행이 늘어 시장이 바뀌면 지난 확인은 지금 키의 결과가 아님"
+    );
+}
+
+fn wizard(slot: KeySlot, env: &'static str, market: Market) -> Wizard {
+    Wizard {
+        slot,
+        env,
+        market,
+        stage: "perm".into(),
+        path: "new".into(),
+        got_access: false,
+        got_secret: false,
+        advance_on_return: String::new(),
+        clip_seen: String::new(),
+        generation: 1,
+    }
+}
+
+fn reporter() -> Arc<SetupProgressReporter> {
+    Arc::new(SetupProgressReporter::new("http://127.0.0.1:9", "k", 7, reqwest::Client::new()).unwrap())
+}
+
+#[test]
+fn progress_carries_the_binance_site_but_never_for_domestic_runs() {
+    let mut c = core();
+    let mut demo =
+        with_macro("demo", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 5}), RunMode::Mock);
+    demo.reporter = Some(reporter());
+    let mut live = with_macro("live", json!({"symbol": "ETHUSDT", "exchange": "binance"}), RunMode::Live);
+    live.reporter = Some(reporter());
+    let mut upbit = with_macro("up", json!({"symbol": "KRW-BTC", "exchange": "upbit"}), RunMode::Live);
+    upbit.reporter = Some(reporter());
+    c.runs = vec![demo, live, upbit];
+    let sent: Vec<Value> = c.progress_payloads().into_iter().map(|(_, p)| p).collect();
+    assert_eq!(sent.len(), 3);
+    assert_eq!((sent[0]["env"].clone(), sent[0]["stage"].clone()), (json!("demo"), json!("ready")));
+    assert_eq!(sent[1]["env"], "live");
+    assert!(sent[2].get("env").is_none(), "국내에는 env를 싣지 않음(서버가 422로 거절)");
+    for r in &c.runs {
+        if let Some(rep) = &r.reporter {
+            rep.close();
+        }
+    }
+}
+
+#[test]
+fn the_wizard_is_named_after_the_binance_site() {
+    let mut c = core();
+    c.wizard = Some(wizard(KeySlot::BinanceDemo, "demo", Market::Futures));
+    let w = serde_json::to_value(c.render_wizard()).unwrap();
+    assert_eq!(
+        (&w["exchange"], &w["slot"], &w["env"], &w["market"], &w["label"], &w["homeLabel"]),
+        (
+            &json!("binance"),
+            &json!("binance_demo"),
+            &json!("demo"),
+            &json!("futures"),
+            &json!("바이낸스 데모"),
+            &json!("데모")
+        )
+    );
+    assert_eq!(w["notes"], json!({"auth": "", "ip": "", "order": ""}));
+    assert_eq!(w["keysReady"], false);
+    let settings = serde_json::to_value(c.render("0.18.2")).unwrap();
+    assert!(settings["settings"]["slots"].as_array().unwrap().iter().all(|s| s["wizardAvailable"] == true));
+}
+
+#[test]
+fn settings_list_every_slot_with_the_demo_slot_after_the_testnet_slot() {
+    let c = core();
+    let dto = serde_json::to_value(c.render("0.18.2")).unwrap();
+    let slots: Vec<_> = dto["settings"]["slots"].as_array().unwrap().iter().map(|s| s["slot"].clone()).collect();
+    assert_eq!(
+        slots,
+        [json!("binance"), json!("binance_testnet"), json!("binance_demo"), json!("upbit"), json!("bithumb")]
+    );
+    let demo = &dto["settings"]["slots"][2];
+    assert_eq!((&demo["label"], &demo["exchange"]), (&json!("바이낸스 데모"), &json!("binance")));
+}
+
+#[test]
+fn progress_follows_only_the_wizard_on_the_slot_of_that_site() {
+    let mut c = core();
+    let mut r = with_macro("m", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 5}), RunMode::Mock);
+    r.reporter = Some(reporter());
+    c.runs = vec![r];
+    c.wizard = Some(wizard(KeySlot::BinanceTestnet, "testnet", Market::Spot));
+    let sent = c.progress_payloads();
+    assert_eq!(sent[0].1["stage"], "ready", "현물 테스트넷 도우미는 선물 데모 가이드와 무관");
+    c.wizard = Some(wizard(KeySlot::BinanceDemo, "demo", Market::Futures));
+    let sent = c.progress_payloads();
+    assert_eq!((sent[0].1["stage"].clone(), sent[0].1["env"].clone()), (json!("perm"), json!("demo")));
+    c.runs[0].reporter.take().unwrap().close();
+}
+
+#[test]
+fn activity_fields_are_clipped() {
+    let mut c = core();
+    c.runs.push(run("a", "KRW-BTC", "upbit"));
+    let long = "가".repeat(ACTIVITY_RAW_CHARS + 50);
+    c.push_activity("a", "error", &long, &long, &long, true, "danger");
+    let a = c.run("a").unwrap().activity.last().unwrap();
+    assert_eq!(a.title.chars().count(), ACTIVITY_TITLE_CHARS + 1, "한도 + '…'");
+    assert_eq!(a.detail.chars().count(), ACTIVITY_DETAIL_CHARS + 1);
+    assert_eq!(a.raw.chars().count(), ACTIVITY_RAW_CHARS + 1);
+    assert!(a.raw.ends_with('…'));
+    assert_eq!(clip_chars("짧음", 10), "짧음");
+}
+
+#[test]
+fn activity_copy_keeps_recent_lines_within_limit() {
+    let mut c = core();
+    c.runs.push(run("a", "KRW-BTC", "upbit"));
+    for i in 0..ACTIVITY_LIMIT + 10 {
+        c.push_activity("a", "info", &format!("줄 {i}"), "", &"x".repeat(150), true, "muted");
+    }
+    let items = &c.run("a").unwrap().activity;
+    assert_eq!(items.len(), ACTIVITY_LIMIT, "메모리에는 최근 1,000줄만");
+    let text = activity_copy_text("[머리말]", items, 5_000);
+    assert!(text.chars().count() <= 5_000, "한도 안: {}", text.chars().count());
+    assert!(text.starts_with("[머리말]\n(앞의 "), "뺀 수를 적음");
+    assert!(text.contains(&format!("줄 {}", ACTIVITY_LIMIT + 9)), "가장 최근 줄은 남음");
+    assert!(!text.contains("줄 10\n"), "오래된 줄은 빠짐");
+    let all = activity_copy_text("[머리말]", &items[..3], ACTIVITY_COPY_CHARS);
+    assert!(!all.contains("뺐어요"), "한도 안이면 다 담음");
+    // 날짜까지 붙음(MM-DD HH:MM:SS)
+    let line = all.lines().nth(1).unwrap();
+    assert!(line.as_bytes()[2] == b'-' && line.as_bytes()[5] == b' ', "{line}");
+}
+
+#[test]
+fn removing_or_closing_hands_the_guide_a_closed_stage() {
+    let mut r = with_macro("demo", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 5}), RunMode::Mock);
+    assert!(r.take_closing_report().is_none(), "웹으로 들어오지 않은 실행은 보낼 것이 없음");
+    r.reporter = Some(reporter());
+    let (rep, payload) = r.take_closing_report().unwrap();
+    assert!(r.reporter.is_none(), "한 번만 보냄");
+    let p = payload.unwrap();
+    assert_eq!((&p["stage"], &p["exchange"], &p["env"]), (&json!("closed"), &json!("binance"), &json!("demo")));
+    rep.close();
+    // 국내에는 env를 싣지 않음(앱 종료 때와 같은 모양).
+    let mut up = with_macro("up", json!({"symbol": "KRW-BTC", "exchange": "upbit"}), RunMode::Live);
+    up.reporter = Some(reporter());
+    let (rep, payload) = up.take_closing_report().unwrap();
+    assert!(payload.unwrap().get("env").is_none());
+    rep.close();
+}
+
+#[test]
+fn the_web_run_page_needs_a_session_on_the_default_server() {
+    let m = json!({"symbol": "BTCUSDT", "exchange": "binance"});
+    let mut r = Run::new("a".into(), m, "a".into(), "file", runner_core::types::DEFAULT_SERVER_BASE.into());
+    assert_eq!(r.web_run_url(), None, "시작 전에는 세션이 없음");
+    r.data = Some(RunData::started(1, Some(4821)));
+    assert_eq!(r.web_run_url().as_deref(), Some("https://gg-parrot.vercel.app/agents?session=4821"));
+    let c = core();
+    assert_eq!(serde_json::to_value(c.render_run(&r)).unwrap()["webRunPage"], true);
+    r.data = Some(RunData::started(1, None));
+    assert_eq!(r.web_run_url(), None);
+    // 다른 서버(개발용 등)에서 만든 세션은 껄무새 웹에 없음.
+    let mut other = run("b", "BTCUSDT", "binance");
+    other.data = Some(RunData::started(1, Some(7)));
+    assert_eq!(other.web_run_url(), None);
+}
+
+#[test]
+fn run_status_carries_fees_day_change_and_macro_origin_for_the_screen() {
+    let mut d = RunData::started(1, Some(1));
+    d.macro_origin = "원본 파일(서명 확인)".into();
+    d.snapshot = json!({"realized_pnl": 5.0, "fees_paid": 0.105, "day_change": -0.0123});
+    let v = serde_json::to_value(render_run_data(&d, Side::Long)).unwrap();
+    assert_eq!(v["realized"], 5.0, "서버 값 그대로");
+    assert_eq!(v["fees"], 0.105);
+    assert!((v["dayChangePct"].as_f64().unwrap() + 1.23).abs() < 1e-9);
+    assert_eq!(v["macroOrigin"], "원본 파일(서명 확인)");
+    // 모르는 수수료·등락률은 null.
+    d.snapshot = json!({"realized_pnl": 5.0, "fees_paid": null, "day_change": null});
+    let v = serde_json::to_value(render_run_data(&d, Side::Long)).unwrap();
+    assert!(v["fees"].is_null() && v["dayChangePct"].is_null());
 }

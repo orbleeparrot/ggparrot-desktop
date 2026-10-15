@@ -45,6 +45,16 @@ export function StatusCard({
   const q = macro.quote;
   const side = SIDE_LABELS[macro.side];
   const stateClass = run.finished ? (run.finished.status === "error" ? "is-error" : "is-finished") : "is-running";
+  // 화면의 실현손익은 수수료를 뺀 값 — 서버에 보고하는 값(run.realized)은 그대로 둠. 모르면 수수료 전이라고 밝힘.
+  const net = run.fees === null ? run.realized : run.realized - run.fees;
+  const feeNote =
+    run.fees === null
+      ? run.realized !== 0
+        ? "수수료 제외 전"
+        : ""
+      : run.fees > 0
+        ? `수수료 ${formatPrice(run.fees, q)} ${q} 반영`
+        : "";
 
   return (
     <section className={`status-card ${stateClass}`} aria-label="실행 상태">
@@ -93,6 +103,15 @@ export function StatusCard({
             ) : (
               <>
                 {formatPrice(run.price, q)} <span className="unit">{q}</span>
+                {!run.finished && run.dayChangePct !== null && (
+                  <span
+                    className={`day-change tone-${toneOf(run.dayChangePct)}`}
+                    title="전일 종가 대비 등락률(거래소 기준)"
+                  >
+                    {" "}
+                    전일 {formatPercent(run.dayChangePct)}
+                  </span>
+                )}
                 {!run.finished && (run.priceStaleSince > 0 || stale) && (
                   <span className={`price-age ${stale || run.priceStaleSince > 0 ? "tone-warn" : ""}`}>
                     {" "}
@@ -115,7 +134,10 @@ export function StatusCard({
         </div>
         <div>
           <dt>{mode === "mock" ? "이번 실행 실현손익 · 모의" : "이번 실행 실현손익"}</dt>
-          <dd className={`num tone-${toneOf(run.realized, moneyDigits(q))}`}>{formatMoney(run.realized, q)}</dd>
+          <dd className={`num tone-${toneOf(net, moneyDigits(q))}`}>
+            {formatMoney(net, q)}
+            {feeNote && <span className="realized-note">{feeNote}</span>}
+          </dd>
         </div>
         <div>
           <dt>경과 시간</dt>

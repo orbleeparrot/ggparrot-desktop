@@ -219,6 +219,36 @@ async fn claim_validates_payload() {
 }
 
 #[tokio::test]
+async fn an_outdated_app_hears_the_servers_update_notice() {
+    let server = MockServer::start().await;
+    let detail = "바이낸스 빠른 실행은 실행기 v19 이상이 필요해요(연결 도우미). 실행기를 업데이트해 주세요.";
+    Mock::given(method("POST"))
+        .and(path("/api/runner/launch-tickets/claim"))
+        .respond_with(ResponseTemplate::new(426).set_body_json(json!({"detail": detail})))
+        .mount(&server)
+        .await;
+    let err = claim_ticket(&reqwest::Client::new(), &server.uri(), "t").await.unwrap_err();
+    assert_eq!(err, ClaimError::UpdateRequired(detail.into()));
+
+    // 주소가 섞인 안내·읽을 수 없는 본문은 비워 앱의 기본 안내를 씀. 다른 거절은 이유를 숨김.
+    for (status, body) in [
+        (426, json!({"detail": "https://evil.example 에서 받으세요"})),
+        (426, json!({"detail": {"code": 1}})),
+        (409, json!({"detail": "이미 쓴 티켓"})),
+    ] {
+        server.reset().await;
+        Mock::given(method("POST"))
+            .and(path("/api/runner/launch-tickets/claim"))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body))
+            .mount(&server)
+            .await;
+        let err = claim_ticket(&reqwest::Client::new(), &server.uri(), "t").await.unwrap_err();
+        let expected = if status == 426 { ClaimError::UpdateRequired(String::new()) } else { ClaimError::Failed };
+        assert_eq!(err, expected, "{status}");
+    }
+}
+
+#[tokio::test]
 async fn permanent_rejections_and_stop_reasons_are_told_apart() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

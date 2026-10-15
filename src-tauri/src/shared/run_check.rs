@@ -48,7 +48,7 @@ impl Shared {
         enum Next {
             Nothing,
             Warn(String),
-            Wizard(KeySlot),
+            Wizard(WizardTarget),
             Start,
         }
         let next = {
@@ -59,7 +59,7 @@ impl Shared {
             let Some(run) = c.run(id) else { return };
             let fp = c.run_fingerprint(run);
             let stale = run.generation != generation || result.fingerprint != fp || run.running();
-            let (ex, mode) = (run.exchange(), run.mode);
+            let (ex, mode, market, target) = (run.exchange(), run.mode, run.market(), run.wizard_target());
             let wizard_open = c.wizard.is_some();
             c.run_mut(id).unwrap().checking = false;
             if stale {
@@ -75,16 +75,16 @@ impl Shared {
                 Next::Nothing
             } else {
                 c.run_mut(id).unwrap().preflight = Some(result.clone());
-                // 시작 직전 검사도 같은 칸의 키를 본 것임 — 칸이 실거래 확인 모드와 같으면 설정의 연결 상태에도 씀.
+                // 시작 직전 검사도 같은 칸의 키를 본 것임 — 칸의 확인 모드·시장(`Core::probe_market`)과 같으면
+                // 설정의 연결 상태에도 씀. 시장이 다르면 칸이 보는 권한과 달라 남기지 않음.
                 if let Some(ex) = ex {
-                    let slot = KeySlot::for_run(ex, mode);
-                    if slot.check_mode() == mode {
+                    let slot = KeySlot::for_run(ex, mode, market);
+                    let usable = result.ok || !result.error_name.is_empty();
+                    if slot.check_mode() == mode && c.probe_market(slot) == market && usable {
                         let key_fp = c.slot_check_snapshot(slot).3;
                         let mut stripped = result.clone();
                         stripped.broker = None;
-                        if result.ok || !result.error_name.is_empty() {
-                            self.store_slot_check(&mut c, slot, key_fp, &stripped);
-                        }
+                        self.store_slot_check(&mut c, slot, key_fp, &stripped);
                     }
                 }
                 if result.ok {
@@ -106,8 +106,9 @@ impl Shared {
                     let view = check_view(ex.map(|e| e.as_str()).unwrap_or(""), false, &result.error_name);
                     if start_after && view.problem == "order_size" {
                         Next::Warn(format!("{}\n\n매매는 시작하지 않았어요.", result.reason))
-                    } else if start_after && ex.is_some_and(Exchange::is_domestic) && !wizard_open {
-                        Next::Wizard(KeySlot::for_run(ex.unwrap(), mode))
+                    } else if let (true, false, Some(target)) = (start_after, wizard_open, target) {
+                        // 오류 창 대신 연결 도우미의 결과 화면으로 — 무엇이 막혔고 어떻게 고치는지가 거기 있음.
+                        Next::Wizard(target)
                     } else if start_after {
                         // [시작]을 눌러 기다리는 사람에게 막힌 이유를 바로 보임(활동 기록 한 줄로 끝내지 않게).
                         Next::Warn(format!("{}\n\n매매는 시작하지 않았어요.", result.reason))
@@ -122,7 +123,7 @@ impl Shared {
         match next {
             Next::Nothing => {}
             Next::Warn(m) => self.notice("warn", m),
-            Next::Wizard(slot) => self.wizard_open(slot, "result_fail"),
+            Next::Wizard(target) => self.wizard_open(target, "result_fail"),
             Next::Start => match self.start_run(id) {
                 StartReply::ConfirmLive { title, message } => {
                     let _ = self.app.emit(EV_CONFIRM, json!({ "runId": id, "title": title, "message": message }));

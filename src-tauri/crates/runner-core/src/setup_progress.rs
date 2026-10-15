@@ -1,7 +1,7 @@
 //! 웹 '매크로 만들기 가이드'에 지금 단계만 알림.
 //!
 //! 웹 [실행기 열기]로 들어온 앱만 보냄(그 연결의 launch_id와 회원 키가 있을 때).
-//! 보내는 것은 단계 이름·키 칸이 찼는지(참/거짓)·검사 세 줄의 상태뿐임 —
+//! 보내는 것은 단계 이름·바이낸스 사이트(env)·키 칸이 찼는지(참/거짓)·검사 세 줄의 상태뿐임 —
 //! 거래소 키·시크릿·IP 주소·오류 문장은 어떤 경로로도 실리지 않음.
 //! 보내기 실패는 조용히 버림. 앱 동작은 이 보고에 기대지 않음.
 use once_cell::sync::Lazy;
@@ -29,6 +29,8 @@ pub const STAGES: [&str; 12] = [
 pub const PATHS: [&str; 3] = ["", "new", "existing"];
 pub const PROBLEMS: [&str; 7] = ["", "ip", "auth", "order", "order_size", "network", "other"];
 pub const EXCHANGES: [&str; 3] = ["binance", "upbit", "bithumb"];
+/// 바이낸스 도우미가 안내하는 사이트(`connection::binance_env`). 국내는 "" — 보내지 않음.
+pub const ENVS: [&str; 4] = ["", "testnet", "demo", "live"];
 pub const PROGRESS_PATH: &str = "/api/runner/launch-tickets/{launch_id}/progress";
 /// 웹 연결 하나에 대해 보고하는 최대 시간. 그 뒤로는 가이드 화면도 이미 닫혔다고 봄.
 pub const REPORT_WINDOW_SECONDS: f64 = 2.0 * 60.0 * 60.0;
@@ -36,10 +38,14 @@ const RETRY_DELAY: Duration = Duration::from_secs(3);
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 서버가 받는 모양 그대로 만듦. 모르는 값은 보내지 않고 Err — 호출 쪽 버그를 숨기지 않음.
+/// `env`는 바이낸스만(국내에 실으면 서버가 422로 거절함). 빈 값이면 키 자체를 싣지 않음 —
+/// env를 모르는 서버(extra=forbid)에도 국내 보고가 그대로 통함.
 /// `slots`는 (access, secret) 칸이 찼는지, `checks`는 (auth, ip, order) — 없으면 모두 "wait".
+#[allow(clippy::too_many_arguments)] // 서버 요청 칸 하나하나가 인자임 — 묶으면 호출마다 구조체만 늘어남.
 pub fn progress_payload(
     stage: &str,
     exchange: &str,
+    env: &str,
     path: &str,
     slots: (bool, bool),
     checks: Option<(Check, Check, Check)>,
@@ -50,11 +56,15 @@ pub fn progress_payload(
         || !EXCHANGES.contains(&exchange)
         || !PATHS.contains(&path)
         || !PROBLEMS.contains(&problem)
+        || !ENVS.contains(&env)
     {
         return Err("unknown progress field".into());
     }
+    if !env.is_empty() && exchange != "binance" {
+        return Err("env is binance-only".into());
+    }
     let (auth, ip, order) = checks.unwrap_or((Check::Wait, Check::Wait, Check::Wait));
-    Ok(json!({
+    let mut payload = json!({
         "stage": stage,
         "exchange": exchange,
         "path": path,
@@ -62,7 +72,11 @@ pub fn progress_payload(
         "checks": {"auth": auth.as_str(), "ip": ip.as_str(), "order": order.as_str()},
         "problem": problem,
         "connected": connected,
-    }))
+    });
+    if !env.is_empty() {
+        payload["env"] = json!(env);
+    }
+    Ok(payload)
 }
 
 /// 단조 시계(초).

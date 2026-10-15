@@ -148,6 +148,9 @@ async fn fee_rule_follows_the_inner_adapter() {
     let (m, _, _) = wrap(fake);
     let o = m.submit(req(OrderSide::Buy, None, Some(1000.0), "ggp-11")).await.unwrap();
     assert!((o.acquired_qty - 10.0 * (1.0 - 0.0025)).abs() < 1e-12);
+    // 현물 모의 체결은 같은 수수료율로 낸 수수료(견적 통화)를 함께 돌려줌 — 화면의 수수료 반영 손익에 씀.
+    let fee = o.fee.unwrap();
+    assert!((fee.quote - 1000.0 * 0.0025).abs() < 1e-9 && fee.other.is_empty(), "{fee:?}");
 }
 
 #[tokio::test]
@@ -331,6 +334,7 @@ async fn wrapped_binance_futures_never_changes_margin_or_leverage_or_orders() {
     assert_eq!(m.last_error_name(), "binance_access");
     let o = m.submit(req(OrderSide::Buy, Some(3.0), None, "ggp-f2")).await.unwrap();
     assert_eq!((o.status.as_str(), o.acquired_qty), ("FILLED", 3.0));
+    assert_eq!(o.fee, None, "선물은 실전처럼 수수료를 모름으로 둠");
     let posted = server.received_requests().await.unwrap().into_iter().filter(|r| r.method.as_str() == "POST").count();
     assert_eq!(posted, 0, "모의는 레버리지 · 마진 · 주문 어느 것도 쓰지 않는다");
 }

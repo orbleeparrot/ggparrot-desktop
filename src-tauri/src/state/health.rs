@@ -12,6 +12,7 @@ impl RunData {
             snapshot: Value::Object(Default::default()),
             updated_at: 0,
             finished: None,
+            macro_origin: String::new(),
         }
     }
 

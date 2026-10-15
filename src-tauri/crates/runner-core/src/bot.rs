@@ -11,8 +11,8 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Notify};
 
 use crate::brokers::{
-    fee_inclusive, BinanceBroker, Broker, BrokerError, DomesticBroker, LogFn, MockBroker, OrderSide, SubmitRequest,
-    DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
+    fee_inclusive, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker, OrderSide,
+    SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
 };
 use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
 use crate::log_kind::event_kind;
@@ -239,6 +239,12 @@ pub struct Bot {
     pub entry_price: f64,
     pub held_qty: f64,
     pub realized: f64,
+    /// 이번 실행에서 낸 수수료(견적 통화). 화면에만 씀 — 서버로 가는 realized_pnl은 수수료를 빼지 않음.
+    pub fees_quote: f64,
+    /// 모든 체결의 수수료를 견적 통화로 알았는지 여부(선물·BNB 수수료가 끼면 거짓).
+    pub fees_complete: bool,
+    /// 지금 실행 중인 서버 명령의 신호 가격(0이면 없음) — 체결 활동에 신호가와의 차이를 보임.
+    signal_price: f64,
     pub position_uncertain: bool,
     pub position_dust_qty: f64,
     pub capital: f64,
@@ -392,6 +398,9 @@ impl Bot {
             entry_price: 0.0,
             held_qty: 0.0,
             realized: 0.0,
+            fees_quote: 0.0,
+            fees_complete: market == Market::Spot,
+            signal_price: 0.0,
             position_uncertain: false,
             position_dust_qty: 0.0,
             capital,
@@ -520,6 +529,13 @@ impl Bot {
             "unrealized_pct": if self.in_position && price != 0.0 { pnl_pct(self.entry_price, price, self.side) } else { 0.0 },
             "note": if self.position_uncertain { "주문 결과가 불확실해요 · 거래소에서 주문과 포지션을 확인하세요.".to_string() } else { self.dust_note() },
         })
+    }
+
+    /// 화면으로만 보내는 상태 — 서버 스냅샷에 수수료(모르면 null)와 전일 대비 등락률(국내만)을 덧붙임.
+    pub fn ui_snapshot(&self, mut snap: Value) -> Value {
+        snap["fees_paid"] = if self.fees_complete { json!(self.fees_quote) } else { Value::Null };
+        snap["day_change"] = json!(self.broker.as_ref().and_then(|b| b.day_change()));
+        snap
     }
 
     fn dust_note(&self) -> String {

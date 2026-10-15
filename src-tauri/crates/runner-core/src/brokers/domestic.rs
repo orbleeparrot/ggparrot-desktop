@@ -13,9 +13,10 @@ use std::time::Duration;
 
 use super::{
     cool, cooling, fee_inclusive, is_close, lookup_delay, network_error, positive_number, py_str, py_truthy,
-    retry_after_secs, Broker, BrokerError, LogFn, Order, OrderRules, OrderSide, SubmitRequest,
+    retry_after_secs, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest,
     DOMESTIC_BID_FEE_FALLBACK, LOOKUP_ATTEMPTS, TERMINAL_STATUSES,
 };
+use crate::money::{price_text, qty_text};
 use crate::types::{Exchange, Market, Side};
 
 /// 초. 이 안에 답이 없어도 주문이 들어갔을 수 있음 — 재주문이 아니라 조회로 확인함.
@@ -311,6 +312,9 @@ pub fn normalize_domestic(order: &Value) -> Order {
         _ => order.get("order_id").map(py_str),
     };
     let raw = py_word(order.get("state"));
+    // 낸 수수료(원화) — 주문 조회의 paid_fee. 칸이 없는 응답이면 모름.
+    let fee =
+        order.get("paid_fee").filter(|v| !v.is_null()).map(|v| FeePaid { quote: positive_number(v), other: vec![] });
     Order {
         status: fold_domestic_status(order.get("state"), executed).to_string(),
         executed_qty: executed,
@@ -319,6 +323,7 @@ pub fn normalize_domestic(order: &Value) -> Order {
         fees_known,
         order_id,
         raw_status: if raw.is_empty() { "unknown".into() } else { raw },
+        fee,
     }
 }
 
@@ -328,6 +333,13 @@ pub fn normalize_domestic(order: &Value) -> Order {
 struct Fees {
     bid: f64,
     ask: f64,
+}
+
+/// 주문 가능 정보(/v1/orders/chance)에 함께 오는 잔고 — 원화와 이 마켓의 코인.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Holdings {
+    krw: Option<f64>,
+    coin: Option<(String, f64)>,
 }
 
 pub struct DomesticBroker {
@@ -342,6 +354,9 @@ pub struct DomesticBroker {
     fees: Mutex<Fees>,
     rules: Mutex<Option<OrderRules>>,
     last_error_name: Mutex<String>,
+    holdings: Mutex<Option<Holdings>>,
+    /// 마지막 시세의 전일 대비 등락률(signed_change_rate).
+    change: Mutex<Option<f64>>,
 }
 
 impl DomesticBroker {
@@ -376,6 +391,8 @@ impl DomesticBroker {
             fees: Mutex::new(Fees::default()),
             rules: Mutex::new(None),
             last_error_name: Mutex::new(String::new()),
+            holdings: Mutex::new(None),
+            change: Mutex::new(None),
         })
     }
 
@@ -480,6 +497,15 @@ impl DomesticBroker {
             chance.get("bid").and_then(Value::as_object).map(|bid| get_pos(bid, "min_total")).unwrap_or(0.0);
         let rules = OrderRules { step: 0.0, min_notional: min_total };
         *self.rules.lock().unwrap() = Some(rules);
+        let account = |key: &str| chance.get(key).and_then(Value::as_object);
+        let balance = |a: &Map<String, Value>| a.get("balance").and_then(|v| py_str(v).trim().parse::<f64>().ok());
+        *self.holdings.lock().unwrap() = Some(Holdings {
+            krw: account("bid_account").and_then(balance),
+            coin: account("ask_account").and_then(|a| {
+                let currency = a.get("currency").and_then(Value::as_str)?;
+                Some((currency.to_string(), balance(a)?))
+            }),
+        });
         Ok(rules)
     }
 
@@ -606,6 +632,10 @@ impl DomesticBroker {
             })
             .cloned();
         let available = krw.as_ref().map(|k| get_pos(k, "balance")).unwrap_or(0.0);
+        // 주문 가능 정보에 원화 잔고가 없으면 방금 읽은 계좌 목록으로 채움(잔고 한 줄에 씀).
+        if let Some(h) = self.holdings.lock().unwrap().as_mut().filter(|h| h.krw.is_none()) {
+            h.krw = krw.as_ref().map(|_| available);
+        }
         let need = amount * (1.0 + rate);
         if need > available {
             self.set_last_error("insufficient_funds");
@@ -729,12 +759,13 @@ impl Broker for DomesticBroker {
 
     async fn price(&self) -> Result<f64, BrokerError> {
         let rows = self.get("/v1/ticker", &[("markets".into(), self.symbol.clone())], false).await?;
-        let value = rows
-            .as_array()
-            .and_then(|r| r.first())
-            .and_then(|row| row.get("trade_price"))
-            .map(positive_number)
-            .unwrap_or(0.0);
+        let row = rows.as_array().and_then(|r| r.first());
+        let value = row.and_then(|row| row.get("trade_price")).map(positive_number).unwrap_or(0.0);
+        // 같은 응답의 전일 대비 등락률 — 화면에만 씀.
+        *self.change.lock().unwrap() = row
+            .and_then(|row| row.get("signed_change_rate"))
+            .and_then(|v| py_str(v).trim().parse::<f64>().ok())
+            .filter(|c| c.is_finite());
         if value == 0.0 {
             return Err(BrokerError::Other(format!("{} 현재가를 받지 못했어요", self.symbol)));
         }
@@ -780,9 +811,29 @@ impl Broker for DomesticBroker {
                 fees_known: true,
                 order_id: None,
                 raw_status: rejection,
+                fee: Some(FeePaid::default()),
             });
         }
         Ok(normalize_domestic(&Value::Object(order)))
+    }
+
+    /// 주문 가능 정보에서 읽은 원화 잔고와 이 코인 보유량.
+    fn balance_note(&self) -> String {
+        let Some(h) = self.holdings.lock().unwrap().clone() else {
+            return String::new();
+        };
+        let Some(krw) = h.krw else {
+            return String::new();
+        };
+        let mut text = format!("사용 가능 잔고 {}", price_text(krw.max(0.0).floor(), "KRW"));
+        if let Some((coin, qty)) = h.coin.filter(|(_, q)| *q > 0.0) {
+            text.push_str(&format!(" · 보유 {coin} {}", qty_text(qty)));
+        }
+        text
+    }
+
+    fn day_change(&self) -> Option<f64> {
+        *self.change.lock().unwrap()
     }
 }
 

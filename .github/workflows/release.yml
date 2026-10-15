@@ -84,11 +84,11 @@ jobs:
           VERSION: ${{ steps.check.outputs.version }}
         run: |
           gh release list --repo "$REPO" --limit 100 --json tagName,isDraft,name \
-            --jq '.[] | select(.isDraft and (.name | startswith("GG Parrot (껄무새) v"))) | .tagName' |
+            --jq '.[] | select(.isDraft and (.tagName | test("^v[0-9]+[.][0-9]+[.][0-9]+$"))) | .tagName' |
             while read -r tag; do gh release delete "$tag" --repo "$REPO" --yes; done
           # 만든 응답에서 바로 id를 받음(목록 조회는 막 만든 초안을 늦게 보일 수 있음).
           id="$(gh api -X POST "repos/$REPO/releases" -f tag_name="v$VERSION" -f target_commitish="$SHA" \
-            -f name="GG Parrot (껄무새) v$VERSION" -F draft=true -F body=@"$RUNNER_TEMP/notes.md" --jq .id)"
+            -f name="GGParrot (껄무새) v$VERSION" -F draft=true -F body=@"$RUNNER_TEMP/notes.md" --jq .id)"
           if ! [[ "$id" =~ ^[0-9]+$ ]]; then
             echo "::error::초안을 만들지 못했어요(id: '$id')."
             exit 1

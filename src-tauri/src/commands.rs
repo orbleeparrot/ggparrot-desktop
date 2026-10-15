@@ -1,7 +1,7 @@
 //! 웹뷰 명령. 이름·인자는 src/types.ts v2의 명령 목록과 같음.
 
 use runner_core::bot::StopMode;
-use runner_core::types::{Exchange, KeySlot, RunMode};
+use runner_core::types::{Exchange, KeySlot, Market, RunMode};
 use serde_json::Value;
 use std::path::PathBuf;
 use tauri::State;
@@ -48,6 +48,11 @@ pub fn add_run_from_library(s: State<'_, S>, file_name: String) -> R<String> {
 }
 
 #[tauri::command]
+pub fn move_run(s: State<'_, S>, run_id: String, index: usize) {
+    s.inner().move_run(&run_id, index);
+}
+
+#[tauri::command]
 pub fn remove_run(s: State<'_, S>, run_id: String) -> R<()> {
     s.inner().remove_run(&run_id)
 }
@@ -80,6 +85,28 @@ pub fn copy_activity(s: State<'_, S>, run_id: String) -> R<()> {
         Ok(())
     } else {
         Err("활동 기록을 복사하지 못했어요.".into())
+    }
+}
+
+/// 실행의 거래소 종목 화면을 기본 브라우저로 엶 — 주소는 실행 정보로 Rust에서 만듦(웹뷰가 주소를 넘기지 않음).
+#[tauri::command]
+pub fn open_market_page(s: State<'_, S>, run_id: String) -> R<()> {
+    let page = s.lock().run(&run_id).and_then(|r| r.market_page()).ok_or("이 매크로는 거래소 화면을 열 수 없어요.")?;
+    if s.open_url(&page.url) {
+        Ok(())
+    } else {
+        Err(format!("브라우저를 열지 못했어요. 주소창에 {} 을 입력하세요.", page.url))
+    }
+}
+
+/// 껄무새 웹의 이 실행 기록 화면을 기본 브라우저로 엶 — 주소는 세션 번호로 Rust에서 만듦.
+#[tauri::command]
+pub fn open_run_web_page(s: State<'_, S>, run_id: String) -> R<()> {
+    let url = s.lock().run(&run_id).and_then(|r| r.web_run_url()).ok_or("이 실행은 웹 기록이 아직 없어요.")?;
+    if s.open_url(&url) {
+        Ok(())
+    } else {
+        Err(format!("브라우저를 열지 못했어요. 주소창에 {url} 을 입력하세요."))
     }
 }
 
@@ -202,10 +229,16 @@ pub async fn library_import(s: State<'_, S>) -> R<usize> {
 
 // --- 연결 도우미 ---------------------------------------------------------------------
 
+/// 설정 카드에서 엶. 바이낸스는 칸(`slot`: binance·binance_testnet·binance_demo)으로 실거래·테스트넷·데모 사이트를 가림.
 #[tauri::command]
-pub fn wizard_open(s: State<'_, S>, exchange: String, stage: Option<String>) -> R<()> {
+pub fn wizard_open(s: State<'_, S>, exchange: String, slot: Option<String>, stage: Option<String>) -> R<()> {
     let ex = Exchange::parse(&exchange).ok_or("알 수 없는 거래소예요.")?;
-    s.inner().wizard_open(KeySlot::for_run(ex, RunMode::Live), stage.as_deref().unwrap_or("ask"));
+    let slot = match slot.as_deref() {
+        Some(name) => KeySlot::parse(name).filter(|k| k.exchange() == ex).ok_or("알 수 없는 키 칸이에요.")?,
+        None => KeySlot::for_run(ex, RunMode::Live, Market::Spot),
+    };
+    let target = s.inner().lock().wizard_target_for_slot(slot);
+    s.inner().wizard_open(target, stage.as_deref().unwrap_or("ask"));
     Ok(())
 }
 
@@ -227,6 +260,21 @@ pub fn wizard_back(s: State<'_, S>) {
 #[tauri::command]
 pub fn wizard_close(s: State<'_, S>) {
     s.inner().wizard_close();
+}
+
+/// 정보 화면의 공인 IP — 120초 안의 결과가 있으면 다시 묻지 않음(force면 새로 조회).
+#[tauri::command]
+pub fn refresh_public_ip(s: State<'_, S>, force: bool) {
+    s.inner().begin_public_ip(force);
+}
+
+#[tauri::command]
+pub fn copy_support_info(s: State<'_, S>) -> R<()> {
+    if s.copy_support_info() {
+        Ok(())
+    } else {
+        Err("문의용 정보를 복사하지 못했어요.".into())
+    }
 }
 
 #[tauri::command]

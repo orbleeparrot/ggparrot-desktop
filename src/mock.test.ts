@@ -19,7 +19,13 @@ describe("mock 백엔드 (계약 v2)", () => {
       ["KRW-BTC", "web", true],
     ]);
     expect(s.runs[1].modeChoices).toEqual(["mock", "live"]);
-    expect(s.settings.slots.map((x) => x.slot)).toEqual(["binance", "binance_testnet", "upbit", "bithumb"]);
+    expect(s.settings.slots.map((x) => x.slot)).toEqual([
+      "binance",
+      "binance_testnet",
+      "binance_demo",
+      "upbit",
+      "bithumb",
+    ]);
     expect(s.library.files.some((f) => !f.valid && f.error)).toBe(true);
     expect(s.library.files.find((f) => f.fileName.startsWith("BTC 추세"))?.inUse).toBe(1);
     expect((await state(make("demo=empty"))).runs).toEqual([]);
@@ -86,13 +92,14 @@ describe("mock 백엔드 (계약 v2)", () => {
     expect(await b.invoke("start_run_confirmed", { runId: run.id })).toEqual({ kind: "started" });
   });
 
-  it("테스트넷 키가 없으면 그 칸을 가리키고, 국내 실전은 연결 도우미를 연다", async () => {
+  it("연습 키가 없으면 그 칸을 가리키고, 국내 실전은 연결 도우미를 연다", async () => {
     const b = make();
     const [bn, up] = (await state(b)).runs;
+    expect(bn.macro.market).toBe("futures");
     await b.invoke("set_run_mode", { runId: bn.id, mode: "testnet" });
     const s = await state(b);
-    expect(s.runs[0].keySlot).toBe("binance_testnet");
-    expect(s.runs[0].readiness.needs).toEqual({ kind: "key", slot: "binance_testnet" });
+    expect(s.runs[0].keySlot).toBe("binance_demo");
+    expect(s.runs[0].readiness.needs).toEqual({ kind: "key", slot: "binance_demo" });
     await b.invoke("set_run_mode", { runId: up.id, mode: "live" });
     expect(await b.invoke("start_run", { runId: up.id })).toEqual({ kind: "wizard" });
     const w = (await state(b)).wizard!;
@@ -102,6 +109,35 @@ describe("mock 백엔드 (계약 v2)", () => {
     expect((await state(b)).wizard?.ip.address).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     await b.invoke("wizard_set_remember", { remember: true });
     expect((await state(b)).settings.slots.find((x) => x.slot === "upbit")?.remembered).toBe(true);
+  });
+
+  it("바이낸스 테스트넷 선물은 데모 사이트 도우미를 열고, 허용 IP 단계 없이 키 만들기부터", async () => {
+    const b = make();
+    const [bn] = (await state(b)).runs;
+    expect(bn.macro.market).toBe("futures");
+    await b.invoke("set_run_mode", { runId: bn.id, mode: "testnet" });
+    expect(await b.invoke("start_run", { runId: bn.id })).toEqual({ kind: "wizard" });
+    let w = (await state(b)).wizard!;
+    expect([w.slot, w.env, w.label, w.homeLabel]).toEqual(["binance_demo", "demo", "바이낸스 데모", "데모"]);
+    await b.invoke("wizard_choose", { path: "new" });
+    w = (await state(b)).wizard!;
+    expect([w.stage, w.ip.status]).toEqual(["perm", "idle"]);
+    await b.invoke("wizard_close");
+    await b.invoke("wizard_open", { exchange: "binance", slot: "binance" });
+    expect((await state(b)).wizard?.env).toBe("live");
+    await b.invoke("wizard_close");
+    await b.invoke("wizard_open", { exchange: "binance", slot: "binance_testnet" });
+    w = (await state(b)).wizard!;
+    expect([w.env, w.market, w.label]).toEqual(["testnet", "spot", "바이낸스 테스트넷"]);
+  });
+
+  it("바이낸스 실거래 '처음이에요'의 결과 화면에서 [이전]은 마지막 단계(허용 IP)로", async () => {
+    const b = make();
+    await b.invoke("wizard_open", { exchange: "binance", slot: "binance" });
+    await b.invoke("wizard_choose", { path: "new" });
+    await b.invoke("wizard_go", { stage: "result_fail" });
+    await b.invoke("wizard_back");
+    expect((await state(b)).wizard?.stage).toBe("ip");
   });
 
   it("키는 실행 중에도 바꿀 수 있고, 쓰는 매크로 수를 알린다", async () => {

@@ -1,18 +1,21 @@
-# 껄무새 (GG Parrot)
+# 껄무새 (GGParrot)
 
 - 껄무새 웹에서 만든 매크로를 이 PC에서 실행하는 프로그램.
 - Tauri 2(Rust + React)로 만듦.
 - **macOS와 Windows**에서 같은 방식으로 동작함.
 - 앱 버전:
   - `src-tauri/Cargo.toml`의 `[workspace.package] version` 한 곳에만 적음.
-  - `v{major}.{minor}.{patch}` 체계를 씀. 지금은 `0.18.x`이고 커밋마다 패치 번호를 올림.
+  - `v{major}.{minor}.{patch}` 체계를 씀. `0.<서버 연동 레벨>.<패치>` — 지금은 `0.19.x`(서버 연동 레벨 19)이고 커밋마다 패치 번호를 올림.
 - 이름:
-  - 화면에는 한국어 **껄무새**, 영문 **GG Parrot**.
+  - 화면에는 한국어 **껄무새**, 영문 **GGParrot**(띄어쓰기 없음). Windows 설치·시작 메뉴·프로그램 목록은 한국어 '껄무새'.
   - 저장소·실행 파일·패키지·키체인·데이터 폴더는 웹 저장소(`gg_parrot`)와 구분되게 `ggparrot-desktop`.
   - 번들 식별자는 `com.ggparrot.desktop`(역도메인 형식).
   - 웹의 **실행기 열기**는 `ggparrot://` 링크로 이 앱을 엶.
-- 서버 계약 버전: **18**.
-  - 서버는 `runner_version`을 정수로만 받아 최소 버전과 비교함.
+- 서버 연동 레벨(server link level, 코드 `SERVER_LINK_LEVEL`): **19**.
+  - 서버가 기능마다 정한 최소 레벨과 이상인지만 비교해 기능을 열고 닫는 정수: 연결 6, 서버 신호 8, 국내 거래소 10, 바이낸스 웹 바로 실행 19. 모자라면 426('실행기 vN 이상으로 업데이트').
+  - 서버가 정한 필드 이름 `runner_version`으로 보냄. 번호의 출처는 Python 실행기 exe의 배포 번호(`runner-vN`).
+  - 이 앱은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림. 숫자로만 보냄(`0.19.1` 같은 앱 버전을 보내면 426으로 막힘).
+  - `ggparrot://` 딥링크 규약 번호(v=1·v=2)와는 다른 것.
 - 대상: macOS 11 이상(Apple Silicon·Intel), Windows 10 이상(x64)
 - 모바일(iOS·Android)은 지원하지 않음.
   - OS가 백그라운드 앱을 멈춰 5초 간격의 서버 보고를 유지할 수 없기 때문.
@@ -66,7 +69,7 @@
 | 플랫폼 | macOS `.dmg`·Windows 설치 파일(`-setup.exe`, 사용자 폴더에 설치·관리자 권한 불필요) |
 | 실행 | 여러 매크로 동시 실행(같은 거래소·종목은 하나만) |
 | 화면 | 실행 목록·상세, 따로 여는 설정 화면, 사람이 읽는 활동 기록(원문은 개발자 로그) |
-| 키 | OS 키체인(macOS 키체인·Windows 자격 증명 관리자)에 둠. 설정 한곳에서 언제나 고침. 바이낸스 테스트넷 키 칸은 따로 |
+| 키 | OS 키체인(macOS 키체인·Windows 자격 증명 관리자)에 둠. 설정 한곳에서 언제나 고침. 바이낸스는 실거래·테스트넷(현물)·데모(선물) 키 칸이 따로 |
 | 매크로 파일 | 앱 데이터 폴더의 `macros` 목록·가져오기·끌어다 놓기·웹 [실행기 열기] |
 | 껄무새 웹 | 머리줄 지구본 단추·메뉴(껄무새 › 껄무새 웹 열기)·트레이·매크로 추가 창에서 https://gg-parrot.vercel.app/ 을 기본 브라우저로 엶 |
 | 바이낸스 연동 | REST API에 직접 서명해 부름 |
@@ -74,11 +77,12 @@
 | 업데이트 | 앱 안에서 확인·내려받기·설치·다시 시작(서명 확인) |
 | 창 닫기 | 메뉴 막대·알림 영역 아이콘으로 숨어 계속 실행(macOS는 Dock 아이콘도 숨김). 설정에서 끌 수 있음 |
 
-- 로컬 파일은 모두 앱 데이터 폴더 `ggparrot-desktop` 아래에 있음(macOS `~/Library/Application Support`, Windows `%LOCALAPPDATA%`).
+- 로컬 파일은 모두 앱 데이터 폴더 `ggparrot-desktop` 하나에 있음(macOS `~/Library/Application Support`, Windows `%LOCALAPPDATA%`).
   - 매크로 폴더 `macros/`
   - 실행 목록 `runs.json`
   - 설정 `prefs.json`
   - 실행 기록 `activity/`
+  - Windows 화면(WebView2) 데이터 `EBWebView/` — Tauri의 앱 폴더도 같은 곳으로 모음(`tauri.conf.json`의 `appDirectoriesOverride`)
 - 실행 목록에는 키가 들어가지 않음.
 - 키체인 항목 이름은 `ggparrot-desktop`.
 - 웹에서 받은 매크로 파일은 브라우저의 다운로드 폴더에 저장됨.
@@ -155,7 +159,7 @@ npm run build:win
 ```
 
 - 결과 파일 이름은 배포와 같음: `ggparrot-desktop_<버전>_darwin_universal.dmg`·`ggparrot-desktop_<버전>_windows_x64-setup.exe`.
-  - Tauri는 화면 이름(`GG Parrot`)으로 파일을 만들고, `scripts/name-bundles.mjs`가 기술 이름으로 바꿈.
+  - Tauri는 화면 이름(`GGParrot`)으로 파일을 만들고, `scripts/name-bundles.mjs`가 기술 이름으로 바꿈.
   - 위치: `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`·`src-tauri/target-win/x86_64-pc-windows-gnu/release/bundle/nsis/`.
 - `build:mac`은 `rustup target add x86_64-apple-darwin`이 한 번 필요함(Apple Silicon·Intel 공용 빌드).
 - `build:win`은 macOS에서 Windows 설치 파일을 만듦(배포는 CI의 Windows 러너가 MSVC로 만듦).
@@ -181,15 +185,19 @@ docs/                     규칙 · 다음 작업 · 설계 문서
 ## 설치·업데이트
 
 - 설치 파일 이름은 기술 이름(`ggparrot-desktop`): `ggparrot-desktop_<버전>_darwin_universal.dmg`(Apple Silicon·Intel 공용)·`ggparrot-desktop_<버전>_windows_x64-setup.exe`.
-- 설치한 앱의 이름은 화면 이름: macOS `GG Parrot.app`, Windows 시작 메뉴 'GG Parrot'.
+- 설치한 앱의 이름은 화면 이름: macOS `GGParrot.app`, Windows 시작 메뉴·바탕화면·프로그램 목록 '껄무새'.
 - **macOS**:
   - `.dmg`를 열고 앱을 응용 프로그램 폴더로 끌어 놓음.
-  - Finder·Dock에는 macOS 언어가 한국어면 '껄무새', 아니면 'GG Parrot'으로 보임.
+  - Finder·Dock에는 macOS 언어가 한국어면 '껄무새', 아니면 'GGParrot'으로 보임.
   - 디스크 이미지나 다운로드 폴더에서 바로 실행하면 업데이트를 설치할 수 없어 앱이 옮기라고 안내함.
 - **Windows**:
   - `-setup.exe` 하나만 배포함(MSI 없음).
-  - 사용자 폴더(`%LOCALAPPDATA%\Programs`)에 설치하므로 관리자 권한이 필요 없음.
-  - 시작 메뉴와 제어판 프로그램 제거에 'GG Parrot'으로 등록됨.
+  - 사용자 폴더 `%LOCALAPPDATA%\Programs\GGParrot`에 설치하므로 관리자 권한이 필요 없음.
+  - 설치·제거 화면, 시작 메뉴, 프로그램 제거 목록, 작업 관리자에는 '껄무새'로 보임(`tauri.windows.conf.json`의 productName).
+  - Windows에서 쓰는 곳은 두 군데뿐임: 프로그램 `%LOCALAPPDATA%\Programs\GGParrot`, 데이터 `%LOCALAPPDATA%\ggparrot-desktop`. 레지스트리는 `HKCU\Software\GGParrot`·프로그램 제거 항목 `GGParrot`·`ggparrot://` 연결.
+  - 제거할 때 '애플리케이션 데이터 삭제하기'를 고르면 데이터 폴더(매크로 폴더 포함)도 지움. 키는 Windows 자격 증명 관리자에 남음(설정 › 기억한 키에서 지움).
+  - 앱이 실행 중이면 설치·제거 프로그램이 끄고 계속할지 물음(트레이로 숨어 도는 앱이라 Windows 기본 종료 요청으로는 꺼지지 않음 — `src-tauri/installer/hooks.nsh`).
+  - 설치 프로그램은 Tauri 기본 템플릿을 고친 `src-tauri/installer/installer.nsi`를 씀(한국어 이름·영문 폴더). Tauri를 올리면 같은 버전의 원래 템플릿과 비교해 맞춤.
 - **앱 안 업데이트**:
   - 켤 때와 6시간마다 확인함.
   - 새 버전이 있으면 머리줄의 버전 표시 옆에 알림이 뜸.

@@ -19,7 +19,7 @@ impl Bot {
 
     /// [`report_status`]와 같되 스냅샷을 받음 — 시세를 못 받은 틱도 같은 연결 처리를 거침.
     pub(super) async fn report_snapshot(&mut self, snap: Value) -> crate::server::HeartbeatReply {
-        let _ = self.tx.send(BotEvent::Status(snap.clone()));
+        let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(snap.clone())));
         let reply = self.heartbeat(&snap).await;
         self.apply_connection(&reply);
         reply

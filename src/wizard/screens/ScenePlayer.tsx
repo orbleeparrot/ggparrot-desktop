@@ -35,7 +35,7 @@ function apply(s: SceneState, step: Step, ip: string): SceneState {
     case "focus":
       return { ...s, focus: new Set(s.focus).add(step.input) };
     case "type":
-      return { ...s, typed: { ...s.typed, [step.input]: ip } };
+      return { ...s, typed: { ...s.typed, [step.input]: step.text ?? ip } };
     default:
       return s;
   }
@@ -96,9 +96,10 @@ export function ScenePlayer({ scene, ip, label }: { scene: Scene; ip: string; la
           });
           return;
         case "type": {
+          const text = step.text ?? ip;
           const typeChar = (n: number) => {
-            setS((prev) => ({ ...prev, typed: { ...prev.typed, [step.input]: ip.slice(0, n) } }));
-            if (n >= ip.length) next(260);
+            setS((prev) => ({ ...prev, typed: { ...prev.typed, [step.input]: text.slice(0, n) } }));
+            if (n >= text.length) next(260);
             else after(55, () => typeChar(n + 1));
           };
           typeChar(0);

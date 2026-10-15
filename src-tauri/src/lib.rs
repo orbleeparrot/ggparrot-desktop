@@ -32,7 +32,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::
     let about = AboutMetadata {
         name: Some("껄무새".into()),
         version: Some(app.package_info().version.to_string()),
-        comments: Some("GG Parrot — 껄무새 웹에서 만든 매크로를 이 컴퓨터에서 실행해요.".into()),
+        comments: Some("GGParrot — 껄무새 웹에서 만든 매크로를 이 컴퓨터에서 실행해요.".into()),
         ..Default::default()
     };
     let app_menu = Submenu::with_items(
@@ -214,12 +214,17 @@ pub fn run() {
             commands::get_activity,
             commands::add_macro_file,
             commands::add_run_from_library,
+            commands::move_run,
             commands::remove_run,
             commands::set_run_mode,
             commands::start_run,
             commands::start_run_confirmed,
             commands::stop_run,
             commands::copy_activity,
+            commands::open_market_page,
+            commands::open_run_web_page,
+            commands::refresh_public_ip,
+            commands::copy_support_info,
             commands::set_slot_key,
             commands::reveal_slot_key,
             commands::set_slot_remember,

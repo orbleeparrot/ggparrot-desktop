@@ -2,14 +2,14 @@
 //! 실행 슬롯(Run) 여러 개 + 설정(키 칸·회원 키) + 매크로 폴더 + 업데이트 + 연결 도우미.
 
 use runner_core::bot::{BotHandle, RunHealth, StopMode};
-use runner_core::connection::{check_view, Check, CheckView, PreflightResult, PublicIpCache};
+use runner_core::connection::{binance_env, check_view, Check, CheckNotes, CheckView, PreflightResult, PublicIpCache};
 use runner_core::credentials::{LoadStatus, KEY_STORE_NAME};
 use runner_core::library::LibraryEntry;
 use runner_core::money::pnl_amount;
 use runner_core::setup_progress::SetupProgressReporter;
 use runner_core::types::{
     base_asset, exchange_label, exchange_name_of, macro_leverage, macro_side, macro_symbol, market_of, quote_of,
-    Credentials, Exchange, KeyPair, KeySlot, RunMode, Side,
+    Credentials, Exchange, KeyPair, KeySlot, Market, RunMode, Side,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -18,8 +18,59 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub const ACTIVITY_LIMIT: usize = 1000;
+/// 활동 한 줄의 글자 수 한도(제목·설명·원문) — 거래소 오류 본문 같은 긴 글이 통째로 쌓이지 않게.
+pub const ACTIVITY_TITLE_CHARS: usize = 200;
+pub const ACTIVITY_DETAIL_CHARS: usize = 1000;
+pub const ACTIVITY_RAW_CHARS: usize = 2000;
+/// [전체 기록 복사] 한도(글자) — 문의 게시판·메신저 한 번에 붙여 넣을 수 있는 크기. 넘으면 최근 기록만.
+pub const ACTIVITY_COPY_CHARS: usize = 60_000;
+
+/// 글자 수로 자르고 잘랐으면 '…'를 붙임(UTF-8 경계 안전).
+pub fn clip_chars(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((i, _)) => format!("{}…", &s[..i]),
+        None => s.to_string(),
+    }
+}
+
+/// 활동 기록 복사 글 — 맨 위 머리말, 줄마다 날짜·시각. 한도를 넘으면 오래된 줄부터 빼고 뺀 수를 적음.
+pub fn activity_copy_text(head: &str, items: &[ActivityDto], max_chars: usize) -> String {
+    let lines: Vec<String> = items
+        .iter()
+        .map(|a| {
+            let t = chrono::DateTime::from_timestamp_millis(a.at)
+                .map(|d| d.with_timezone(&chrono::Local).format("%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default();
+            let mut line = format!("{t}  {}", a.title);
+            if !a.detail.is_empty() {
+                line.push_str(&format!(" — {}", a.detail));
+            }
+            if !a.raw.is_empty() && a.raw != a.title {
+                line.push_str(&format!("\n                {}", a.raw.trim()));
+            }
+            line
+        })
+        .collect();
+    // 최근 줄부터 한도 안에서 담음.
+    let mut used = head.chars().count() + 40;
+    let mut keep = 0;
+    for l in lines.iter().rev() {
+        let n = l.chars().count() + 1;
+        if used + n > max_chars {
+            break;
+        }
+        used += n;
+        keep += 1;
+    }
+    let skipped = lines.len() - keep;
+    let mut out = vec![head.to_string()];
+    if skipped > 0 {
+        out.push(format!("(앞의 {skipped}줄은 길어서 뺐어요 — 최근 {keep}줄)"));
+    }
+    out.extend(lines.into_iter().skip(skipped));
+    out.join("\n")
+}
 pub const WATCH_STAGES: [&str; 3] = ["perm", "keys", "existing"];
-pub const PROTOCOL_VERSION: &str = runner_core::RUNNER_VERSION;
 
 #[derive(Clone)]
 pub struct KeyCheckRecord {
@@ -46,8 +97,19 @@ pub struct SlotState {
     pub generation: u64,
 }
 
+/// 연결 도우미가 안내할 곳 — 키 칸, 바이낸스 사이트(testnet·demo·live, 국내는 ""), 시장.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WizardTarget {
+    pub slot: KeySlot,
+    pub env: &'static str,
+    pub market: Market,
+}
+
 pub struct Wizard {
     pub slot: KeySlot,
+    /// 바이낸스 사이트(testnet·demo·live). 국내는 "".
+    pub env: &'static str,
+    pub market: Market,
     pub stage: String,
     pub path: String,
     pub got_access: bool,
@@ -68,6 +130,8 @@ pub struct RunData {
     /// 마지막 상태 스냅샷을 받은 시각(ms). 0이면 아직 못 받음(시작 직후).
     pub updated_at: i64,
     pub finished: Option<(String, String, i64)>,
+    /// 서버가 시작 응답에 준 매크로 출처 글자(macro_origin_label). 없으면 "".
+    pub macro_origin: String,
 }
 
 /// 지난 실행이 앱이 꺼지며 끝맺지 못했을 때 남기는 종료 이유.
@@ -226,7 +290,67 @@ impl Run {
         self.bot.is_some()
     }
     pub fn key_slot(&self) -> Option<KeySlot> {
-        self.exchange().map(|e| KeySlot::for_run(e, self.mode))
+        self.exchange().map(|e| KeySlot::for_run(e, self.mode, self.market()))
+    }
+    /// 거래소의 종목 화면(상세 머리줄의 '○○에서 보기'). 모르는 거래소·종목이면 None.
+    pub fn market_page(&self) -> Option<runner_core::market_page::MarketPage> {
+        runner_core::market_page::market_page(self.exchange()?, &self.symbol(), self.market(), self.mode)
+    }
+    /// 껄무새 웹의 이 실행 기록 화면(`/agents?session=…`). 세션 번호가 있을 때만.
+    /// 기본 서버에서 만든 세션만 — 다른 서버(개발용 등)의 세션은 껄무새 웹에 없음.
+    pub fn web_run_url(&self) -> Option<String> {
+        let sid = self.data.as_ref()?.session_id.filter(|s| *s > 0)?;
+        if self.server_base.trim_end_matches('/') != runner_core::types::DEFAULT_SERVER_BASE {
+            return None;
+        }
+        Some(format!("{}agents?session={sid}", crate::shared::WEB_URL))
+    }
+    /// 웹 가이드 보고를 떼어 내고 마지막 상태('closed')를 만듦 — 앱 종료와 목록에서 빼기가 함께 씀.
+    /// 상태를 만들지 못하면(모르는 거래소) 보고만 닫으라고 None을 함께 돌려줌.
+    pub fn take_closing_report(&mut self) -> Option<(Arc<SetupProgressReporter>, Option<Value>)> {
+        let rep = self.reporter.take()?;
+        let payload = runner_core::setup_progress::progress_payload(
+            "closed",
+            &self.exchange_name(),
+            self.binance_env(),
+            "",
+            (false, false),
+            None,
+            "",
+            false,
+        )
+        .ok();
+        Some((rep, payload))
+    }
+    pub fn market(&self) -> Market {
+        market_of(&self.exchange_name(), macro_side(&self.macro_), macro_leverage(&self.macro_).unwrap_or(1))
+    }
+    /// 바이낸스 연결 도우미가 안내할 사이트(모드·시장으로). 국내·모르는 거래소는 "".
+    pub fn binance_env(&self) -> &'static str {
+        match self.exchange() {
+            Some(Exchange::Binance) => binance_env(self.mode, self.market()),
+            _ => "",
+        }
+    }
+    /// 이 실행으로 연 연결 도우미의 대상 — 실행이 쓰는 칸(`key_slot`)과 그 칸의 사이트.
+    /// 모의는 키 없이도 돌아 데려갈 칸이 없음(None).
+    pub fn wizard_target(&self) -> Option<WizardTarget> {
+        if self.mode == RunMode::Mock {
+            return None;
+        }
+        Some(self.target_of(self.key_slot()?))
+    }
+    /// 웹 가이드에 알릴 대상. 실전·연습은 `wizard_target`과 같음.
+    /// 모의는 파이썬 실행기처럼 연습 사이트(`binance_env`)의 칸으로 알림 — 가이드가 연습 키 만들기부터 따라 그림.
+    /// 모의 실행이 키를 쓸 때의 칸(`key_slot`, 실거래 칸)과는 다름 — 가이드 표시용일 뿐임.
+    pub fn guide_target(&self) -> Option<WizardTarget> {
+        if self.mode != RunMode::Mock {
+            return self.wizard_target();
+        }
+        Some(self.target_of(KeySlot::for_run(self.exchange()?, RunMode::Testnet, self.market())))
+    }
+    fn target_of(&self, slot: KeySlot) -> WizardTarget {
+        WizardTarget { slot, env: slot.binance_env(), market: slot.fixed_market().unwrap_or(self.market()) }
     }
     pub fn mode_choices(&self) -> Vec<RunMode> {
         match self.exchange() {
@@ -372,7 +496,7 @@ impl Core {
         (!k.is_empty() && !sec.is_empty()).then(|| KeyPair { api_key: k.into(), api_secret: sec.into() })
     }
 
-    /// 칸 하나만 담은 자격증명(키 확인용). 테스트넷 칸도 거래소 이름(binance)으로 넣음.
+    /// 칸 하나만 담은 자격증명(키 확인용). 연습 칸도 거래소 이름(binance)으로 넣음.
     pub fn slot_credentials(&self, s: KeySlot) -> Credentials {
         let mut c = Credentials::default();
         if let Some(p) = self.slot_pair(s) {
@@ -381,7 +505,7 @@ impl Core {
         c
     }
 
-    /// 저장용 — 칸 이름 그대로(binance_testnet 포함), 회원 키 포함.
+    /// 저장용 — 칸 이름 그대로(binance_testnet·binance_demo 포함), 회원 키 포함.
     pub fn storage_values(&self) -> Credentials {
         let mut c = Credentials { member_key: self.member_key.trim().to_string(), ..Default::default() };
         for (s, st) in &self.slots {
@@ -411,9 +535,28 @@ impl Core {
         runner_core::connection::preflight_fingerprint(&run.macro_, run.mode, &self.run_credentials(run))
     }
 
+    /// 설정 카드에서 연 연결 도우미의 대상 — 칸의 사이트와 확인 시장.
+    pub fn wizard_target_for_slot(&self, s: KeySlot) -> WizardTarget {
+        WizardTarget { slot: s, env: s.binance_env(), market: self.probe_market(s) }
+    }
+
+    /// 칸을 확인할 시장. 연습 칸·국내는 칸이 정함(`KeySlot::fixed_market`).
+    /// 바이낸스 실거래 칸은 한 키로 현물·선물을 다 쓰므로 이 규칙 하나만 따름 —
+    /// 이 칸을 연 도우미가 있으면 그 시장, 없으면 이 칸을 쓰는 실행(실전·모의) 중 목록 맨 앞 실행의 시장, 그것도 없으면 현물.
+    /// 실행 목록·모드·매크로에서 매번 셈 — 웹 연결로 실행이 늘거나 모드가 바뀌어도 따로 맞출 값이 없음.
+    pub fn probe_market(&self, s: KeySlot) -> Market {
+        if let Some(m) = s.fixed_market() {
+            return m;
+        }
+        if let Some(w) = self.wizard.as_ref().filter(|w| w.slot == s) {
+            return w.market;
+        }
+        self.runs.iter().find(|r| r.key_slot() == Some(s)).map_or(Market::Spot, Run::market)
+    }
+
     /// (기본 확인 매크로, 모드, 칸 자격증명, 지문)
     pub fn slot_check_snapshot(&self, s: KeySlot) -> (Value, RunMode, Credentials, String) {
-        let m = s.probe_macro();
+        let m = s.probe_macro_in(self.probe_market(s));
         let mode = s.check_mode();
         let c = self.slot_credentials(s);
         let fp = runner_core::connection::preflight_fingerprint(&m, mode, &c);
@@ -490,9 +633,9 @@ impl Core {
             run_id: run_id.into(),
             at: now_ms(),
             kind: kind.into(),
-            title: title.into(),
-            detail: detail.into(),
-            raw: raw.into(),
+            title: clip_chars(title, ACTIVITY_TITLE_CHARS),
+            detail: clip_chars(detail, ACTIVITY_DETAIL_CHARS),
+            raw: clip_chars(raw, ACTIVITY_RAW_CHARS),
             dev,
             tone: tone.into(),
         };
@@ -525,9 +668,10 @@ impl Core {
         let mut out = vec![];
         for r in &self.runs {
             let Some(rep) = r.reporter.clone() else { continue };
-            let Some(ex) = r.exchange() else { continue };
-            let slot = KeySlot::for_run(ex, RunMode::Live);
-            let wizard = self.wizard.as_ref().filter(|w| w.slot.exchange() == ex);
+            let Some(target) = r.guide_target() else { continue };
+            let (ex, slot) = (target.slot.exchange(), target.slot);
+            // 바이낸스는 사이트마다 칸이 따로라 같은 칸을 연 도우미만 이 실행의 진행으로 봄.
+            let wizard = self.wizard.as_ref().filter(|w| w.slot == slot);
             let (stage, path, slots) = match wizard {
                 Some(w) => (w.stage.clone(), w.path.clone(), (w.got_access, w.got_secret)),
                 None => ("ready".to_string(), String::new(), (false, false)),
@@ -539,6 +683,7 @@ impl Core {
             if let Ok(p) = runner_core::setup_progress::progress_payload(
                 &stage,
                 ex.as_str(),
+                target.env,
                 &path,
                 slots,
                 checks,

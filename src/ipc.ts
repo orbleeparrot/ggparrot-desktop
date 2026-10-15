@@ -2,6 +2,7 @@
 import type {
   Activity,
   AppState,
+  Exchange,
   KeyField,
   KeySlot,
   Notice,
@@ -24,12 +25,17 @@ export interface CommandMap {
   add_macro_file: { args: NoArgs; ret: string | null };
   add_run_from_library: { args: { fileName: string }; ret: string };
   set_run_capital: { args: { runId: string; amount: number | null }; ret: void };
+  move_run: { args: RunArg & { index: number }; ret: void };
   remove_run: { args: RunArg; ret: void };
   set_run_mode: { args: RunArg & { mode: RunMode }; ret: void };
   start_run: { args: RunArg; ret: StartReply };
   start_run_confirmed: { args: RunArg; ret: StartReply };
   stop_run: { args: RunArg & { mode: StopMode }; ret: void };
   copy_activity: { args: RunArg; ret: void };
+  open_market_page: { args: RunArg; ret: void };
+  open_run_web_page: { args: RunArg; ret: void };
+  refresh_public_ip: { args: { force: boolean }; ret: void };
+  copy_support_info: { args: NoArgs; ret: void };
   // 설정
   set_slot_key: { args: { slot: KeySlot; field: KeyField; value: string }; ret: void };
   reveal_slot_key: { args: { slot: KeySlot; field: KeyField }; ret: string };
@@ -52,7 +58,7 @@ export interface CommandMap {
   // 껄무새 웹(기본 브라우저)
   open_web: { args: NoArgs; ret: void };
   // 연결 도우미
-  wizard_open: { args: { exchange: "upbit" | "bithumb"; stage?: WizardState["stage"] }; ret: void };
+  wizard_open: { args: { exchange: Exchange; slot?: KeySlot; stage?: WizardState["stage"] }; ret: void };
   wizard_choose: { args: { path: "new" | "existing" }; ret: void };
   wizard_go: { args: { stage: WizardState["stage"] }; ret: void };
   wizard_back: { args: NoArgs; ret: void };

@@ -22,12 +22,14 @@ export const EXCHANGE_LABELS: Record<Exchange, string> = { binance: "바이낸�
 export const SLOT_LABELS: Record<KeySlot, string> = {
   binance: "바이낸스",
   binance_testnet: "바이낸스 테스트넷",
+  binance_demo: "바이낸스 데모",
   upbit: "업비트",
   bithumb: "빗썸",
 };
 export const SLOT_EXCHANGE: Record<KeySlot, Exchange> = {
   binance: "binance",
   binance_testnet: "binance",
+  binance_demo: "binance",
   upbit: "upbit",
   bithumb: "bithumb",
 };
@@ -36,7 +38,7 @@ export const FIELD_LABELS: Record<Exchange, [string, string]> = {
   upbit: ["Access Key", "Secret Key"],
   bithumb: ["API Key", "Secret Key"],
 };
-export const SLOT_ORDER: KeySlot[] = ["binance", "binance_testnet", "upbit", "bithumb"];
+export const SLOT_ORDER: KeySlot[] = ["binance", "binance_testnet", "binance_demo", "upbit", "bithumb"];
 export const LIBRARY_DIR = "/Users/me/Library/Application Support/ggparrot-desktop/macros";
 
 function macro(over: Partial<MacroInfo> & Pick<MacroInfo, "title" | "exchange" | "symbol">): MacroInfo {
@@ -193,13 +195,15 @@ export interface Model {
   closeToTray: boolean;
   storage: SettingsState["storage"];
   wizard: WizardState | null;
+  /** 정보 화면의 공인 IP(미리보기는 정해진 주소). */
+  publicIp: SettingsState["publicIp"];
   update: UpdateState;
   files: MockFile[];
   nextRun: number;
   imported: number;
 }
 
-const emptyKey = (): MockKey => ({ access: "", secret: "", remembered: false, status: "empty", problem: "" });
+export const emptyKey = (): MockKey => ({ access: "", secret: "", remembered: false, status: "empty", problem: "" });
 
 export function newRun(m: Model, macro: MacroInfo, fileName: string | null, webLinked = false): MockRun {
   const r: MockRun = {
@@ -222,7 +226,13 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
   const broken = (["read_error", "decrypt_error", "invalid_data", "unsupported"] as const).find((s) => s === storage);
   const m: Model = {
     runs: [],
-    keys: { binance: emptyKey(), binance_testnet: emptyKey(), upbit: emptyKey(), bithumb: emptyKey() },
+    keys: {
+      binance: emptyKey(),
+      binance_testnet: emptyKey(),
+      binance_demo: emptyKey(),
+      upbit: emptyKey(),
+      bithumb: emptyKey(),
+    },
     member: "demo-member-key",
     memberPending: "",
     showDevLog: params.get("dev") === "1",
@@ -239,6 +249,7 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
         }
       : { status: "loaded", note: "" },
     wizard: null,
+    publicIp: { status: "idle", address: "" },
     update: {
       status: "idle",
       current: MOCK_VERSION,
