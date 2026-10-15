@@ -101,7 +101,7 @@ impl Bot {
             let unreal = pnl_amount(self.held_qty, self.entry_price, price, self.side);
             let (forced, why) = guard.force_close(unreal);
             let stop = self.local_stop_loss(price);
-            if (forced || stop) && self.close_failures >= MAX_CLOSE_FAILURES && wall_ms() < self.close_retry_at {
+            if (forced || stop) && self.close_failures >= MAX_CLOSE_FAILURES && unix_ms() < self.close_retry_at {
                 return Ok(()); // 연달아 실패한 뒤 쉬는 중 — 다음 시도 시각까지 기다림
             }
             if forced || stop {
@@ -159,7 +159,7 @@ impl Bot {
                             // 거래소를 같은 실패로 5초마다 두드리지 않게 간격을 늘림: 10·20·40·60초.
                             let step = (self.close_failures - MAX_CLOSE_FAILURES + 1).min(6);
                             let wait = (5_000u64 << step).min(CLOSE_RETRY_MAX_MS);
-                            self.close_retry_at = wall_ms() + wait;
+                            self.close_retry_at = unix_ms() + wait;
                             if self.close_failures == MAX_CLOSE_FAILURES {
                                 self.logger.activity(
                                     "error",

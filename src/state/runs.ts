@@ -41,7 +41,7 @@ export function primaryAction(phase: Phase): PrimaryAction {
   return { kind: "busy", label: phase === "checking" ? "연결 확인 중…" : "종료 처리 중…" };
 }
 
-export const STOP_LABELS = { stop_only: "매크로만 종료", close_and_stop: "청산 후 종료" } as const;
+const STOP_LABELS = { stop_only: "매크로만 종료", close_and_stop: "청산 후 종료" } as const;
 
 /** 고를 수 있는 종료 방법 하나. */
 export interface StopChoice {

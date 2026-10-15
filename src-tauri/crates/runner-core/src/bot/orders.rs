@@ -1,6 +1,7 @@
 //! 주문 — 시장가 주문·체결 반영·정리·로컬 손절 판단.
 
 use super::*;
+use crate::brokers::Order;
 
 impl Bot {
     /// 시장가 주문 하나를 넣고 체결을 확인한 뒤 보유 상태를 갱신함. 실패는 Err(사람이 읽을 문장).
@@ -61,13 +62,7 @@ impl Bot {
         };
         let (executed, average, acquired, fees_known) =
             (order.executed_qty, order.avg_price, order.acquired_qty, order.fees_known);
-        let result_uncertain = !crate::brokers::is_terminal(&order.status)
-            || (order.status == "FILLED" && !(executed != 0.0 && average != 0.0))
-            || (executed != 0.0 && average == 0.0)
-            || !fees_known;
-        let reported_fill = order.status == "FILLED"
-            && !result_uncertain
-            && [executed, average].iter().all(|v| v.is_finite() && *v > 0.0);
+        let (result_uncertain, reported_fill) = classify(&order);
         let raw = if order.raw_status.is_empty() { "미기록".to_string() } else { order.raw_status.clone() };
         let id_text = order.order_id.clone().unwrap_or_else(|| "미기록".into());
         self.logger.telemetry(
@@ -90,9 +85,60 @@ impl Bot {
                 "verification": "runner_reported_not_exchange_verified", "ack_source": "runner",
             })),
         );
+        self.apply_fill(&order, closing, result_uncertain);
+        if order.status == "REJECTED" && executed == 0.0 {
+            if self.domestic() {
+                let ex = self.exchange().unwrap_or(Exchange::Upbit);
+                return Err(crate::brokers::explain_domestic_error(ex, 400, &order.raw_status, ""));
+            }
+            return Err(format!(
+                "바이낸스에서 주문을 거절했어요({}). 잔고 · 최소 주문 금액 · 키 권한을 확인하세요. 주문은 들어가지 않았어요.",
+                order.raw_status
+            ));
+        }
+        let incomplete = order.status != "FILLED" || (closing && self.in_position && !partial_close);
+        if incomplete && !self.position_uncertain && executed > 0.0 {
+            // 일부만 체결되고 끝난 주문(만료·취소) — 체결분은 보유에 반영함. 체결은 알리고 실패로 돌려줌.
+            let raw = format!(
+                "  ◐ {} 일부 체결: 수량={} · 거래소 상태 {}",
+                side.as_str(),
+                py_num(executed),
+                order.raw_status
+            );
+            self.logger.ui(&raw);
+            self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
+            return Err(format!(
+                "주문이 일부만 체결되고 끝났어요(거래소 상태: {}). 체결된 {} {}만 보유에 반영했어요.",
+                order.raw_status,
+                qty_text(executed),
+                base_asset(&self.symbol)
+            ));
+        }
+        if incomplete || self.position_uncertain {
+            return Err(format!(
+                "주문 결과를 확인하지 못했어요(거래소 상태: {}). 거래소에서 주문과 포지션을 확인하세요.",
+                order.raw_status
+            ));
+        }
+        let raw = format!(
+            "  ✓ {}{} 체결: id={} 수량={}",
+            side.as_str(),
+            if reduce_only { " (청산)" } else { "" },
+            order.order_id.clone().unwrap_or_else(|| "None".into()),
+            py_num(executed)
+        );
+        self.logger.ui(&raw);
+        self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
+        Ok(true)
+    }
+
+    /// 체결 하나를 보유 상태에 반영함 — 수수료 합계, 정리(실현 손익·먼지)·추가 진입(가중평균)·새 진입.
+    /// `uncertain`은 [`classify`]의 결과 — 불확실하면 보유를 평평하게 보지 않음.
+    fn apply_fill(&mut self, order: &Order, closing: bool, uncertain: bool) {
+        let (executed, average, acquired) = (order.executed_qty, order.avg_price, order.acquired_qty);
         self.last_fill_qty = executed;
         self.last_fill_price = average;
-        self.position_uncertain = result_uncertain;
+        self.position_uncertain = uncertain;
         if executed > 0.0 {
             match &order.fee {
                 Some(fee) if fee.other.is_empty() => self.fees_quote += fee.quote,
@@ -139,50 +185,6 @@ impl Bot {
             }
         }
         self.in_position = (self.held_qty > 0.0 && !dust_only) || self.position_uncertain;
-        if order.status == "REJECTED" && executed == 0.0 {
-            if self.domestic() {
-                let ex = self.exchange().unwrap_or(Exchange::Upbit);
-                return Err(crate::brokers::explain_domestic_error(ex, 400, &order.raw_status, ""));
-            }
-            return Err(format!(
-                "바이낸스에서 주문을 거절했어요({}). 잔고 · 최소 주문 금액 · 키 권한을 확인하세요. 주문은 들어가지 않았어요.",
-                order.raw_status
-            ));
-        }
-        let incomplete = order.status != "FILLED" || (closing && self.in_position && !partial_close);
-        if incomplete && !self.position_uncertain && executed > 0.0 {
-            // 일부만 체결되고 끝난 주문(만료·취소) — 체결분은 보유에 반영함. 체결은 알리고 실패로 돌려줌.
-            let raw = format!(
-                "  ◐ {} 일부 체결: 수량={} · 거래소 상태 {}",
-                side.as_str(),
-                py_num(executed),
-                order.raw_status
-            );
-            self.logger.ui(&raw);
-            self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
-            return Err(format!(
-                "주문이 일부만 체결되고 끝났어요(거래소 상태: {}). 체결된 {} {}만 보유에 반영했어요.",
-                order.raw_status,
-                qty_text(executed),
-                base_asset(&self.symbol)
-            ));
-        }
-        if incomplete || self.position_uncertain {
-            return Err(format!(
-                "주문 결과를 확인하지 못했어요(거래소 상태: {}). 거래소에서 주문과 포지션을 확인하세요.",
-                order.raw_status
-            ));
-        }
-        let raw = format!(
-            "  ✓ {}{} 체결: id={} 수량={}",
-            side.as_str(),
-            if reduce_only { " (청산)" } else { "" },
-            order.order_id.clone().unwrap_or_else(|| "None".into()),
-            py_num(executed)
-        );
-        self.logger.ui(&raw);
-        self.fill_activity(side, closing, executed, average, realized_before, order.fee.as_ref(), raw);
-        Ok(true)
     }
 
     /// 체결을 사람이 읽는 문장으로 — "BTC 0.00122개를 81,806 USDT에 샀어요"(자산 이름 뒤에 조사를 붙이지 않음).
@@ -257,6 +259,19 @@ impl Bot {
             Side::Short => price >= self.entry_price * (1.0 + sl),
         }
     }
+}
+
+/// 주문 결과 분류 — (결과가 불확실한지, 체결로 보고할지).
+/// 끝나지 않은 상태·FILLED인데 수량이나 평균가가 0·평균가 없는 체결·수수료를 모르는 결과는 불확실로 봄.
+fn classify(order: &Order) -> (bool, bool) {
+    let (executed, average) = (order.executed_qty, order.avg_price);
+    let result_uncertain = !crate::brokers::is_terminal(&order.status)
+        || (order.status == "FILLED" && !(executed != 0.0 && average != 0.0))
+        || (executed != 0.0 && average == 0.0)
+        || !order.fees_known;
+    let reported_fill =
+        order.status == "FILLED" && !result_uncertain && [executed, average].iter().all(|v| v.is_finite() && *v > 0.0);
+    (result_uncertain, reported_fill)
 }
 
 /// 신호가 대비 체결가 차이 — "신호가 대비 +0.12%"(체결가가 높으면 +). 신호가가 없으면 None.

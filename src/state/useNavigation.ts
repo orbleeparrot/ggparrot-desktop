@@ -1,6 +1,6 @@
 // 화면 이동 — 실행 화면 ↔ 설정, 고른 슬롯, 한 열에서 상세가 열렸는지 여부, runner:navigate, 단축키(⌘/Ctrl+, 및 ⌘/Ctrl+O).
 // 새 슬롯이 나타나면(웹 [실행기 열기]·매크로 추가) 그 슬롯을 고름. 고른 슬롯이 빠지면 맨 위 슬롯을 고름.
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { on, type NavigatePayload } from "../ipc";
 import { EV_NAVIGATE, type AppState } from "../types";
 import type { SettingsTarget } from "./runs";
@@ -14,8 +14,8 @@ export interface Navigation {
   openRun(): void;
   select(runId: string): void;
   closeDetail(): void;
-  /** runner:navigate {to:"library"} 이벤트가 오면 부를 함수(App이 채움). */
-  onLibrary: MutableRefObject<(() => void) | null>;
+  /** runner:navigate {to:"library"} 이벤트가 오면 부를 함수를 정함(App이 매크로 추가 창 열기로 채움). */
+  setLibraryHandler(open: (() => void) | null): void;
 }
 
 export function useNavigation(state: AppState | null, demo = "", openDetail = false): Navigation {
@@ -98,7 +98,10 @@ export function useNavigation(state: AppState | null, demo = "", openDetail = fa
     return () => window.removeEventListener("keydown", onKey);
   }, [navigate]);
 
-  return { view, target, selectedId, detailOpen, openSettings, openRun, select, closeDetail, onLibrary };
+  const setLibraryHandler = useCallback((open: (() => void) | null) => {
+    onLibrary.current = open;
+  }, []);
+  return { view, target, selectedId, detailOpen, openSettings, openRun, select, closeDetail, setLibraryHandler };
 }
 
 function isTyping(target: EventTarget | null): boolean {

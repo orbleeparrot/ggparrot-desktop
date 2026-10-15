@@ -32,23 +32,16 @@ export const SCENES = {
   },
 } satisfies Record<Site, Partial<Record<ScreenKind, Scene>>>;
 
-const LABEL: Record<Site, string> = {
-  upbit: "업비트",
-  bithumb: "빗썸",
-  "binance:testnet": "바이낸스 테스트넷",
-  "binance:demo": "바이낸스 데모",
-  "binance:live": "바이낸스",
-};
-
 /** 도우미가 안내하는 사이트 — 바이낸스는 실행 환경(env)마다 다름. */
 export function siteOf(w: Pick<WizardState, "exchange" | "env">): Site {
   if (w.exchange === "binance") return `binance:${w.env || "live"}` as Site;
   return w.exchange;
 }
 
-export function ExchangeScreen({ site, kind, ip }: { site: Site; kind: ScreenKind; ip: string }) {
+/** label: 사이트 이름(WizardState.label) — 그림의 접근성 이름에 씀. */
+export function ExchangeScreen({ site, kind, ip, label }: { site: Site; kind: ScreenKind; ip: string; label: string }) {
   const scenes: Partial<Record<ScreenKind, Scene>> = SCENES[site];
   const scene = scenes[kind];
   if (!scene) return null;
-  return <ScenePlayer scene={scene} ip={ip} label={LABEL[site]} />;
+  return <ScenePlayer scene={scene} ip={ip} label={label} />;
 }

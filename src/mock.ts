@@ -5,11 +5,14 @@
 import type { Backend, ConfirmPayload, Unlisten } from "./ipc";
 import {
   emptyKey,
+  EXCHANGE_LABELS,
   initialModel,
   IMPORT_SAMPLES,
   MOCK_NEXT_VERSION,
   MOCK_VERSION,
   newRun,
+  SLOT_EXCHANGE,
+  SLOT_LABELS,
   uniqueName,
   type MockRun,
   type Model,
@@ -19,9 +22,9 @@ import { conflictMessage, filled, isActive, keySlotOf, marketPageOf, snapshot } 
 import { createWizard, type WizardTarget } from "./mockWizard";
 import { formatClock } from "./state/format";
 import { MAX_ACTIVITY } from "./state/activity";
+import { SIDE_LABELS } from "./state/runs";
 import type { Activity, Exchange, KeyField, KeySlot, Market, Notice, RunMode, StartReply, StopMode } from "./types";
 import { EV_ACTIVITY, EV_CONFIRM, EV_NOTICE, EV_STATE } from "./types";
-import { EXCHANGE_LABELS, SLOT_EXCHANGE, SLOT_LABELS } from "./mockData";
 import { WEB_URL } from "./platform";
 
 type Handler = (payload: unknown) => void;
@@ -151,7 +154,7 @@ export function createMockBackend(
     return {
       kind: "confirm_live",
       title: `${label} 실전으로 시작할까요?`,
-      message: `실제 자금으로 주문해요.\n${r.macro.symbol} · ${r.macro.side === "long" ? "롱" : "숏"}`,
+      message: `실제 자금으로 주문해요.\n${r.macro.symbol} · ${SIDE_LABELS[r.macro.side]}`,
     };
   }
 
@@ -305,7 +308,7 @@ export function createMockBackend(
           message: `이 매크로를 시작하려면 ${label} API 키가 필요해요.\n\n설정 › 거래소 연결에서 입력하세요.`,
         };
       }
-      if (!m.member) return { kind: "blocked", message: "회원 키가 필요해요.\n\n설정 › 껄무새 계정에서 입력하세요." };
+      if (!m.member) return { kind: "blocked", message: "회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요." };
       if (r.mode !== "mock" && m.keys[slot].status !== "connected") {
         r.startAfterCheck = true;
         r.phase = "checking";

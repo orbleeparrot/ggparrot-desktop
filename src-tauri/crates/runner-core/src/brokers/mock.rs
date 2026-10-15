@@ -7,9 +7,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use super::{
-    exc_text, positive_number, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest,
-};
+use super::{exc_text, positive_f64, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest};
 use crate::types::{Market, Side};
 
 const MOCK_DEFAULT_FEE: f64 = 0.0005;
@@ -19,10 +17,6 @@ pub struct MockBroker {
     inner: Arc<dyn Broker>,
     log: Mutex<LogFn>,
     noted: Mutex<HashSet<&'static str>>,
-}
-
-fn number(x: f64) -> f64 {
-    serde_json::Number::from_f64(x).map(|n| positive_number(&serde_json::Value::Number(n))).unwrap_or(0.0)
 }
 
 impl MockBroker {
@@ -44,7 +38,7 @@ impl MockBroker {
 
     fn fee_rate(&self) -> f64 {
         // 바이낸스 어댑터에는 수수료율이 없음. 읽지 못했거나 0이면 기본값으로 대신함.
-        let rate = self.inner.bid_fee().map(number).unwrap_or(0.0);
+        let rate = self.inner.bid_fee().map(positive_f64).unwrap_or(0.0);
         if rate != 0.0 {
             rate
         } else {
@@ -137,13 +131,13 @@ impl Broker for MockBroker {
     /// 현재가로 즉시 전부 체결된 것으로 돌려줌. 안쪽 submit은 어떤 경우에도 부르지 않음.
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError> {
         let buying = req.side == OrderSide::Buy;
-        let price = number(self.inner.price().await?);
+        let price = positive_f64(self.inner.price().await?);
         if price == 0.0 {
             return Err(BrokerError::Other("모의 체결에 쓸 현재가를 받지 못했어요".into()));
         }
-        let notional = req.notional.map(number).unwrap_or(0.0);
+        let notional = req.notional.map(positive_f64).unwrap_or(0.0);
         let executed =
-            if buying && notional != 0.0 { notional / price } else { req.base_qty.map(number).unwrap_or(0.0) };
+            if buying && notional != 0.0 { notional / price } else { req.base_qty.map(positive_f64).unwrap_or(0.0) };
         if executed == 0.0 {
             return Err(BrokerError::Other("모의 주문에 쓸 금액이나 수량이 없어요".into()));
         }

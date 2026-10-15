@@ -42,7 +42,9 @@ export function ResultStage({ wizard }: { wizard: WizardState }) {
     <>
       <CheckRows checks={wizard.checks} notes={wizard.notes} ip={ip} />
       {problem === "ip" && binance && <p className="wz-lead">{restrictLead(wizard.market)}</p>}
-      {problem === "ip" && <ExchangeScreen site={siteOf(wizard)} kind={binance ? "restrict" : "fix"} ip={ip} />}
+      {problem === "ip" && (
+        <ExchangeScreen site={siteOf(wizard)} kind={binance ? "restrict" : "fix"} ip={ip} label={wizard.label} />
+      )}
       {wizard.reason && showReason && <p className="wz-reason">{wizard.reason}</p>}
       <div className="wz-fix-actions">
         {problem === "ip" && (

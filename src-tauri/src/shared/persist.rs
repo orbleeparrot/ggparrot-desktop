@@ -20,8 +20,8 @@ impl Shared {
             && std::fs::rename(&tmp, path).is_ok()
     }
 
-    /// 저장에 실패하면 한 번만 알림(실패가 이어져도 같은 알림을 쏟아내지 않게).
-    fn warn_save_failed(&self, ok: bool) {
+    /// 저장에 실패하면 한 번만 알림(실패가 이어져도 같은 알림을 쏟아내지 않게). Core 잠금을 푼 뒤 부름.
+    pub(crate) fn warn_save_failed(&self, ok: bool) {
         if ok {
             self.save_warned.store(false, std::sync::atomic::Ordering::Relaxed);
         } else if !self.save_warned.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -32,22 +32,24 @@ impl Shared {
         }
     }
 
-    pub(crate) fn save_runs(&self, c: &Core) {
+    /// runs.json을 씀. 성공하면 참 — 실패 알림은 잠금을 푼 뒤 [`Shared::warn_save_failed`]로.
+    #[must_use = "잠금을 푼 뒤 warn_save_failed로 넘김"]
+    pub(crate) fn save_runs(&self, c: &Core) -> bool {
         let list: Vec<SavedRun> = c.runs.iter().map(Run::saved).collect();
-        let ok = Self::write_json(&self.runs_path(), &serde_json::to_value(list).unwrap_or_default());
-        self.warn_save_failed(ok);
+        Self::write_json(&self.runs_path(), &serde_json::to_value(list).unwrap_or_default())
     }
 
-    pub(crate) fn save_prefs(&self, c: &Core) {
-        let ok = Self::write_json(
+    /// prefs.json을 씀. 성공하면 참 — 실패 알림은 잠금을 푼 뒤 [`Shared::warn_save_failed`]로.
+    #[must_use = "잠금을 푼 뒤 warn_save_failed로 넘김"]
+    pub(crate) fn save_prefs(&self, c: &Core) -> bool {
+        Self::write_json(
             &self.prefs_path(),
             &json!({
                 "show_dev_log": c.show_dev_log,
                 "close_to_tray": c.close_to_tray,
                 "last_version": self.version,
             }),
-        );
-        self.warn_save_failed(ok);
+        )
     }
 
     pub(crate) fn load_saved(&self) {
@@ -93,7 +95,9 @@ impl Shared {
             }
         }
         // 이번 버전을 기록해 둠(다음 실행에서 업데이트 여부를 앎).
-        self.save_prefs(&c);
+        let saved = self.save_prefs(&c);
+        drop(c);
+        self.warn_save_failed(saved);
     }
 }
 

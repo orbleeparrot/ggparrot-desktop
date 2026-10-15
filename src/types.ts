@@ -105,7 +105,7 @@ export interface RunSlot {
 export interface SlotCard {
   slot: KeySlot;
   exchange: Exchange;
-  /** "바이낸스"·"바이낸스 테스트넷"·"업비트"·"빗썸" */
+  /** "바이낸스"·"바이낸스 테스트넷"·"바이낸스 데모"·"업비트"·"빗썸" */
   label: string;
   fieldLabels: [string, string];
   accessFilled: boolean;
@@ -292,52 +292,3 @@ export const EV_NOTICE = "runner:notice";
 export const EV_CONFIRM = "runner:confirm";
 /** payload: { to: "settings" | "settings:about" | "run" | "run:{id}" | "library" } — 앱 메뉴·트레이 등에서 화면을 바꿈. */
 export const EV_NAVIGATE = "runner:navigate";
-
-/**
- * 명령(invoke 이름·인자). 실패하면 한국어 오류 문자열로 reject.
- * 실행
- *  get_state() -> AppState
- *  get_activity({ runId }) -> Activity[]
- *  add_macro_file() -> string | null          (파일을 골라 매크로 폴더로 가져온 뒤 슬롯 추가, 추가한 runId·취소면 null)
- *  add_run_from_library({ fileName }) -> string (추가한 runId)
- *  remove_run({ runId }) -> void              (실행 중이면 거절)
- *  set_run_mode({ runId, mode }) -> void
- *  start_run({ runId }) -> StartReply
- *  start_run_confirmed({ runId }) -> StartReply
- *  stop_run({ runId, mode: StopMode }) -> void
- *  copy_activity({ runId }) -> void
- *  open_run_web_page({ runId }) -> void       (껄무새 웹의 이 실행 기록 화면을 기본 브라우저로 엶)
- * 설정
- *  set_slot_key({ slot, field, value }) -> void
- *  reveal_slot_key({ slot, field }) -> string
- *  set_slot_remember({ slot, remember }) -> void
- *  check_slot({ slot }) -> void
- *  set_member_key({ value }) -> void
- *  reveal_member_key() -> string
- *  set_show_dev_log({ show }) -> void
- *  set_close_to_tray({ value }) -> void
- *  recover_storage() -> void
- *  update_check() -> void
- *  update_install() -> void                   (내려받아 서명 확인, 끝나면 status=ready. 설치는 아직)
- *  update_restart() -> void                   (설치하고 다시 시작. 실행 중인 매크로가 있으면 거절)
- * 매크로 폴더
- *  library_refresh() -> void
- *  library_open_folder() -> void              (Finder·탐색기로 엶)
- *  library_import() -> number                 (파일을 골라 폴더로 복사, 가져온 수. 같은 이름은 "이름 (2).ggm.json")
- *  창에 파일을 끌어다 놓으면 Rust가 폴더로 가져오고 runner:notice(info)로 알림.
- * 연결 도우미(업비트·빗썸·바이낸스)
- *  wizard_open({ exchange, slot?, stage? }) -> void  (slot: 바이낸스 실거래·테스트넷·데모 칸)
- *  wizard_choose({ path: "new" | "existing" }) -> void
- *  wizard_go({ stage }) -> void
- *  wizard_back() -> void
- *  wizard_close() -> void
- *  wizard_refresh_ip() -> void
- *  wizard_copy_ip() -> void
- *  wizard_copy_and_open() -> void
- *  wizard_open_api_page() -> void
- *  wizard_open_home() -> void
- *  wizard_recheck() -> void
- *  wizard_recopy() -> void
- *  wizard_set_key({ field: "access" | "secret", value }) -> void
- *  wizard_set_remember({ remember }) -> void
- */

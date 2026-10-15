@@ -1,32 +1,16 @@
-// 오른쪽 상세 — 머리줄(종목·방향·거래소·모드·시작/종료)·막힌 이유·상태 카드·활동 기록.
-import {
-  ArrowLeft,
-  CircleAlert,
-  ExternalLink,
-  History,
-  LoaderCircle,
-  Play,
-  Settings,
-  TriangleAlert,
-} from "lucide-react";
+// 오른쪽 상세 — 머리줄(종목·방향·거래소)·모드·시작/종료·막힌 이유·상태 카드·활동 기록.
+import { CircleAlert, LoaderCircle, Play, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
-import {
-  canStop,
-  isIdle,
-  MARKET_LABELS,
-  MODE_NOTES,
-  settingsTargetOf,
-  SIDE_LABELS,
-  stopChoices,
-} from "../../state/runs";
+import { isIdle, MODE_NOTES, primaryAction, settingsTargetOf, stopChoices } from "../../state/runs";
 import type { Activity, RunSlot } from "../../types";
 import { ActivityFeed } from "../activity/ActivityFeed";
-import { ExchangeLogo } from "../ExchangeLogo";
 import { CapitalRow } from "./CapitalRow";
+import { DetailHeader } from "./DetailHeader";
 import { IdleCard } from "./IdleCard";
-import { StatusCard } from "./StatusCard";
+import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
+import { StatusCard } from "./StatusCard";
 
 interface Props {
   slot: RunSlot;
@@ -39,7 +23,8 @@ interface Props {
 
 function Controls({ slot }: { slot: RunSlot }) {
   const { startRun, askStop } = useRunnerContext();
-  if (isIdle(slot.phase)) {
+  const action = primaryAction(slot.phase);
+  if (action.kind === "start") {
     return (
       <button
         type="button"
@@ -51,7 +36,7 @@ function Controls({ slot }: { slot: RunSlot }) {
       </button>
     );
   }
-  if (canStop(slot.phase)) {
+  if (action.kind === "stop") {
     return (
       <div className="detail-stop">
         {stopChoices(slot).map((c) => (
@@ -70,34 +55,13 @@ function Controls({ slot }: { slot: RunSlot }) {
   return (
     <button type="button" className="btn btn-ghost btn-lg" disabled>
       <LoaderCircle size={15} className="spin" aria-hidden="true" />
-      {slot.phase === "checking" ? "연결 확인 중…" : "종료 처리 중…"}
+      {action.label}
     </button>
   );
 }
 
-function MacroNotes({ slot }: { slot: RunSlot }) {
-  const m = slot.macro;
-  if (!m.exchange)
-    return (
-      <p className="note note-danger">
-        이 앱이 지원하지 않는 거래소({m.exchangeName || "알 수 없음"})예요. 바이낸스 · 업비트 · 빗썸 매크로만 실행할 수
-        있어요.
-      </p>
-    );
-  if (m.signature === "modified")
-    return (
-      <p className="note note-warn">
-        <TriangleAlert size={14} aria-hidden="true" />이 매크로는 웹에서 받은 원본과 설정이 달라요(투자 금액 등). 이
-        기기에서 바꾼 설정으로 실행돼요.
-      </p>
-    );
-  if (m.signature === "unsigned")
-    return <p className="note note-muted">서명이 없는 예전 파일이에요. 실행은 되지만 원본인지 확인할 수 없어요.</p>;
-  return null;
-}
-
 export function RunDetail({ slot, activity, prices, onBack, loadActivity, activityFailed = false }: Props) {
-  const { openSettings, ok } = useRunnerContext();
+  const { openSettings } = useRunnerContext();
   const m = slot.macro;
   const r = slot.readiness;
   const target = settingsTargetOf(r.needs);
@@ -105,63 +69,9 @@ export function RunDetail({ slot, activity, prices, onBack, loadActivity, activi
 
   useEffect(() => loadActivity(slot.id), [slot.id, loadActivity]);
 
-  const facts = [
-    // 서버가 알려 준 출처(서명 확인 등)가 있으면 그게 더 정확함.
-    slot.run?.macroOrigin || (m.source === "web" ? "웹 매크로" : "파일 매크로"),
-    m.strategy,
-    MARKET_LABELS[m.market],
-    m.leverage > 1 ? `${m.leverage}배` : "",
-  ].filter(Boolean);
-
   return (
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
-      <div className="detail-head">
-        {onBack && (
-          <button type="button" className="icon-btn detail-back" aria-label="내 매크로 목록으로" onClick={onBack}>
-            <ArrowLeft size={18} />
-          </button>
-        )}
-        <ExchangeLogo exchange={m.exchange} size={30} />
-        <div className="detail-name">
-          <h2 id="detail-title" className="detail-title">
-            <span className="num">{m.symbol}</span>
-            <span className={`side side-${m.side}`}>{SIDE_LABELS[m.side]}</span>
-            <span className="detail-exchange">{m.exchangeLabel || m.exchangeName}</span>
-          </h2>
-          <p className="detail-sub" title={m.title}>
-            <span className="detail-file">{m.title}</span>
-            {facts.map((f) => (
-              <span key={f}> · {f}</span>
-            ))}
-          </p>
-        </div>
-        {(slot.marketPage || slot.webRunPage) && (
-          <div className="detail-links">
-            {slot.webRunPage && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                title="껄무새 웹의 내 에이전트에서 이 실행 기록을 열어요"
-                onClick={() => void ok("open_run_web_page", { runId: slot.id })}
-              >
-                <History size={13} aria-hidden="true" />
-                웹에서 실행 기록 보기
-              </button>
-            )}
-            {slot.marketPage && (
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                title={`${m.symbol} 시세를 브라우저로 열어요`}
-                onClick={() => void ok("open_market_page", { runId: slot.id })}
-              >
-                {slot.marketPage}
-                <ExternalLink size={13} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <DetailHeader slot={slot} onBack={onBack} />
 
       <div className="detail-controls">
         <div className="detail-mode">
@@ -183,7 +93,7 @@ export function RunDetail({ slot, activity, prices, onBack, loadActivity, activi
           )}
         </div>
       )}
-      <MacroNotes slot={slot} />
+      <MacroNotes slot={slot} blockerShown={showBlocker} />
       {m.summary &&
         (slot.run ? (
           // 실행 중에는 한 줄로 줄여 상태 카드를 밀어내지 않게 — 전체는 마우스를 올리면 보임.

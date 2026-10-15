@@ -9,36 +9,6 @@ impl Core {
 
     /// `library`가 거짓이면 매크로 폴더 목록을 빼고 그림(화면은 지난 목록을 그대로 씀).
     pub fn render_with(&self, version: &str, library: bool) -> AppStateDto {
-        let running = self.running_count();
-        // 확인이 필요한 실행(실행 중 심각한 저하·오류로 끝남)과 잠깐 불안정한 실행을 따로 셈.
-        let attention = self.runs.iter().filter(|r| r.needs_attention()).count();
-        let shaky = self.runs.iter().filter(|r| r.degraded().is_some_and(|(_, tone)| tone == "warn")).count();
-        let mut parts = vec![];
-        if self.claim_busy {
-            parts.push("웹 연결 확인 중…".to_string());
-        }
-        if running > 0 {
-            parts.push(format!("실행 중 {running}개"));
-        }
-        if attention > 0 {
-            parts.push(format!("확인 필요 {attention}개"));
-        } else if shaky > 0 {
-            parts.push("연결 다시 시도하는 중".to_string());
-        }
-        let status = if !parts.is_empty() {
-            let tone = if attention > 0 {
-                "danger"
-            } else if shaky > 0 || self.claim_busy {
-                "warn"
-            } else {
-                "ok"
-            };
-            StatusDto { text: parts.join(" · "), tone: tone.into() }
-        } else if self.runs.is_empty() {
-            StatusDto { text: "매크로를 추가하세요".into(), tone: "muted".into() }
-        } else {
-            StatusDto { text: "대기 중".into(), tone: "muted".into() }
-        };
         AppStateDto {
             version: version.into(),
             runs: self.runs.iter().map(|r| self.render_run(r)).collect(),
@@ -86,9 +56,44 @@ impl Core {
                 blocked: self.update.blocked.clone(),
                 updated_from: self.update.updated_from.clone(),
             },
-            status,
+            status: self.header_status(),
             claiming: self.claim_busy,
         }
+    }
+
+    /// 머리줄 상태 — 실행 중 수·확인 필요 수·불안정.
+    /// - 웹 연결(claiming) 중 글자는 머리줄(Header.tsx)이 '웹에서 매크로를 받는 중…'으로 덮음. 여기서는 색(warn)만 정함.
+    fn header_status(&self) -> StatusDto {
+        let running = self.running_count();
+        // 확인이 필요한 실행(실행 중 심각한 저하·오류로 끝남)과 잠깐 불안정한 실행을 따로 셈.
+        let attention = self.runs.iter().filter(|r| r.needs_attention()).count();
+        let shaky = self.runs.iter().filter(|r| r.degraded().is_some_and(|(_, tone)| tone == "warn")).count();
+        let mut parts = vec![];
+        if running > 0 {
+            parts.push(format!("실행 중 {running}개"));
+        }
+        if attention > 0 {
+            parts.push(format!("확인 필요 {attention}개"));
+        } else if shaky > 0 {
+            parts.push("연결 다시 시도하는 중".to_string());
+        }
+        let tone = if attention > 0 {
+            "danger"
+        } else if shaky > 0 || self.claim_busy {
+            "warn"
+        } else if !parts.is_empty() {
+            "ok"
+        } else {
+            "muted"
+        };
+        let text = if !parts.is_empty() {
+            parts.join(" · ")
+        } else if self.runs.is_empty() {
+            "매크로를 추가하세요".to_string()
+        } else {
+            "대기 중".to_string()
+        };
+        StatusDto { text, tone: tone.into() }
     }
 
     pub(crate) fn render_run(&self, r: &Run) -> RunDto {
@@ -99,55 +104,9 @@ impl Core {
         let lev = macro_leverage(m).unwrap_or(1);
         let symbol = macro_symbol(m);
         let quote = quote_of(&symbol);
-        let signature = if r.source == "web" {
-            "web"
-        } else if r.modified || (r.sig.is_some() && r.original_capital.is_some()) {
-            "modified"
-        } else if r.sig.is_some() {
-            "signed"
-        } else {
-            "unsigned"
-        };
-        let phase = if r.running() {
-            if r.stopping {
-                "stopping"
-            } else {
-                "running"
-            }
-        } else if r.start_pending && r.cancel_requested.is_some() {
-            "stopping"
-        } else if r.start_pending {
-            "starting"
-        } else if r.checking {
-            "checking"
-        } else if r.data.as_ref().is_some_and(|d| d.finished.is_some()) {
-            "finished"
-        } else {
-            "idle"
-        };
+        let phase = r.phase();
         let (can_start, blocker, needs) = self.readiness(r);
-        let status = match phase {
-            "running" => match r.degraded() {
-                Some((what, tone)) => (format!("실행 중 · {what}"), tone),
-                None => ("실행 중".to_string(), "ok"),
-            },
-            "stopping" => ("종료 처리 중…".to_string(), "warn"),
-            "starting" => ("시작하는 중…".to_string(), "warn"),
-            "checking" => ("연결 확인 중…".to_string(), "warn"),
-            "finished" => {
-                let (st, note, _) = r.data.as_ref().and_then(|d| d.finished.clone()).unwrap_or_default();
-                let tone = if st == "error" { "danger" } else { "muted" };
-                let what = if note.is_empty() { finish_label(&st).to_string() } else { note };
-                (format!("종료됨 · {what}"), tone)
-            }
-            _ => {
-                if can_start {
-                    ("대기 중".to_string(), "muted")
-                } else {
-                    ("시작 전 확인 필요".to_string(), "warn")
-                }
-            }
-        };
+        let status = r.status_line(phase, can_start);
         RunDto {
             id: r.id.clone(),
             macro_: MacroDto {
@@ -163,18 +122,14 @@ impl Core {
                 side: side.as_str().into(),
                 leverage: lev,
                 summary: m.get("human_summary").and_then(Value::as_str).unwrap_or("").trim().to_string(),
-                signature: signature.into(),
+                signature: r.signature().into(),
                 strategy: runner_core::macro_info::rule_type(m)
                     .map(runner_core::macro_info::strategy_label)
                     .unwrap_or_default()
                     .into(),
                 capital: runner_core::macro_info::initial_capital(m),
                 capital_original: r.original_capital,
-                capital_locked: if r.source == "web" || r.user_macro_id.is_some() {
-                    "웹에서 연결한 매크로는 여기서 투자 금액을 바꿀 수 없어요. 웹에서 고친 뒤 다시 연결하세요.".into()
-                } else {
-                    String::new()
-                },
+                capital_locked: if r.capital_locked() { CAPITAL_LOCKED.into() } else { String::new() },
                 order_cap: runner_core::types::order_cap(quote),
                 risk: runner_core::macro_info::risk_summary(m),
             },
@@ -193,7 +148,7 @@ impl Core {
 
     /// (시작 가능, 막힌 이유, 설정으로 데려갈 곳)
     pub(crate) fn readiness(&self, r: &Run) -> (bool, String, Option<NeedsDto>) {
-        if r.running() || r.start_pending || r.checking {
+        if r.busy() {
             return (false, String::new(), None);
         }
         if let Some(why) = runner_core::macro_info::unsupported_reason(&r.macro_) {
@@ -216,10 +171,10 @@ impl Core {
             }
         }
         if self.member_key.trim().is_empty() {
-            return (false, "회원 키가 필요해요. 설정에서 입력하세요.".into(), Some(NeedsDto::Member));
+            return (false, MEMBER_KEY_NEEDED.into(), Some(NeedsDto::Member));
         }
         if self.claim_busy {
-            return (false, "웹 매크로 연결이 끝날 때까지 잠시만 기다려 주세요.".into(), None);
+            return (false, CLAIM_BUSY_WAIT.into(), None);
         }
         (true, String::new(), None)
     }
@@ -244,7 +199,7 @@ impl Core {
             show_dev_log: self.show_dev_log,
             close_to_tray: self.close_to_tray,
             server_base: self.server_base.clone(),
-            server_custom: self.server_base.trim_end_matches('/') != runner_core::types::DEFAULT_SERVER_BASE,
+            server_custom: !is_default_server(&self.server_base),
             os: crate::shared::os_summary().into(),
             public_ip: {
                 let (status, address) = self.public_ip_view();
@@ -257,12 +212,11 @@ impl Core {
     pub(crate) fn render_slot(&self, s: KeySlot) -> SlotDto {
         let st = self.slot(s);
         let ex = s.exchange();
-        let (status, headline, mut note) = if self.slot_pair(s).is_none() {
-            ("empty", "● 연결 안 됨".to_string(), String::new())
-        } else if self.slot_busy(s) {
-            ("checking", "● 확인 중".to_string(), String::new())
-        } else if let Some(c) = self.current_slot_check(s) {
-            if c.view.connected {
+        let check = self.slot_status(s);
+        let (status, headline, mut note) = match check {
+            SlotStatus::Empty => ("empty", "● 연결 안 됨".to_string(), String::new()),
+            SlotStatus::Busy(_) => ("checking", "● 확인 중".to_string(), String::new()),
+            SlotStatus::Done(c) if c.view.connected => {
                 let n = if c.view.problem == "order_size" {
                     c.reason.clone()
                 } else if now_ms() - c.checked_at > KEY_CHECK_STALE_MS {
@@ -271,23 +225,26 @@ impl Core {
                     String::new()
                 };
                 ("connected", "✓ 연결됨".to_string(), n)
-            } else {
+            }
+            SlotStatus::Done(c) => {
                 // 막힌 곳을 머리줄에 바로 씀 — 고치는 길은 [연결 도우미]에 있음.
                 // 바이낸스는 어느 권한을 켤지(선물은 키를 새로 만들어야 하는 경우까지)가 이유에 있어 아래에 둠.
                 let note = if ex.is_domestic() { String::new() } else { c.reason.clone() };
                 ("blocked", format!("● {}", c.view.headline), note)
             }
-        } else {
-            ("unchecked", "● 확인 전".to_string(), String::new())
+            SlotStatus::Unchecked => ("unchecked", "● 확인 전".to_string(), String::new()),
         };
         if note.is_empty() {
             let failure = self.load_failure_note();
             note = if !failure.is_empty() { failure } else { self.storage_error.clone() };
         }
-        let checks = self
-            .current_slot_check(s)
-            .map(|c| ChecksDto { auth: c.view.auth, ip: c.view.ip, order: c.view.order })
-            .unwrap_or(ChecksDto { auth: Check::Wait, ip: Check::Wait, order: Check::Wait });
+        // 다시 확인하는 중에도 같은 지문의 지난 결과는 세 줄에 그대로 둠.
+        let checks = match check {
+            SlotStatus::Done(c) | SlotStatus::Busy(Some(c)) => {
+                ChecksDto { auth: c.view.auth, ip: c.view.ip, order: c.view.order }
+            }
+            _ => ChecksDto::waiting(),
+        };
         let (a, sec) = ex.field_labels();
         SlotDto {
             slot: s,
@@ -351,7 +308,7 @@ impl Core {
             ("error", _) => "확인하지 못함".into(),
             _ => "확인 전".into(),
         };
-        let server = if self.server_base.trim_end_matches('/') == runner_core::types::DEFAULT_SERVER_BASE {
+        let server = if is_default_server(&self.server_base) {
             format!("{} (기본)", self.server_base)
         } else {
             format!("{} (기본 서버 아님)", self.server_base)
@@ -373,16 +330,12 @@ impl Core {
         }
         lines.push(format!("매크로 {}개:", self.runs.len()));
         for r in &self.runs {
-            let mode = match r.mode {
-                RunMode::Mock => "모의",
-                RunMode::Testnet => "테스트넷",
-                RunMode::Live => "실전",
-            };
             let d = self.render_run(r);
             lines.push(format!(
-                "- {} {} · {mode} · {} ({})",
+                "- {} {} · {} · {} ({})",
                 exchange_label(&r.exchange_name()),
                 r.symbol(),
+                r.mode.label(),
                 d.status.text,
                 r.title
             ));
@@ -394,22 +347,23 @@ impl Core {
         let w = self.wizard.as_ref()?;
         let result = self.ip_cache.result();
         let (ip_status, address) = self.public_ip_view();
-        let (state, view, reason) = self.wizard_check(w.slot);
+        let slot = w.slot();
+        let (state, view, reason) = self.wizard_check(slot);
         let show_view = matches!(w.stage.as_str(), "result_ok" | "result_fail") || state == "done";
-        let ex = w.slot.exchange();
+        let ex = slot.exchange();
         let (a, s) = ex.field_labels();
-        // 바이낸스는 키를 만드는 사이트 이름으로 부름(테스트넷·데모·실거래).
-        let (label, home) = match w.env {
-            "testnet" => ("바이낸스 테스트넷", "테스트넷"),
-            "demo" => ("바이낸스 데모", "데모"),
-            _ => (ex.label(), ex.label()),
+        // 바이낸스는 키를 만드는 사이트 이름(칸 이름)으로 부름 — 테스트넷·데모·실거래.
+        let home = match slot {
+            KeySlot::BinanceTestnet => "테스트넷",
+            KeySlot::BinanceDemo => "데모",
+            _ => ex.label(),
         };
         Some(WizardDto {
             exchange: ex,
-            slot: w.slot,
-            env: w.env.into(),
-            market: w.market,
-            label: label.into(),
+            slot,
+            env: w.env().into(),
+            market: w.target.market,
+            label: slot.label().into(),
             home_label: home.into(),
             stage: w.stage.clone(),
             path: w.path.clone(),
@@ -424,17 +378,74 @@ impl Core {
             checks: if show_view {
                 ChecksDto { auth: view.auth, ip: view.ip, order: view.order }
             } else {
-                ChecksDto { auth: Check::Wait, ip: Check::Wait, order: Check::Wait }
+                ChecksDto::waiting()
             },
             headline: if show_view { view.headline.clone() } else { String::new() },
             notes: if show_view { view.notes.clone() } else { CheckNotes::default() },
-            keys_ready: self.slot_pair(w.slot).is_some(),
+            keys_ready: self.slot_pair(slot).is_some(),
             reason,
             problem: if show_view { view.problem.clone() } else { String::new() },
             watching_clipboard: WATCH_STAGES.contains(&w.stage.as_str()),
-            remembered: self.slot(w.slot).remember,
+            remembered: self.slot(slot).remember,
             remember_supported: self.remember_supported,
         })
+    }
+}
+
+impl Run {
+    /// 매크로 출처 표시 — web·modified(파일을 고침)·signed·unsigned.
+    pub(crate) fn signature(&self) -> &'static str {
+        if self.source == "web" {
+            "web"
+        } else if self.modified || (self.sig.is_some() && self.original_capital.is_some()) {
+            "modified"
+        } else if self.sig.is_some() {
+            "signed"
+        } else {
+            "unsigned"
+        }
+    }
+
+    /// 화면의 단계 — running·stopping·starting·checking·finished·idle.
+    pub(crate) fn phase(&self) -> &'static str {
+        if self.running() {
+            if self.stopping {
+                "stopping"
+            } else {
+                "running"
+            }
+        } else if self.start_pending && self.cancel_requested.is_some() {
+            "stopping"
+        } else if self.start_pending {
+            "starting"
+        } else if self.checking {
+            "checking"
+        } else if self.data.as_ref().is_some_and(|d| d.finished.is_some()) {
+            "finished"
+        } else {
+            "idle"
+        }
+    }
+
+    /// 카드의 상태 한 줄과 tone — 단계(`phase`)와 시작 가능 여부로.
+    pub(crate) fn status_line(&self, phase: &str, can_start: bool) -> (String, &'static str) {
+        match phase {
+            "running" => match self.degraded() {
+                Some((what, tone)) => (format!("실행 중 · {what}"), tone),
+                None => ("실행 중".to_string(), "ok"),
+            },
+            "stopping" => ("종료 처리 중…".to_string(), "warn"),
+            "starting" => ("시작하는 중…".to_string(), "warn"),
+            "checking" => ("연결 확인 중…".to_string(), "warn"),
+            "finished" => {
+                let (st, note, _) = self.data.as_ref().and_then(|d| d.finished.clone()).unwrap_or_default();
+                let tone = if st == "error" { "danger" } else { "muted" };
+                let what = if note.is_empty() { finish_label(&st).to_string() } else { note };
+                (format!("종료됨 · {what}"), tone)
+            }
+            _ if can_start => ("대기 중".to_string(), "muted"),
+            _ => ("시작 전 확인 필요".to_string(), "warn"),
+        }
     }
 }
 
@@ -622,6 +633,13 @@ pub(crate) struct ChecksDto {
     auth: Check,
     ip: Check,
     order: Check,
+}
+
+impl ChecksDto {
+    /// 아직 결과가 없는 세 줄(모두 기다림).
+    fn waiting() -> Self {
+        ChecksDto { auth: Check::Wait, ip: Check::Wait, order: Check::Wait }
+    }
 }
 
 #[derive(Serialize)]

@@ -6,6 +6,10 @@
 ## 1. 공통
 
 - **포맷:** Prettier(TS·CSS·JSON·YAML, 마크다운 제외)·rustfmt, 줄 폭 120. `npm run format`으로 맞추고 CI가 `format:check`로 확인. 편집기 설정은 `.editorconfig`.
+- **린트:** TS·React는 oxlint(`npm run lint`, 설정 `.oxlintrc.json`, 경고도 실패), Rust는 clippy(`npm run lint:rust`, `-D warnings`). CI가 둘 다 확인.
+  - oxlint를 쓰는 까닭: 앱은 TypeScript 7(네이티브)이라 typescript-eslint가 쓰는 TypeScript JS API가 없음. oxlint는 자체 해석기라 TypeScript 버전과 무관하고 ESLint와 규칙 이름이 같음.
+  - 잡는 규칙: 정확성(correctness) 전체 + `any` 금지, 버튼 `type` 빠짐, 훅 규칙·의존성 배열, React 컴파일러 규칙(렌더 중 ref 읽기·시계 읽기·effect 안 동기 setState 등), 안 쓰는 변수(`_`로 시작하면 예외), 잡은 오류를 다시 던질 때 `cause`.
+  - 렌더 중에 바꿔야 하는 값은 ref가 아니라 상태로 두고 조건부로 갱신함(`if (prev !== x) setPrev(x)`). 최신 콜백을 담는 ref는 effect에서 갱신함.
 - **인코딩·줄 끝:** UTF-8, LF(Windows 스크립트만 CRLF). `.gitattributes`가 강제.
 - **이름:** 화면 이름은 `껄무새`/`GGParrot`(띄어쓰기 없음, Windows 화면은 '껄무새'). 설치 폴더·레지스트리 영문 이름은 `GGParrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`는 바꾸지 않음. 서버 연동 레벨(server link level, `SERVER_LINK_LEVEL`, 서버 필드 `runner_version`, 지금 "19")은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림(서버가 기능별 최소 레벨로 기능을 열고 닫음). '버전'·'계약'·'프로토콜'이라 부르지 않음.
 - **버전:** `src-tauri/Cargo.toml`의 `[workspace.package] version` 한 곳에만 적음. 두 크레이트는 물려받고, `tauri.conf.json`·`package.json`에는 적지 않음(`npm run check:versions`가 확인). 태그는 `v{버전}`.

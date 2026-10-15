@@ -2,6 +2,40 @@
 
 use super::*;
 
+/// 확인 창이 떠 있거나 시작하는 동안 설정이 바뀌어 시작하지 않을 때.
+const PREFLIGHT_EXPIRED: &str = "확인 중 설정이 바뀌었거나 확인 유효 시간이 지났어요";
+const PRESS_START_AGAIN: &str = "[시작]을 다시 누르면 새로 확인해요.";
+
+/// 서버 세션을 만들고 봇을 띄울 때 쓰는 값 — [`Core::launch_job`]이 잠금 안에서 한 번 떠 둠.
+pub(crate) struct LaunchJob {
+    pub id: String,
+    pub macro_: Value,
+    pub mode: RunMode,
+    pub creds: Credentials,
+    /// 시작 전 확인 지문 — 시작 요청 동안 설정이 바뀌었는지 비교함.
+    pub fp: String,
+    /// 서버 시작 요청 본문.
+    pub payload: Value,
+    pub base: String,
+    pub generation: u64,
+    pub preflight: PreflightResult,
+}
+
+/// 세션을 만든 뒤 봇을 띄우지 않고 끝내는 이유.
+#[derive(Debug, PartialEq)]
+pub(crate) enum LaunchCancel {
+    /// 시작하는 중에 사용자가 종료를 누름.
+    User,
+    /// 설정·판이 바뀌었거나 앱을 닫는 중·웹 연결 중·같은 종목이 먼저 시작함.
+    Changed,
+}
+
+/// 봇을 붙인 뒤 웹 가이드에 '시작함'을 알릴 곳.
+pub(crate) struct BotAttached {
+    reporter: Option<Arc<SetupProgressReporter>>,
+    env: &'static str,
+}
+
 impl Shared {
     pub fn start_run(self: &S, id: &str) -> StartReply {
         let blocked = |m: &str| StartReply::Blocked { message: m.into() };
@@ -38,7 +72,7 @@ impl Shared {
             return blocked(&runner_core::types::exchange_key_needed_message(slot.label()));
         }
         if c.member_key.trim().is_empty() {
-            return blocked("회원 키가 필요해요.\n\n설정 › 껄무새 계정에서 입력하세요.");
+            return blocked(MEMBER_KEY_NEEDED);
         }
         let creds = c.run_credentials(run);
         let fp = c.run_fingerprint(run);
@@ -83,9 +117,9 @@ impl Shared {
                 return blocked("앱을 닫는 중이라 시작하지 않았어요.");
             }
             if c.claim_busy {
-                return blocked("웹 매크로 연결이 끝날 때까지 잠시만 기다려 주세요.");
+                return blocked(CLAIM_BUSY_WAIT);
             }
-            if run.running() || run.start_pending || run.checking {
+            if run.busy() {
                 return StartReply::Checking;
             }
             // 이 실행에 실전 확인을 띄운 적이 있어야 함(한 번만 씀).
@@ -99,24 +133,12 @@ impl Shared {
             }
             let fp = c.run_fingerprint(run);
             if run.mode != RunMode::Live || !run.preflight.as_ref().is_some_and(|p| p.matches(&fp)) {
-                let r = c.run_mut(id).unwrap();
-                r.generation += 1;
-                r.preflight = None;
-                c.push_activity(
-                    id,
-                    "info",
-                    "확인 중 설정이 바뀌었거나 확인 유효 시간이 지났어요",
-                    "[시작]을 다시 누르면 새로 확인해요.",
-                    "확인 중 설정이 바뀌었거나 확인 유효 시간이 지났어요. [시작]을 다시 누르면 새로 확인해요.",
-                    false,
-                    "warn",
-                );
+                c.run_mut(id).unwrap().invalidate_preflight();
+                let full = format!("{PREFLIGHT_EXPIRED}. {PRESS_START_AGAIN}");
+                c.push_activity(id, "info", PREFLIGHT_EXPIRED, PRESS_START_AGAIN, &full, false, "warn");
                 drop(c);
                 self.emit();
-                return StartReply::Blocked {
-                    message: "확인 중 설정이 바뀌었거나 확인 유효 시간이 지났어요. [시작]을 다시 누르면 새로 확인해요."
-                        .into(),
-                };
+                return StartReply::Blocked { message: full };
             }
         }
         self.launch(id)
@@ -124,234 +146,71 @@ impl Shared {
 
     /// 서버에 세션을 만들고 봇을 띄움.
     pub(crate) fn launch(self: &S, id: &str) -> StartReply {
-        let job = {
-            let mut c = self.lock();
-            let Some(run) = c.run(id) else {
-                return StartReply::Blocked { message: "매크로를 찾지 못했어요.".into() };
-            };
-            // 같은 매크로를 두 번 띄우지 않음(검사 끝 자동 시작과 [시작]이 겹칠 때).
-            if c.closed || run.start_pending || run.running() {
-                return StartReply::Checking;
-            }
-            let Some(pre) = run.preflight.clone() else {
-                return StartReply::Blocked {
-                    message: "시작 전 확인 결과가 없어요. [시작]을 다시 눌러 주세요.".into(),
-                };
-            };
-            let creds = c.run_credentials(run);
-            let fp = c.run_fingerprint(run);
-            let mut payload = session_payload(&run.macro_, run.mode != RunMode::Live, run.mode);
-            if let Some(uid) = run.user_macro_id {
-                payload["user_macro_id"] = json!(uid);
-            }
-            if let Some(sig) = &run.sig {
-                payload["macro_sig"] = sig.clone();
-            }
-            payload["macro_source"] = json!(run.source);
-            let job = (run.macro_.clone(), run.mode, creds, fp, payload, run.server_base.clone(), run.generation, pre);
-            let r = c.run_mut(id).unwrap();
-            r.start_pending = true;
-            r.cancel_requested = None;
-            job
+        let job = match self.lock().launch_job(id) {
+            Ok(job) => job,
+            Err(reply) => return reply,
         };
         self.emit();
         let me = self.clone();
-        let id = id.to_string();
-        tauri::async_runtime::spawn(async move {
-            let (m, mode, creds, fp, payload, base, generation, pre) = job;
-            me.launch_async(id, m, mode, creds, fp, payload, base, generation, pre).await;
-        });
+        tauri::async_runtime::spawn(async move { me.launch_async(job).await });
         StartReply::Started
     }
 
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn launch_async(
-        self: S,
-        id: String,
-        m: Value,
-        mode: RunMode,
-        creds: Credentials,
-        fp: String,
-        payload: Value,
-        base: String,
-        generation: u64,
-        preflight: PreflightResult,
-    ) {
-        let label = exchange_label(&runner_core::types::exchange_name_of(&m));
-        let server = ServerClient::new(&creds.member_key, &base, self.outbox.clone(), self.http.clone());
-        let started = match server.start(&payload).await {
+    /// 세션 시작 → (실패면 알림) → 세션 기록 → 그사이 바뀌었으면 세션만 취소 → 봇 띄우기.
+    pub(crate) async fn launch_async(self: S, job: LaunchJob) {
+        let exchange = runner_core::types::exchange_name_of(&job.macro_);
+        let label = exchange_label(&exchange);
+        let server = ServerClient::new(&job.creds.member_key, &job.base, self.outbox.clone(), self.http.clone());
+        let started = match server.start(&job.payload).await {
             Ok(v) => v,
             Err(err) => {
-                let (head, msg) = start_error_text(&err, &creds);
-                {
-                    let mut c = self.lock();
-                    if let Some(r) = c.run_mut(&id) {
-                        r.start_pending = false;
-                        r.cancel_requested = None;
-                    }
-                    c.push_activity(&id, "error", head, &msg, "", false, "danger");
-                }
+                let (head, msg) = start_error_text(&err, &job.creds);
+                self.lock().start_failed(&job.id, head, &msg);
                 self.emit();
                 self.notice("error", format!("{head}:\n{msg}"));
                 return;
             }
         };
         let sid = server.session_id();
-        {
-            let mut c = self.lock();
-            let symbol = payload["symbol"].as_str().unwrap_or("").to_string();
-            let raw = format!(
-                "세션 시작 (id={}) · {label} · {symbol} · {} · {}",
-                sid.map(|s| s.to_string()).unwrap_or_else(|| "None".into()),
-                payload["market"].as_str().unwrap_or(""),
-                mode.label()
-            );
-            c.push_raw(&id, &raw);
-            let origin = started.get("macro_origin_label").and_then(Value::as_str).unwrap_or("");
-            if !origin.is_empty() {
-                let digest = started.get("macro_digest").and_then(Value::as_str).filter(|d| !d.is_empty());
-                c.push_raw(
-                    &id,
-                    &format!("매크로 출처: {origin}{}", digest.map(|d| format!(" · 지문 {d}")).unwrap_or_default()),
-                );
-            }
-            if server.macro_origin() == "file_modified" {
-                if let Some(r) = c.run_mut(&id) {
-                    r.modified = true;
-                }
-                c.push_activity(
-                    &id,
-                    "info",
-                    "웹에서 받은 원본과 다른 파일이에요",
-                    "이 기기에서 고친 설정 그대로 실행해요. 껄무새 웹의 내 에이전트에는 '수정된 파일'로 표시돼요.",
-                    "⚠ 이 매크로 파일은 웹에서 받은 원본과 달라요. 이 기기에서 고친 설정으로 실행돼요.",
-                    false,
-                    "warn",
-                );
-            }
-        }
+        // 서버가 알려 준 매크로 출처 — 원문 로그와 상세 머리줄에 씀.
+        let origin = started.get("macro_origin_label").and_then(Value::as_str).unwrap_or("");
+        let digest = started.get("macro_digest").and_then(Value::as_str).unwrap_or("");
+        let file_modified = server.macro_origin() == "file_modified";
+        self.lock().note_session_start(&job, &label, sid, origin, digest, file_modified);
         // 시작 요청 동안 설정이 바뀌었으면 방금 만든 세션만 취소함(봇은 만들지 않음).
-        let user_cancelled = self.lock().run(&id).is_some_and(|r| r.cancel_requested.is_some());
-        let cancelled = {
-            let c = self.lock();
-            match c.run(&id) {
-                None => true,
-                Some(r) => {
-                    r.cancel_requested.is_some()
-                        || c.closed
-                        || c.claim_busy
-                        || r.generation != generation
-                        || c.run_fingerprint(r) != fp
-                        || c.member_key.trim() != creds.member_key
-                        || c.conflicting_run(r).is_some()
+        let cancel = self.lock().launch_cancel(&job);
+        if let Some(why) = cancel {
+            let notified = match why {
+                LaunchCancel::User => {
+                    server.stopped("stopped", "시작하는 중에 사용자가 종료해 주문 없이 끝냈어요.", None).await
                 }
-            }
-        };
-        if cancelled {
-            let notified = if user_cancelled {
-                server.stopped("stopped", "시작하는 중에 사용자가 종료해 주문 없이 끝냈어요.", None).await
-            } else {
-                server
-                    .stopped("error", "시작하는 중에 설정이 바뀌거나 확인 유효 시간이 지나 주문 없이 취소했어요.", None)
-                    .await
+                LaunchCancel::Changed => {
+                    server
+                        .stopped(
+                            "error",
+                            "시작하는 중에 설정이 바뀌거나 확인 유효 시간이 지나 주문 없이 취소했어요.",
+                            None,
+                        )
+                        .await
+                }
             };
-            {
-                let mut c = self.lock();
-                if let Some(r) = c.run_mut(&id) {
-                    r.start_pending = false;
-                    r.cancel_requested = None;
-                    r.generation += 1;
-                    r.preflight = None;
-                }
-                if user_cancelled {
-                    c.push_activity(
-                        &id,
-                        "stop",
-                        "시작을 취소했어요",
-                        "주문은 하나도 내지 않았어요.",
-                        "시작하는 중에 종료해 주문 없이 끝냈어요.",
-                        false,
-                        "muted",
-                    );
-                } else {
-                    c.push_activity(
-                        &id,
-                        "error",
-                        "시작 중 설정이 바뀌어 매매를 시작하지 않았어요",
-                        "다시 시작하면 새로 확인해요.",
-                        "시작 설정이 바뀌어 매매를 시작하지 않았어요. [시작]을 다시 누르면 새로 확인해요.",
-                        false,
-                        "warn",
-                    );
-                }
-                if !notified {
-                    c.push_activity(
-                        &id,
-                        "connection",
-                        "서버에 취소를 알리지 못했어요",
-                        "껄무새 웹의 내 에이전트에서 상태를 확인하세요.",
-                        "",
-                        false,
-                        "warn",
-                    );
-                }
-            }
+            self.lock().launch_cancelled(&job.id, why, notified);
             self.emit();
             return;
         }
+        let LaunchJob { id, macro_, mode, creds, preflight, .. } = job;
+        let symbol = runner_core::types::macro_symbol(&macro_);
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let handle = spawn_bot(m.clone(), creds, mode, server, Some(preflight), self.http.clone(), tx);
-        let reporter = {
+        let handle = spawn_bot(macro_, creds, mode, server, Some(preflight), self.http.clone(), tx);
+        let (attached, saved) = {
             let mut c = self.lock();
-            let exchange = runner_core::types::exchange_name_of(&m);
-            let symbol = runner_core::types::macro_symbol(&m);
-            let Some(r) = c.run_mut(&id) else { return };
-            let env = r.binance_env();
-            let mut data = RunData::started(now_ms(), sid);
-            // 서버가 알려 준 매크로 출처 — 상세 머리줄에 보임.
-            data.macro_origin = started
-                .get("macro_origin_label")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .trim()
-                .chars()
-                .take(60)
-                .collect();
-            r.data = Some(data);
-            // 취소 확인과 봇 띄우기 사이에 누른 종료도 놓치지 않음.
-            let late_cancel = r.cancel_requested.take();
-            if let Some(mode) = late_cancel {
-                handle.command(mode);
-            }
-            r.bot = Some(handle);
-            r.stopping = late_cancel.is_some();
-            r.start_pending = false;
-            r.preflight = None;
-            let reporter = r.reporter.take();
-            c.push_activity(
-                &id,
-                "start",
-                &format!("실행을 시작했어요 · {}", mode.label()),
-                &format!("{} · {symbol}", exchange_label(&exchange)),
-                "",
-                false,
-                "ok",
-            );
+            let Some(attached) = c.attach_bot(&id, mode, handle, sid, origin, &label, &symbol) else { return };
             // 실행 중이라는 표시를 저장해 둠 — 앱이 도중에 꺼지면 다음에 켤 때 알 수 있게.
-            self.save_runs(&c);
-            reporter.map(|rep| (rep, exchange, env))
+            (attached, self.save_runs(&c))
         };
-        if let Some((rep, exchange, env)) = reporter {
-            if let Ok(p) = runner_core::setup_progress::progress_payload(
-                "started",
-                &exchange,
-                env,
-                "",
-                (false, false),
-                None,
-                "",
-                false,
-            ) {
+        self.warn_save_failed(saved);
+        if let Some(rep) = attached.reporter {
+            if let Ok(p) = GuideStep::bare("started", &exchange, attached.env).payload() {
                 rep.report(p);
             }
             rep.close();
@@ -397,6 +256,188 @@ pub(crate) fn start_error_text(err: &StartError, creds: &Credentials) -> (&'stat
 }
 
 impl Core {
+    /// 시작할 값을 떠 두고 '시작하는 중'으로 표시함. 시작하지 않으면 그때의 답.
+    pub(crate) fn launch_job(&mut self, id: &str) -> Result<LaunchJob, StartReply> {
+        let Some(run) = self.run(id) else {
+            return Err(StartReply::Blocked { message: "매크로를 찾지 못했어요.".into() });
+        };
+        // 같은 매크로를 두 번 띄우지 않음(검사 끝 자동 시작과 [시작]이 겹칠 때).
+        if self.closed || run.start_pending || run.running() {
+            return Err(StartReply::Checking);
+        }
+        let Some(preflight) = run.preflight.clone() else {
+            return Err(StartReply::Blocked {
+                message: "시작 전 확인 결과가 없어요. [시작]을 다시 눌러 주세요.".into(),
+            });
+        };
+        let mut payload = session_payload(&run.macro_, run.mode != RunMode::Live, run.mode);
+        if let Some(uid) = run.user_macro_id {
+            payload["user_macro_id"] = json!(uid);
+        }
+        if let Some(sig) = &run.sig {
+            payload["macro_sig"] = sig.clone();
+        }
+        payload["macro_source"] = json!(run.source);
+        let job = LaunchJob {
+            id: id.to_string(),
+            macro_: run.macro_.clone(),
+            mode: run.mode,
+            creds: self.run_credentials(run),
+            fp: self.run_fingerprint(run),
+            payload,
+            base: run.server_base.clone(),
+            generation: run.generation,
+            preflight,
+        };
+        let r = self.run_mut(id).unwrap();
+        r.start_pending = true;
+        r.cancel_requested = None;
+        Ok(job)
+    }
+
+    /// 서버가 세션 시작을 거절했거나 닿지 않음 — '시작하는 중'을 풀고 활동에 남김.
+    pub(crate) fn start_failed(&mut self, id: &str, head: &str, msg: &str) {
+        if let Some(r) = self.run_mut(id) {
+            r.start_pending = false;
+            r.cancel_requested = None;
+        }
+        self.push_activity(id, "error", head, msg, "", false, "danger");
+    }
+
+    /// 만든 세션을 원문 로그에 남김. 웹 원본과 다른 파일이면 '수정됨'으로 표시하고 알림.
+    pub(crate) fn note_session_start(
+        &mut self,
+        job: &LaunchJob,
+        label: &str,
+        sid: Option<i64>,
+        origin: &str,
+        digest: &str,
+        file_modified: bool,
+    ) {
+        let id = job.id.as_str();
+        let raw = format!(
+            "세션 시작 (id={}) · {label} · {} · {} · {}",
+            sid.map(|s| s.to_string()).unwrap_or_else(|| "None".into()),
+            job.payload["symbol"].as_str().unwrap_or(""),
+            job.payload["market"].as_str().unwrap_or(""),
+            job.mode.label()
+        );
+        self.push_raw(id, &raw);
+        if !origin.is_empty() {
+            let digest = if digest.is_empty() { String::new() } else { format!(" · 지문 {digest}") };
+            self.push_raw(id, &format!("매크로 출처: {origin}{digest}"));
+        }
+        if file_modified {
+            if let Some(r) = self.run_mut(id) {
+                r.modified = true;
+            }
+            self.push_activity(
+                id,
+                "info",
+                "웹에서 받은 원본과 다른 파일이에요",
+                "이 기기에서 고친 설정 그대로 실행해요. 껄무새 웹의 내 에이전트에는 '수정된 파일'로 표시돼요.",
+                "⚠ 이 매크로 파일은 웹에서 받은 원본과 달라요. 이 기기에서 고친 설정으로 실행돼요.",
+                false,
+                "warn",
+            );
+        }
+    }
+
+    /// 세션을 만든 뒤 봇을 띄우지 않을 이유. 띄워도 되면 None.
+    pub(crate) fn launch_cancel(&self, job: &LaunchJob) -> Option<LaunchCancel> {
+        let Some(r) = self.run(&job.id) else { return Some(LaunchCancel::Changed) };
+        if r.cancel_requested.is_some() {
+            return Some(LaunchCancel::User);
+        }
+        let changed = self.closed
+            || self.claim_busy
+            || r.generation != job.generation
+            || self.run_fingerprint(r) != job.fp
+            || self.member_key.trim() != job.creds.member_key
+            || self.conflicting_run(r).is_some();
+        changed.then_some(LaunchCancel::Changed)
+    }
+
+    /// 세션만 취소하고 끝냄 — '시작하는 중'을 풀고 시작 전 확인도 버림. `notified`는 서버에 알렸는지.
+    pub(crate) fn launch_cancelled(&mut self, id: &str, why: LaunchCancel, notified: bool) {
+        if let Some(r) = self.run_mut(id) {
+            r.start_pending = false;
+            r.cancel_requested = None;
+            r.invalidate_preflight();
+        }
+        match why {
+            LaunchCancel::User => self.push_activity(
+                id,
+                "stop",
+                "시작을 취소했어요",
+                "주문은 하나도 내지 않았어요.",
+                "시작하는 중에 종료해 주문 없이 끝냈어요.",
+                false,
+                "muted",
+            ),
+            LaunchCancel::Changed => self.push_activity(
+                id,
+                "error",
+                "시작 중 설정이 바뀌어 매매를 시작하지 않았어요",
+                "다시 시작하면 새로 확인해요.",
+                "시작 설정이 바뀌어 매매를 시작하지 않았어요. [시작]을 다시 누르면 새로 확인해요.",
+                false,
+                "warn",
+            ),
+        }
+        if !notified {
+            self.push_activity(
+                id,
+                "connection",
+                "서버에 취소를 알리지 못했어요",
+                "껄무새 웹의 내 에이전트에서 상태를 확인하세요.",
+                "",
+                false,
+                "warn",
+            );
+        }
+    }
+
+    /// 띄운 봇을 실행에 붙임. 그사이 실행이 목록에서 빠졌으면 None.
+    /// 취소 확인과 봇 띄우기 사이에 누른 종료도 바로 봇에 넘김.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn attach_bot(
+        &mut self,
+        id: &str,
+        mode: RunMode,
+        handle: BotHandle,
+        sid: Option<i64>,
+        origin: &str,
+        label: &str,
+        symbol: &str,
+    ) -> Option<BotAttached> {
+        let r = self.run_mut(id)?;
+        let env = r.binance_env();
+        let mut data = RunData::started(now_ms(), sid);
+        // 서버가 알려 준 매크로 출처 — 상세 머리줄에 보임.
+        data.macro_origin = origin.trim().chars().take(60).collect();
+        r.data = Some(data);
+        let late_cancel = r.cancel_requested.take();
+        if let Some(stop) = late_cancel {
+            handle.command(stop);
+        }
+        r.bot = Some(handle);
+        r.stopping = late_cancel.is_some();
+        r.start_pending = false;
+        r.preflight = None;
+        let reporter = r.reporter.take();
+        self.push_activity(
+            id,
+            "start",
+            &format!("실행을 시작했어요 · {}", mode.label()),
+            &format!("{label} · {symbol}"),
+            "",
+            false,
+            "ok",
+        );
+        Some(BotAttached { reporter, env })
+    }
+
     /// 키·연결 확인 전에 시작을 멈출 이유. 멈추지 않으면 None — 그때는 매크로가 있고 거래소도 앎.
     /// 앱 상태(창·서버)가 없어도 판단할 수 있게 [`Shared::start_run`]에서 떼어 냄.
     pub(crate) fn start_gate(&self, id: &str) -> Option<StartReply> {
@@ -412,7 +453,7 @@ impl Core {
             return blocked("이미 실행 중이에요.");
         }
         if self.claim_busy {
-            return blocked("웹 매크로 연결이 끝날 때까지 잠시만 기다려 주세요.");
+            return blocked(CLAIM_BUSY_WAIT);
         }
         // 목록에 이미 있던 매크로도 서버가 거절할 유형이면 서버에 보내기 전에 막음(화면의 막힌 이유와 같은 문구).
         if let Some(why) = runner_core::macro_info::unsupported_reason(&run.macro_) {
@@ -485,6 +526,124 @@ mod tests {
         }
         assert!(blocked_text(c.start_gate("kraken")).contains("kraken"));
         assert_eq!(blocked_text(c.start_gate("nope")), "매크로를 찾지 못했어요.");
+    }
+
+    /// 확인을 마친 실전 실행 하나(바이낸스 BTCUSDT).
+    fn checked_core() -> Core {
+        let mut c = core_with(&[("a", json!({"symbol": "BTCUSDT", "exchange": "binance", "rule_type": "F"}))]);
+        c.member_key = "member".into();
+        c.slot_mut(KeySlot::Binance).keys = KeyPair { api_key: "k".into(), api_secret: "s".into() };
+        let fp = {
+            let r = c.run_mut("a").unwrap();
+            r.mode = RunMode::Live;
+            r.user_macro_id = Some(7);
+            r.sig = Some(json!({"v": 4}));
+            r.generation = 3;
+            c.run_fingerprint(c.run("a").unwrap())
+        };
+        c.run_mut("a").unwrap().preflight = Some(PreflightResult::new(true, String::new(), fp));
+        c
+    }
+
+    #[test]
+    fn a_launch_job_takes_the_checked_settings_and_marks_starting() {
+        let mut c = checked_core();
+        let job = c.launch_job("a").ok().unwrap();
+        assert_eq!((job.mode, job.generation, job.creds.member_key.as_str()), (RunMode::Live, 3, "member"));
+        assert_eq!(job.fp, c.run_fingerprint(c.run("a").unwrap()));
+        assert_eq!(
+            (job.payload["user_macro_id"].clone(), job.payload["macro_source"].clone()),
+            (json!(7), json!("file"))
+        );
+        assert_eq!(job.payload["macro_sig"], json!({"v": 4}));
+        assert!(c.run("a").unwrap().start_pending);
+        assert!(matches!(c.launch_job("a"), Err(StartReply::Checking)), "두 번 띄우지 않음");
+        assert!(matches!(c.launch_job("nope"), Err(StartReply::Blocked { .. })));
+        let mut c = checked_core();
+        c.run_mut("a").unwrap().preflight = None;
+        assert!(matches!(c.launch_job("a"), Err(StartReply::Blocked { message }) if message.contains("시작 전 확인")));
+    }
+
+    #[test]
+    fn a_failed_start_clears_starting_and_logs_why() {
+        let mut c = checked_core();
+        let _job = c.launch_job("a").ok().unwrap();
+        c.run_mut("a").unwrap().cancel_requested = Some(StopMode::StopOnly);
+        c.start_failed("a", "서버에 연결하지 못했어요", "인터넷 연결을 확인하세요");
+        let r = c.run("a").unwrap();
+        assert!(!r.start_pending && r.cancel_requested.is_none());
+        let last = r.activity.last().unwrap();
+        assert_eq!((last.kind.as_str(), last.tone.as_str()), ("error", "danger"));
+    }
+
+    #[test]
+    fn the_session_log_names_the_origin_and_marks_modified_files() {
+        let mut c = checked_core();
+        let job = c.launch_job("a").ok().unwrap();
+        c.note_session_start(&job, "바이낸스", Some(42), "원본 파일", "ab12", true);
+        let r = c.run("a").unwrap();
+        assert!(r.modified, "웹 원본과 다른 파일");
+        let raws: Vec<&str> = r.activity.iter().map(|a| a.raw.as_str()).collect();
+        assert!(raws[0].starts_with("세션 시작 (id=42) · 바이낸스 · BTCUSDT"), "{raws:?}");
+        assert_eq!(raws[1], "매크로 출처: 원본 파일 · 지문 ab12");
+        let mut c = checked_core();
+        let job = c.launch_job("a").ok().unwrap();
+        c.note_session_start(&job, "바이낸스", None, "", "", false);
+        let r = c.run("a").unwrap();
+        assert!(!r.modified && r.activity.len() == 1 && r.activity[0].raw.contains("(id=None)"));
+    }
+
+    #[test]
+    fn a_launch_is_cancelled_when_the_user_stops_or_settings_change() {
+        let mut c = checked_core();
+        let job = c.launch_job("a").ok().unwrap();
+        assert_eq!(c.launch_cancel(&job), None, "그대로면 봇을 띄움");
+
+        c.run_mut("a").unwrap().cancel_requested = Some(StopMode::StopOnly);
+        c.claim_busy = true;
+        assert_eq!(c.launch_cancel(&job), Some(LaunchCancel::User), "사용자 종료가 먼저");
+        c.run_mut("a").unwrap().cancel_requested = None;
+        assert_eq!(c.launch_cancel(&job), Some(LaunchCancel::Changed), "웹 연결 중");
+        c.claim_busy = false;
+
+        c.member_key = "other".into();
+        assert_eq!(c.launch_cancel(&job), Some(LaunchCancel::Changed), "회원 키가 바뀜");
+        c.member_key = "member".into();
+        c.slot_mut(KeySlot::Binance).keys.api_key = "k2".into();
+        assert_eq!(c.launch_cancel(&job), Some(LaunchCancel::Changed), "키가 바뀜");
+        c.slot_mut(KeySlot::Binance).keys.api_key = "k".into();
+        c.run_mut("a").unwrap().generation += 1;
+        assert_eq!(c.launch_cancel(&job), Some(LaunchCancel::Changed), "판이 바뀜");
+        c.runs.clear();
+        assert_eq!(c.launch_cancel(&job), Some(LaunchCancel::Changed), "목록에서 빠짐");
+
+        let mut c = checked_core();
+        let _job = c.launch_job("a").ok().unwrap();
+        c.launch_cancelled("a", LaunchCancel::User, false);
+        let r = c.run("a").unwrap();
+        assert!(!r.start_pending && r.preflight.is_none() && r.generation == 4, "다음 시작은 새로 확인");
+        let titles: Vec<&str> = r.activity.iter().map(|a| a.title.as_str()).collect();
+        assert_eq!(titles, ["시작을 취소했어요", "서버에 취소를 알리지 못했어요"]);
+    }
+
+    #[tokio::test]
+    async fn an_attached_bot_runs_and_a_late_stop_reaches_it() {
+        let mut c = checked_core();
+        let _job = c.launch_job("a").ok().unwrap();
+        c.run_mut("a").unwrap().cancel_requested = Some(StopMode::CloseAndStop);
+        let handle = runner_core::bot::BotHandle::idle_for_tests("BTCUSDT");
+        let attached =
+            c.attach_bot("a", RunMode::Live, handle, Some(9), "  웹 저장본  ", "바이낸스", "BTCUSDT").unwrap();
+        assert!(attached.reporter.is_none() && attached.env == "live");
+        let r = c.run("a").unwrap();
+        assert!(r.running() && r.stopping, "시작하는 동안 누른 종료를 봇에 넘김");
+        assert!(!r.start_pending && r.preflight.is_none() && r.cancel_requested.is_none());
+        let d = r.data.as_ref().unwrap();
+        assert_eq!((d.session_id, d.macro_origin.as_str()), (Some(9), "웹 저장본"));
+        assert_eq!(r.activity.last().unwrap().title, "실행을 시작했어요 · 실전");
+        c.runs.clear();
+        let handle = runner_core::bot::BotHandle::idle_for_tests("BTCUSDT");
+        assert!(c.attach_bot("a", RunMode::Live, handle, None, "", "바이낸스", "BTCUSDT").is_none());
     }
 
     #[test]

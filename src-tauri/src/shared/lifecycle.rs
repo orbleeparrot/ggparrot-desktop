@@ -19,14 +19,14 @@ impl Shared {
 
     /// 웹 가이드가 '진행 중'에 멈춰 있지 않게 닫힘을 알림(최대 1.5초).
     pub async fn shutdown(self: &S) {
-        let reporters = {
+        let (reporters, saved) = {
             let mut c = self.lock();
             c.closed = true;
             c.wizard = None;
             let out: Vec<_> = c.runs.iter_mut().filter_map(Run::take_closing_report).collect();
-            self.save_runs(&c);
-            out
+            (out, self.save_runs(&c))
         };
+        self.warn_save_failed(saved);
         for (rep, payload) in reporters {
             finish_report(rep, payload).await;
         }

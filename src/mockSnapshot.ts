@@ -15,7 +15,7 @@ import {
 import type { AppState, Check, KeySlot, RunSlot, SlotCard, WizardState } from "./types";
 
 const DOMESTIC = ["upbit", "bithumb"];
-export const ACTIVE_PHASES: RunSlot["phase"][] = ["checking", "starting", "running", "stopping"];
+const ACTIVE_PHASES: RunSlot["phase"][] = ["checking", "starting", "running", "stopping"];
 
 export function isActive(r: MockRun): boolean {
   return ACTIVE_PHASES.includes(r.phase);
@@ -66,7 +66,7 @@ export function conflictMessage(m: Model, r: MockRun): string {
   return `같은 거래소 · 종목(${EXCHANGE_LABELS[r.macro.exchange]} ${r.macro.symbol})은 한 번에 하나만 실행해요. 지금 다른 매크로가 실행 중이에요.`;
 }
 
-export function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
+function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
   const idle = r.phase === "idle" || r.phase === "finished";
   const no = (blocker: string, needs: RunSlot["readiness"]["needs"] = null) => ({ canStart: false, blocker, needs });
   if (!r.macro.exchange)
@@ -77,7 +77,7 @@ export function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
   const slot = keySlotOf(r)!;
   if (r.mode !== "mock" && !filled(m, slot))
     return no(`${SLOT_LABELS[slot]} API 키가 필요해요. 설정에서 입력하세요.`, { kind: "key", slot });
-  if (!m.member) return no("회원 키가 필요해요. 설정에서 입력하세요.", { kind: "member" });
+  if (!m.member) return no("회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요.", { kind: "member" });
   const conflict = conflictMessage(m, r);
   if (conflict) return no(conflict);
   return { canStart: true, blocker: "", needs: null };
@@ -165,7 +165,7 @@ export function slotCard(m: Model, slot: KeySlot): SlotCard {
   };
 }
 
-export function syncWizard(m: Model): WizardState | null {
+function syncWizard(m: Model): WizardState | null {
   const w = m.wizard;
   if (!w) return null;
   const k = m.keys[w.slot];

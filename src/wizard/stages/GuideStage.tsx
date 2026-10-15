@@ -64,7 +64,7 @@ export function GuideStage({ wizard, kind }: { wizard: WizardState; kind: Kind }
   return (
     <>
       <p className="wz-lead">{LEAD[site][kind]}</p>
-      <ExchangeScreen site={site} kind={kind} ip={wizard.ip.address} />
+      <ExchangeScreen site={site} kind={kind} ip={wizard.ip.address} label={wizard.label} />
       {wizard.watchingClipboard && (
         <p className="wz-watch" role="status">
           <ClipboardCheck size={14} aria-hidden="true" />

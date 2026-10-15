@@ -80,11 +80,13 @@
   gap: 6px;
 }
 .wz-step {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex: 1;
   min-width: 0;
+  padding-left: 0;
 }
 .wz-step::before {
   content: "";
@@ -97,13 +99,6 @@
 }
 .wz-step.is-on::before {
   background: var(--brand);
-}
-.wz-step {
-  position: relative;
-  padding-left: 0;
-}
-.wz-step-dot {
-  display: none;
 }
 .wz-step-label {
   font-size: 11px;
@@ -142,7 +137,7 @@
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--on-accent);
 }
 .wz-title-icon.is-ok {
   background: var(--ok);
@@ -286,7 +281,7 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--on-accent);
   background: var(--faint);
 }
 .check-ok .wz-row-icon {

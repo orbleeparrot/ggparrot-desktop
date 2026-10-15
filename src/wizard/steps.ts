@@ -22,8 +22,7 @@ export function flowOf(env: BinanceEnv): Flow {
   return DOMESTIC;
 }
 
-export const NEW_STEPS = DOMESTIC.labels;
-export const EXISTING_STEPS = ["기존 키 넣기", "연결 확인"] as const;
+const EXISTING_STEPS = ["기존 키 넣기", "연결 확인"] as const;
 
 const EXISTING_INDEX: Partial<Record<Stage, number>> = {
   existing: 0,

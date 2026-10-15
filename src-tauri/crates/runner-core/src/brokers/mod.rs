@@ -26,7 +26,6 @@ pub fn null_log() -> LogFn {
 }
 
 pub const TERMINAL_STATUSES: [&str; 3] = ["FILLED", "CANCELED", "REJECTED"];
-pub const MAX_RETRIES: usize = 3;
 
 /// 업비트·빗썸 매수 수수료를 못 읽었을 때의 보수적인 값.
 pub const DOMESTIC_BID_FEE_FALLBACK: f64 = 0.0025;
@@ -48,16 +47,25 @@ pub fn fee_inclusive(budget: f64, rate: f64) -> f64 {
 
 /// 숫자로 읽히지 않거나 0 이하·NaN·무한이면 0.
 pub fn positive_number(value: &serde_json::Value) -> f64 {
-    let n = match value {
+    positive_f64(match value {
         serde_json::Value::Number(n) => n.as_f64().unwrap_or(0.0),
         serde_json::Value::String(s) => s.trim().parse::<f64>().unwrap_or(0.0),
         _ => 0.0,
-    };
-    if n.is_finite() && n > 0.0 {
-        n
+    })
+}
+
+/// 0보다 큰 유한한 값만 그대로, 나머지(0·음수·-0.0·NaN·무한)는 0.
+pub fn positive_f64(x: f64) -> f64 {
+    if x.is_finite() && x > 0.0 {
+        x
     } else {
         0.0
     }
+}
+
+/// 응답 객체의 한 칸을 [`positive_number`]로 읽음. 칸이 없으면 0.
+pub(crate) fn get_pos(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> f64 {
+    obj.get(key).map(positive_number).unwrap_or(0.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,6 +113,20 @@ pub struct Order {
 }
 
 impl Order {
+    /// 거래소가 주문을 받지 않았다고 분명히 답한 상태. 체결 0·수수료 0, raw_status에 거절 이유.
+    pub fn rejected(reason: String) -> Order {
+        Order {
+            status: "REJECTED".into(),
+            executed_qty: 0.0,
+            avg_price: 0.0,
+            acquired_qty: 0.0,
+            fees_known: true,
+            order_id: None,
+            raw_status: reason,
+            fee: Some(FeePaid::default()),
+        }
+    }
+
     /// 주문을 보냈는데 그 뒤로 아무것도 확인하지 못한 상태.
     #[cfg(test)]
     pub fn unknown() -> Order {
@@ -298,4 +320,33 @@ pub fn network_error(e: reqwest::Error) -> BrokerError {
         source = cause.source();
     }
     BrokerError::Network(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    fn positive_f64_matches_reading_the_json_number() {
+        // JSON 숫자로 옮겨 positive_number로 읽던 길과 같은 값 — NaN·무한은 JSON 숫자가 못 돼 0이었음.
+        let via_json =
+            |x: f64| positive_number(&serde_json::Number::from_f64(x).map(Value::Number).unwrap_or(Value::Null));
+        for x in
+            [0.0, -0.0, -1.5, 1e-300, 0.5, 2.0, 1e300, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MIN_POSITIVE]
+        {
+            assert_eq!(positive_f64(x).to_bits(), via_json(x).to_bits(), "{x}");
+        }
+        assert_eq!(positive_f64(-0.0).to_bits(), 0.0f64.to_bits(), "-0.0는 +0으로");
+    }
+
+    #[test]
+    fn rejected_order_has_no_fill_and_keeps_the_reason() {
+        let o = Order::rejected("-2010 Account has insufficient balance".into());
+        assert_eq!(o.status, "REJECTED");
+        assert_eq!((o.executed_qty, o.avg_price, o.acquired_qty), (0.0, 0.0, 0.0));
+        assert!(o.fees_known && o.order_id.is_none());
+        assert_eq!(o.raw_status, "-2010 Account has insufficient balance");
+        assert_eq!(o.fee, Some(FeePaid::default()));
+    }
 }

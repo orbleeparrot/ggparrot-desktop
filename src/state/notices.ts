@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Notice } from "../types";
 
-export const TOAST_MS = 4000;
+const TOAST_MS = 4000;
 
 export interface Toast {
   id: number;

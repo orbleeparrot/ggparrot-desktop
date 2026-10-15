@@ -22,7 +22,7 @@ const NAV: { id: SettingsSection; label: string }[] = [
   { id: "about", label: "정보" },
 ];
 
-export function goTo(target: SettingsTarget) {
+function goTo(target: SettingsTarget) {
   const el = document.getElementById(settingsElementId(target));
   if (!el) return;
   el.scrollIntoView?.({

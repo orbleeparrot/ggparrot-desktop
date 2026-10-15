@@ -338,7 +338,8 @@ fn binance_wizard_target_follows_mode_and_market() {
     ];
     for (m, mode, slot, env, market) in cases {
         let r = with_macro("a", m, mode);
-        assert_eq!(r.wizard_target(), Some(WizardTarget { slot, env, market }), "{mode:?} {env}");
+        assert_eq!(r.wizard_target(), Some(WizardTarget { slot, market }), "{mode:?} {env}");
+        assert_eq!(r.wizard_target().unwrap().env(), env, "사이트는 칸이 정함");
         assert_eq!(r.key_slot(), Some(slot), "도우미 칸과 실행 키 칸이 같음");
         assert_eq!(r.guide_target(), r.wizard_target(), "실전·연습은 웹 가이드도 같은 칸");
     }
@@ -351,12 +352,12 @@ fn mock_runs_open_no_wizard_but_the_web_guide_shows_the_practice_site() {
     assert_eq!(r.key_slot(), Some(KeySlot::Binance), "모의가 키를 쓰면 실거래 칸");
     assert_eq!(r.wizard_target(), None, "모의는 키가 필요 없어 도우미로 데려가지 않음");
     let g = r.guide_target().unwrap();
-    assert_eq!((g.slot, g.env, g.market), (KeySlot::BinanceDemo, "demo", Market::Futures));
-    assert_eq!(g.env, r.binance_env(), "웹 가이드의 사이트는 binance_env와 같음");
+    assert_eq!((g.slot, g.env(), g.market), (KeySlot::BinanceDemo, "demo", Market::Futures));
+    assert_eq!(g.env(), r.binance_env(), "웹 가이드의 사이트는 binance_env와 같음");
     let spot = with_macro("s", json!({"symbol": "BTCUSDT", "exchange": "binance"}), RunMode::Mock);
-    assert_eq!(spot.guide_target().map(|t| (t.slot, t.env)), Some((KeySlot::BinanceTestnet, "testnet")));
+    assert_eq!(spot.guide_target().map(|t| (t.slot, t.env())), Some((KeySlot::BinanceTestnet, "testnet")));
     let up = with_macro("u", json!({"symbol": "KRW-BTC", "exchange": "upbit"}), RunMode::Mock);
-    assert_eq!(up.guide_target().map(|t| (t.slot, t.env)), Some((KeySlot::Upbit, "")));
+    assert_eq!(up.guide_target().map(|t| (t.slot, t.env())), Some((KeySlot::Upbit, "")));
 }
 
 #[test]
@@ -365,13 +366,14 @@ fn practice_slots_have_a_fixed_site_and_market() {
     let lev = json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 3});
     c.runs.push(with_macro("t", lev, RunMode::Testnet));
     let t = c.wizard_target_for_slot(KeySlot::BinanceTestnet);
-    assert_eq!((t.env, t.market), ("testnet", Market::Spot), "선물 실행이 있어도 테스트넷 칸은 현물");
+    assert_eq!((t.env(), t.market), ("testnet", Market::Spot), "선물 실행이 있어도 테스트넷 칸은 현물");
     let t = c.wizard_target_for_slot(KeySlot::BinanceDemo);
-    assert_eq!((t.env, t.market), ("demo", Market::Futures));
+    assert_eq!((t.env(), t.market), ("demo", Market::Futures));
     assert_eq!(
         c.wizard_target_for_slot(KeySlot::Bithumb),
-        WizardTarget { slot: KeySlot::Bithumb, env: "", market: Market::Spot }
+        WizardTarget { slot: KeySlot::Bithumb, market: Market::Spot }
     );
+    assert_eq!(c.wizard_target_for_slot(KeySlot::Bithumb).env(), "");
 }
 
 #[test]
@@ -390,7 +392,7 @@ fn the_live_slot_is_checked_in_the_market_of_the_first_run_on_it() {
     assert_eq!(c.probe_market(KeySlot::Binance), Market::Spot);
     assert_eq!(c.probe_market(KeySlot::BinanceDemo), Market::Futures);
     // 열린 도우미가 이 칸을 보면 도우미의 시장.
-    c.wizard = Some(wizard(KeySlot::Binance, "live", Market::Futures));
+    c.wizard = Some(wizard(KeySlot::Binance, Market::Futures));
     assert_eq!(c.probe_market(KeySlot::Binance), Market::Futures);
     c.wizard = None;
     assert_eq!(c.probe_market(KeySlot::Binance), Market::Spot);
@@ -417,11 +419,9 @@ fn binance_slot_checks_use_the_slot_market() {
     );
 }
 
-fn wizard(slot: KeySlot, env: &'static str, market: Market) -> Wizard {
+fn wizard(slot: KeySlot, market: Market) -> Wizard {
     Wizard {
-        slot,
-        env,
-        market,
+        target: WizardTarget { slot, market },
         stage: "perm".into(),
         path: "new".into(),
         got_access: false,
@@ -462,7 +462,7 @@ fn progress_carries_the_binance_site_but_never_for_domestic_runs() {
 #[test]
 fn the_wizard_is_named_after_the_binance_site() {
     let mut c = core();
-    c.wizard = Some(wizard(KeySlot::BinanceDemo, "demo", Market::Futures));
+    c.wizard = Some(wizard(KeySlot::BinanceDemo, Market::Futures));
     let w = serde_json::to_value(c.render_wizard()).unwrap();
     assert_eq!(
         (&w["exchange"], &w["slot"], &w["env"], &w["market"], &w["label"], &w["homeLabel"]),
@@ -500,10 +500,10 @@ fn progress_follows_only_the_wizard_on_the_slot_of_that_site() {
     let mut r = with_macro("m", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 5}), RunMode::Mock);
     r.reporter = Some(reporter());
     c.runs = vec![r];
-    c.wizard = Some(wizard(KeySlot::BinanceTestnet, "testnet", Market::Spot));
+    c.wizard = Some(wizard(KeySlot::BinanceTestnet, Market::Spot));
     let sent = c.progress_payloads();
     assert_eq!(sent[0].1["stage"], "ready", "현물 테스트넷 도우미는 선물 데모 가이드와 무관");
-    c.wizard = Some(wizard(KeySlot::BinanceDemo, "demo", Market::Futures));
+    c.wizard = Some(wizard(KeySlot::BinanceDemo, Market::Futures));
     let sent = c.progress_payloads();
     assert_eq!((sent[0].1["stage"].clone(), sent[0].1["env"].clone()), (json!("perm"), json!("demo")));
     c.runs[0].reporter.take().unwrap().close();

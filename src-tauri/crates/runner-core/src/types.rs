@@ -219,6 +219,7 @@ impl KeySlot {
         }
     }
     /// 바이낸스 연결 도우미가 안내하는 사이트(`connection::binance_env`)의 키 칸 — testnet·demo·live 그대로.
+    #[cfg(test)]
     pub fn for_binance_env(env: &str) -> KeySlot {
         match env {
             "testnet" => KeySlot::BinanceTestnet,
@@ -228,20 +229,30 @@ impl KeySlot {
     }
 }
 
-/// 기초 자산 이름 — `BTCUSDT` → BTC, `KRW-BTC` → BTC.
-pub fn base_asset(symbol: &str) -> String {
+/// 바이낸스 심볼 끝에서 찾는 견적 통화. 앞에서부터 처음 맞는 것을 씀.
+const BINANCE_QUOTES: [&str; 6] = ["FDUSD", "USDT", "USDC", "BUSD", "BTC", "ETH"];
+
+/// 심볼을 (기초 자산, 견적 통화)로 나눔. 앞뒤 공백을 빼고 대문자로 맞춤.
+/// - 국내 `KRW-BTC` → (BTC, KRW)
+/// - 바이낸스 `BTCUSDT` → (BTC, USDT). 견적 통화는 끝에서 [`BINANCE_QUOTES`] 순서로 찾고, 기초 자산이 비는
+///   경우(`USDT` 하나뿐)는 건너뜀. USDT·USDC 밖의 견적도 같은 규칙(`ETHBTC` → (ETH, BTC))
+/// - 견적 통화를 모르는 심볼(`BTCKRW` 등) → (심볼 전체, "")
+pub fn split_symbol(symbol: &str) -> (String, &'static str) {
     let s = symbol.trim().to_uppercase();
     if let Some(rest) = s.strip_prefix("KRW-") {
-        return rest.to_string();
+        return (rest.to_string(), "KRW");
     }
-    for q in ["USDT", "BUSD", "USDC", "FDUSD"] {
-        if let Some(b) = s.strip_suffix(q) {
-            if !b.is_empty() {
-                return b.to_string();
-            }
+    for q in BINANCE_QUOTES {
+        if let Some(b) = s.strip_suffix(q).filter(|b| !b.is_empty()) {
+            return (b.to_string(), q);
         }
     }
-    s
+    (s, "")
+}
+
+/// 기초 자산 이름 — `BTCUSDT` → BTC, `KRW-BTC` → BTC. 견적 통화를 모르면 심볼 전체([`split_symbol`]).
+pub fn base_asset(symbol: &str) -> String {
+    split_symbol(symbol).0
 }
 
 /// 이름으로 라벨. 모르는 이름은 그대로 돌려줌.
@@ -425,7 +436,6 @@ pub fn macro_leverage(m: &Value) -> Result<u32, String> {
     Ok(if lev < 1.0 { 1 } else { lev.min(1000.0) as u32 })
 }
 
-/// 호가 통화 — 국내는 `KRW-BTC`, 바이낸스는 `BTCUSDT`.
 /// 지원하지 않는 거래소의 매크로 — 어디서 막히든 같은 문장으로 알림.
 pub fn unsupported_exchange_message(name: &str) -> String {
     let name = if name.trim().is_empty() { "알 수 없음" } else { name.trim() };
@@ -437,6 +447,7 @@ pub fn exchange_key_needed_message(label: &str) -> String {
     format!("{label} 거래소 키가 필요해요. 설정 › 거래소 연결에서 넣어 주세요.")
 }
 
+/// 호가 통화 — 국내는 `KRW-BTC`, 바이낸스는 `BTCUSDT`.
 pub fn quote_of(symbol: &str) -> &'static str {
     if symbol.trim().to_uppercase().starts_with("KRW-") {
         "KRW"

@@ -12,14 +12,14 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use super::{
-    cool, cooling, fee_inclusive, is_close, lookup_delay, network_error, positive_number, py_str, py_truthy,
-    retry_after_secs, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest,
-    DOMESTIC_BID_FEE_FALLBACK, LOOKUP_ATTEMPTS, TERMINAL_STATUSES,
+    cool, cooling, fee_inclusive, get_pos, is_close, lookup_delay, network_error, positive_f64, positive_number,
+    py_str, py_truthy, retry_after_secs, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide,
+    SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, LOOKUP_ATTEMPTS, TERMINAL_STATUSES,
 };
-use crate::money::{price_text, qty_text};
+use crate::money::{grouped, plain_number, price_text, qty_text};
 use crate::types::{Exchange, Market, Side};
 
-/// 초. 이 안에 답이 없어도 주문이 들어갔을 수 있음 — 재주문이 아니라 조회로 확인함.
+/// 요청 하나의 제한. 이 안에 답이 없어도 주문이 들어갔을 수 있음 — 재주문이 아니라 조회로 확인함.
 const DOMESTIC_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub const UPBIT_BASE: &str = "https://api.upbit.com";
@@ -69,15 +69,6 @@ pub fn domestic_base(ex: Exchange) -> Option<&'static str> {
     }
 }
 
-/// 로그·오류 문장에 쓰는 거래소 이름. 국내 거래소가 아니면 거래소 코드 그대로.
-fn domestic_label(ex: Exchange) -> &'static str {
-    match ex {
-        Exchange::Upbit => "업비트",
-        Exchange::Bithumb => "빗썸",
-        Exchange::Binance => "binance",
-    }
-}
-
 // --- JWT ------------------------------------------------------------------
 
 fn b64(raw: &[u8]) -> String {
@@ -114,8 +105,7 @@ pub fn jwt_token(access: &str, secret: &str, query: Option<&[(String, String)]>,
         format!("\"nonce\":{}", json_str(&uuid::Uuid::new_v4().to_string())),
     ];
     if timestamp {
-        let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-        fields.push(format!("\"timestamp\":{ms}"));
+        fields.push(format!("\"timestamp\":{}", crate::clock::unix_ms()));
     }
     if let Some(q) = query.filter(|q| !q.is_empty()) {
         let hash = hex::encode(Sha512::digest(plain_query(q).as_bytes()));
@@ -138,17 +128,12 @@ pub fn jwt_token(access: &str, secret: &str, query: Option<&[(String, String)]>,
 
 // --- 오류 설명 ---------------------------------------------------------------
 
-/// 허용 IP를 먼저 말해야 하는 오류들.
-const IP_FIRST_ERRORS: [&str; 4] =
-    ["no_authorization_ip", "NotAllowIP", "invalid_access_key", "no_authorization_token"];
-const EXPIRED_KEY_ERRORS: [&str; 1] = ["expired_access_key"];
-const NO_FUNDS_ERRORS: [&str; 3] = ["insufficient_funds_bid", "insufficient_funds_ask", "insufficient_funds"];
-const MARKET_ERRORS: [&str; 3] = ["notfoundmarket", "invalid_market", "market_offline"];
-const OTHER_ACCESS_ERRORS: [&str; 4] = ["out_of_scope", "invalid_query_payload", "expired_jwt", "jwt_verification"];
+pub(crate) mod error_names;
+use error_names::{EXPIRED_KEY_ERRORS, IP_FIRST_ERRORS, MARKET_ERRORS, NO_FUNDS_ERRORS, OTHER_ACCESS_ERRORS};
 
 /// 거래소 오류를 사람이 다음에 할 일이 보이는 문장으로 옮김. 모르는 오류는 거래소 말을 그대로 둠.
 pub fn explain_domestic_error(ex: Exchange, status: u16, name: &str, message: &str) -> String {
-    let label = domestic_label(ex);
+    let label = ex.label();
     if IP_FIRST_ERRORS.contains(&name) {
         return format!(
             "{label}에서 요청을 거절했어요({name}). 먼저 이 기기의 현재 IP가 {label}의 \
@@ -241,29 +226,6 @@ fn floor_plain(x: f64, places: u32) -> Option<String> {
     }
 }
 
-/// `_plain(Decimal(repr(x)))` — 지수 없이, 끝의 0 없이.
-fn plain_f64(x: f64) -> String {
-    format!("{x}")
-}
-
-/// 천 단위 쉼표 — 파이썬 `f"{n:,}"`.
-fn thousands(n: f64) -> String {
-    let neg = n < 0.0;
-    let digits = format!("{:.0}", n.abs());
-    let mut out = String::new();
-    for (i, ch) in digits.chars().enumerate() {
-        if i > 0 && (digits.len() - i) % 3 == 0 {
-            out.push(',');
-        }
-        out.push(ch);
-    }
-    if neg {
-        format!("-{out}")
-    } else {
-        out
-    }
-}
-
 /// 파이썬 `str(x or "")`.
 fn py_word(value: Option<&Value>) -> String {
     match value {
@@ -287,8 +249,13 @@ pub fn fold_domestic_status(state: Option<&Value>, executed_volume: f64) -> &'st
     "OPEN"
 }
 
-fn get_pos(obj: &Map<String, Value>, key: &str) -> f64 {
-    obj.get(key).map(positive_number).unwrap_or(0.0)
+/// 계좌 목록(/v1/accounts)의 원화 줄.
+fn krw_row(accounts: &Value) -> Option<&Map<String, Value>> {
+    accounts
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_object)
+        .find(|a| a.get("currency").and_then(Value::as_str) == Some("KRW"))
 }
 
 /// 거래소 응답에서 체결 수량·평균가를 뽑음. 수수료는 원화에서 빠지므로 보유 수량은 체결 수량임.
@@ -405,8 +372,9 @@ impl DomesticBroker {
         *self.last_error_name.lock().unwrap() = name.to_string();
     }
 
+    /// 로그·오류 문장에 쓰는 거래소 이름(업비트·빗썸).
     fn label(&self) -> &'static str {
-        domestic_label(self.exchange)
+        self.exchange.label()
     }
 
     fn auth(&self, query: Option<&[(String, String)]>) -> String {
@@ -536,11 +504,9 @@ impl DomesticBroker {
             return Err(BrokerError::Other(format!("주문 식별자는 1~{}자여야 해요", spec.id_max)));
         }
         let mut body = vec![("market".to_string(), self.symbol.clone())];
-        let to_value =
-            |x: Option<f64>| x.and_then(serde_json::Number::from_f64).map(Value::Number).unwrap_or(Value::Null);
         match side {
             OrderSide::Buy => {
-                let total = positive_number(&to_value(notional));
+                let total = notional.map(positive_f64).unwrap_or(0.0);
                 if total == 0.0 {
                     return Err(BrokerError::Other("시장가 매수에는 0보다 큰 원화 금액이 필요해요".into()));
                 }
@@ -553,7 +519,7 @@ impl DomesticBroker {
                 body.push(("price".into(), won));
             }
             OrderSide::Sell => {
-                let qty = positive_number(&to_value(base_qty));
+                let qty = base_qty.map(positive_f64).unwrap_or(0.0);
                 // 8자리 아래로 내림 — 올리면 가진 것보다 많이 팔려는 주문이 됨.
                 let Some(volume) = floor_plain(qty, 8) else {
                     return Err(BrokerError::Other("시장가 매도에는 0보다 큰 수량이 필요해요".into()));
@@ -582,7 +548,7 @@ impl DomesticBroker {
             if spend_truthy {
                 // 수수료율 — 검증 주문도 실제 주문 금액으로 냄(업비트 검증은 잔고까지 봄).
                 self.load_chance().await?;
-                notional = fee_inclusive(positive_number(&f64_value(spend.unwrap_or(0.0))), self.bid_rate());
+                notional = fee_inclusive(positive_f64(spend.unwrap_or(0.0)), self.bid_rate());
             }
             return self.rehearse_by_test_order(notional).await;
         }
@@ -607,9 +573,9 @@ impl DomesticBroker {
         let rate = self.bid_rate();
         let mut notional = notional;
         if let Some(spend) = spend {
-            notional = fee_inclusive(positive_number(&f64_value(spend)), rate); // 실제 주문과 같은 금액
+            notional = fee_inclusive(positive_f64(spend), rate); // 실제 주문과 같은 금액
         }
-        let amount = positive_number(&f64_value(notional));
+        let amount = positive_f64(notional);
         let minimum = rules.min_notional;
         if minimum != 0.0 && amount < minimum {
             self.set_last_error("under_min_total");
@@ -617,24 +583,17 @@ impl DomesticBroker {
                 false,
                 format!(
                     "최소 주문 금액보다 적어요. 빗썸 최소 주문 금액은 {}원인데 이번 주문은 {}원이에요. 매크로 투자 금액을 올리세요.",
-                    plain_f64(minimum),
-                    plain_f64(amount)
+                    plain_number(minimum),
+                    plain_number(amount)
                 ),
             ));
         }
         // 빗썸에는 잔고까지 보는 검증 주문이 없음 — 주문 금액 + 수수료가 주문 가능 원화 안에 드는지 직접 봄.
-        let krw = accounts
-            .as_array()
-            .and_then(|rows| {
-                rows.iter()
-                    .filter_map(Value::as_object)
-                    .find(|a| a.get("currency").and_then(Value::as_str) == Some("KRW"))
-            })
-            .cloned();
-        let available = krw.as_ref().map(|k| get_pos(k, "balance")).unwrap_or(0.0);
+        let krw = krw_row(&accounts);
+        let available = krw.map(|k| get_pos(k, "balance")).unwrap_or(0.0);
         // 주문 가능 정보에 원화 잔고가 없으면 방금 읽은 계좌 목록으로 채움(잔고 한 줄에 씀).
         if let Some(h) = self.holdings.lock().unwrap().as_mut().filter(|h| h.krw.is_none()) {
-            h.krw = krw.as_ref().map(|_| available);
+            h.krw = krw.map(|_| available);
         }
         let need = amount * (1.0 + rate);
         if need > available {
@@ -644,8 +603,8 @@ impl DomesticBroker {
                 format!(
                     "주문할 원화 잔고가 모자라요. 첫 주문에 수수료까지 {}원이 필요한데 \
                      주문 가능한 원화는 {}원이에요. 빗썸에 원화를 채우거나 매크로 투자 금액을 줄이세요.",
-                    thousands(need.ceil()),
-                    thousands(available.floor())
+                    grouped(need.ceil(), 0),
+                    grouped(available.floor(), 0)
                 ),
             ));
         }
@@ -656,10 +615,6 @@ impl DomesticBroker {
                 .into(),
         ))
     }
-}
-
-fn f64_value(x: f64) -> Value {
-    serde_json::Number::from_f64(x).map(Value::Number).unwrap_or(Value::Null)
 }
 
 #[async_trait]
@@ -689,10 +644,7 @@ impl Broker for DomesticBroker {
     /// 키가 유효한지 원화 잔고 조회로 확인함. 실패하면 오류 — 호출자가 키 안내를 붙임.
     async fn check_account(&self) -> Result<(), BrokerError> {
         let accounts = self.get("/v1/accounts", &[], true).await?;
-        let krw = accounts.as_array().and_then(|rows| {
-            rows.iter().filter_map(Value::as_object).find(|a| a.get("currency").and_then(Value::as_str) == Some("KRW"))
-        });
-        let balance = match krw {
+        let balance = match krw_row(&accounts) {
             Some(row) => match row.get("balance") {
                 Some(v) => py_str(v),
                 None => return Err(BrokerError::Other("'balance'".into())),
@@ -803,16 +755,7 @@ impl Broker for DomesticBroker {
             }
         }
         if !rejection.is_empty() && order.is_empty() {
-            return Ok(Order {
-                status: "REJECTED".into(),
-                executed_qty: 0.0,
-                avg_price: 0.0,
-                acquired_qty: 0.0,
-                fees_known: true,
-                order_id: None,
-                raw_status: rejection,
-                fee: Some(FeePaid::default()),
-            });
+            return Ok(Order::rejected(rejection));
         }
         Ok(normalize_domestic(&Value::Object(order)))
     }

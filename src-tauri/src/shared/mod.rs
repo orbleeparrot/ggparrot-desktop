@@ -3,7 +3,7 @@
 //! bot_events·run_check·deep_link·updates·lifecycle)의 `impl Shared`에 둠.
 //! 락은 await를 넘어 들고 있지 않음. 바뀐 상태는 `emit()`으로 웹뷰에 스냅샷을 보냄.
 
-use runner_core::bot::{spawn_bot, BotEvent, StopMode};
+use runner_core::bot::{spawn_bot, BotEvent, BotHandle, StopMode};
 use runner_core::check::{check_http_client, mock_check, perform_connection_check};
 use runner_core::connection::{self, check_view, BeginOutcome, PreflightResult};
 use runner_core::credentials::{self, LoadStatus, SecretStore};
@@ -28,7 +28,10 @@ use tauri_plugin_opener::OpenerExt;
 /// 껄무새 웹 주소 — 매크로를 만들고 받는 곳.
 pub const WEB_URL: &str = "https://gg-parrot.vercel.app/";
 
-use crate::state::{now_ms, Core, KeyCheckRecord, Notice, Run, RunData, SavedRun, StartReply, WizardTarget};
+use crate::state::{
+    now_ms, Core, GuideStep, KeyCheckRecord, Notice, Run, RunData, SavedRun, SlotStatus, StartReply, WizardTarget,
+    CAPITAL_LOCKED, CLAIM_BUSY_WAIT, MEMBER_KEY_NEEDED,
+};
 
 pub const EV_STATE: &str = "runner:state";
 pub const EV_ACTIVITY: &str = "runner:activity";
@@ -63,6 +66,8 @@ pub struct Shared {
     pub emit_queued: std::sync::atomic::AtomicBool,
     /// OS 알림 묶음(제목별) — 같은 원인으로 여러 실행이 같은 알림을 띄우지 않게.
     pub os_alerts: Mutex<std::collections::HashMap<String, AlertSlot>>,
+    /// 키체인 일을 한 번에 하나씩만 — 읽고-고쳐-쓰기가 서로 덮지 않게(keys.rs). Core보다 먼저 잠금.
+    key_io: Mutex<()>,
 }
 
 pub type S = Arc<Shared>;
@@ -95,6 +100,7 @@ impl Shared {
             sent_library_rev: std::sync::atomic::AtomicU64::new(u64::MAX),
             emit_queued: std::sync::atomic::AtomicBool::new(false),
             os_alerts: Mutex::new(Default::default()),
+            key_io: Mutex::new(()),
         });
         shared.load_remembered();
         shared.load_saved();
@@ -103,7 +109,7 @@ impl Shared {
     }
 
     pub fn lock(&self) -> MutexGuard<'_, Core> {
-        self.core.lock().unwrap_or_else(|e| e.into_inner())
+        lock_or_recover(&self.core)
     }
 
     /// 창을 앞으로 — 트레이로 숨겨 둔 창(Dock 아이콘 포함)도 되살림.
@@ -119,18 +125,38 @@ impl Shared {
         self.app.clipboard().write_text(text.to_string()).is_ok()
     }
 
+    /// 클립보드에 씀. 못 쓰면 `fail` 글을 오류로 돌려줌(화면이 토스트로 보임).
+    pub fn copy_text(&self, text: &str, fail: &str) -> Result<(), String> {
+        if self.write_clipboard(text) {
+            Ok(())
+        } else {
+            Err(fail.into())
+        }
+    }
+
     pub fn open_url(&self, url: &str) -> bool {
         self.app.opener().open_url(url, None::<&str>).is_ok()
     }
 
-    /// 껄무새 웹을 기본 브라우저로 엶(머리줄·메뉴·트레이·매크로 추가 창).
-    pub fn open_web(&self) -> Result<(), String> {
-        if self.open_url(WEB_URL) {
+    /// 기본 브라우저로 엶. 못 열면 주소를 직접 넣으라는 안내를 오류로 돌려줌.
+    pub fn open_url_or_hint(&self, url: &str) -> Result<(), String> {
+        if self.open_url(url) {
             Ok(())
         } else {
-            Err(format!("브라우저를 열지 못했어요. 주소창에 {WEB_URL} 을 입력하세요."))
+            Err(format!("브라우저를 열지 못했어요. 주소창에 {url} 을 입력하세요."))
         }
     }
+
+    /// 껄무새 웹을 기본 브라우저로 엶(머리줄·메뉴·트레이·매크로 추가 창).
+    pub fn open_web(&self) -> Result<(), String> {
+        self.open_url_or_hint(WEB_URL)
+    }
+}
+
+/// 앱 레이어 잠금은 모두 이 방식 — 다른 스레드가 잠근 채 패닉해도(오염) 값을 그대로 꺼내 씀.
+/// 잠금 하나가 오염됐다고 앱 전체(트레이·업데이트·화면 보내기)가 멈추지 않게.
+pub(crate) fn lock_or_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 mod alerts;
@@ -140,6 +166,7 @@ mod support;
 pub use support::os_summary;
 mod deep_link;
 mod keys;
+pub(crate) use keys::ConnectedSlot;
 mod launch;
 pub use alerts::AlertSlot;
 #[cfg(test)]

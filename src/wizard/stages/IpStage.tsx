@@ -1,12 +1,12 @@
 // 허용 IP 등록 — 이 기기의 공인 IPv4·[복사]·[복사하고 API 관리 열기]·주의 문구·거래소 화면 그림.
 // 국내는 첫 단계, 바이낸스 실거래는 키를 만든 뒤 마지막 단계(키 카드의 Edit restrictions에서 IP·주문 권한).
 import { Check, Copy, ExternalLink, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCopiedFlag } from "../../components/useCopiedFlag";
 import { useRunnerContext } from "../../state/context";
 import type { WizardState } from "../../types";
 import { ExchangeScreen, siteOf } from "../screens";
 
-export const PUBLIC_IP_CAVEAT =
+const PUBLIC_IP_CAVEAT =
   "이 주소는 방금 조회한 이 기기의 공인 IP예요. 고정 IP인지, 거래소에 허용 IP로 등록됐는지는 확인하지 않아요. " +
   "VPN이나 프록시를 쓰면 거래소가 보는 주소가 다를 수 있어요. " +
   "주소나 네트워크가 바뀌었다면 주소를 다시 확인해 등록한 뒤 연결을 확인하세요.";
@@ -20,7 +20,7 @@ export function restrictLead(market: WizardState["market"]): string {
   );
 }
 
-export function ipShown(ip: WizardState["ip"]): { text: string; tone: "ink" | "muted" | "danger" } {
+function ipShown(ip: WizardState["ip"]): { text: string; tone: "ink" | "muted" | "danger" } {
   if (ip.status === "ok" && ip.address) return { text: ip.address, tone: "ink" };
   if (ip.status === "error") return { text: "확인 실패", tone: "danger" };
   return { text: "확인 중", tone: "muted" };
@@ -28,23 +28,22 @@ export function ipShown(ip: WizardState["ip"]): { text: string; tone: "ink" | "m
 
 export function IpStage({ wizard }: { wizard: WizardState }) {
   const { act, ok } = useRunnerContext();
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopiedFlag(1500);
   const ip = wizard.ip;
   const ready = ip.status === "ok" && !!ip.address;
   const shown = ipShown(ip);
   const canRetry = ip.status === "error" || ip.status === "expired" || ip.status === "idle";
 
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
-  }, [copied]);
-
   const binance = wizard.exchange === "binance";
   return (
     <>
       {binance && <p className="wz-lead">{restrictLead(wizard.market)}</p>}
-      <ExchangeScreen site={siteOf(wizard)} kind={binance ? "restrict" : "ip"} ip={ready ? ip.address : ""} />
+      <ExchangeScreen
+        site={siteOf(wizard)}
+        kind={binance ? "restrict" : "ip"}
+        ip={ready ? ip.address : ""}
+        label={wizard.label}
+      />
       <div className="wz-ip">
         <div className="wz-ip-text">
           <span className="eyebrow">이 기기 주소</span>
@@ -58,7 +57,7 @@ export function IpStage({ wizard }: { wizard: WizardState }) {
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              onClick={async () => (await ok("wizard_copy_ip")) && setCopied(true)}
+              onClick={async () => (await ok("wizard_copy_ip")) && markCopied()}
             >
               {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
               {copied ? "복사됨" : "복사"}

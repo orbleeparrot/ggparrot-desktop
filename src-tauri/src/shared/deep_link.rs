@@ -58,8 +58,6 @@ impl Shared {
     }
 
     pub(crate) fn apply_claim(self: &S, claimed: server::ClaimedLaunch, base: String) {
-        let mut switch_asked = false;
-        let mut first_key = false;
         let name = claimed.name.clone().unwrap_or_else(|| "웹에서 연결한 내 매크로".into());
         let id = match self.add_run(claimed.macro_.clone(), &name, "web", None, Some(base.clone())) {
             Ok(id) => id,
@@ -69,12 +67,12 @@ impl Shared {
                 return;
             }
         };
-        {
-            let mut c = self.lock();
+        let edited = self.edit_runs(|c| {
             // 웹 연결은 거래소 키를 실어 오지 않음. 링크로 받은 회원 키는 사용자가 확인한 뒤에만 씀 —
             // 비어 있을 때 조용히 채우면, 남의 티켓을 담은 피싱 링크로 그 사람 계정이 이 앱에 들어올 수 있음.
             let incoming = claimed.runner_key.trim().to_string();
             let current = c.member_key.trim().to_string();
+            let (mut switch_asked, mut first_key) = (false, false);
             if current == incoming {
                 c.pending_member_key = None;
             } else {
@@ -102,9 +100,9 @@ impl Shared {
                 false,
                 "ok",
             );
-            self.save_runs(&c);
-        }
-        self.emit();
+            Ok::<_, ()>((switch_asked, first_key))
+        });
+        let Ok((switch_asked, first_key)) = edited else { return };
         self.navigate(&format!("run:{id}"));
         self.bring_to_front();
         if first_key {

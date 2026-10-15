@@ -2,11 +2,7 @@
 
 use serde_json::Value;
 
-use crate::money::py_float;
-
-fn now_secs() -> f64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
-}
+use crate::money::py_num;
 
 fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
@@ -44,7 +40,7 @@ pub struct RiskGuard {
 
 impl RiskGuard {
     pub fn new(risk: &Value, base_capital: f64, cap: f64) -> Self {
-        Self::with_clock(risk, base_capital, cap, Box::new(now_secs), Box::new(today))
+        Self::with_clock(risk, base_capital, cap, Box::new(crate::clock::unix_secs), Box::new(today))
     }
 
     pub fn with_clock(
@@ -83,7 +79,7 @@ impl RiskGuard {
             bits.push(format!("최대 보유 {raw}시간"));
         }
         if self.cooldown_minutes != 0.0 {
-            bits.push(format!("손절 뒤 재진입 대기 {}분", py_float(self.cooldown_minutes)));
+            bits.push(format!("손절 뒤 재진입 대기 {}분", py_num(self.cooldown_minutes)));
         }
         if bits.is_empty() {
             "설정 없음".into()

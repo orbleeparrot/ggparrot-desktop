@@ -15,7 +15,7 @@ import { SIDE_LABELS } from "../../state/runs";
 import { alertOf, labelOf, serverCell, STALE_MS } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus, Tone } from "../../types";
 import { Sparkline } from "../Sparkline";
-import { useElapsed } from "./useElapsed";
+import { useRunClock } from "./useElapsed";
 
 export function StatusCard({
   run,
@@ -32,9 +32,8 @@ export function StatusCard({
   status: RunSlot["status"];
   prices: number[];
 }) {
-  const elapsed = useElapsed(run);
-  // useElapsed가 실행 중에는 1초마다 다시 그리므로 여기서 읽는 지금 시각도 그만큼 새로움.
-  const now = Date.now();
+  // 실행 중에는 1초마다 다시 그림 — 서버 소식이 끊긴 지 얼마인지도 이 시각으로 셈.
+  const { now, elapsed } = useRunClock(run);
   const label = labelOf(run, phase, status);
   const live = !run.finished && phase === "running" && status.tone === "ok";
   const toneClass = run.finished ? "" : `tone-${status.tone as Tone}`;

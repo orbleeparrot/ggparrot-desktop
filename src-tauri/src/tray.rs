@@ -7,7 +7,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::shared::{Shared, S};
+use crate::shared::{lock_or_recover, Shared, S};
 
 pub const TRAY_ID: &str = "main";
 const MAX_RUN_LINES: usize = 8;
@@ -132,7 +132,7 @@ impl Shared {
                 }
             })
             .build(&self.app)?;
-        *self.tray_key.lock().unwrap() = t.key;
+        *lock_or_recover(&self.tray_key) = t.key;
         Ok(())
     }
 
@@ -152,7 +152,7 @@ impl Shared {
         let Some(tray) = self.app.tray_by_id(TRAY_ID) else { return };
         let t = summary(self);
         let _ = tray.set_tooltip(Some(&t.tooltip));
-        let mut last = self.tray_key.lock().unwrap();
+        let mut last = lock_or_recover(&self.tray_key);
         if *last == t.key {
             return;
         }

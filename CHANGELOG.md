@@ -8,6 +8,30 @@
 - `main`에 푸시하면 CI 뒤 그 버전의 릴리스 초안이 자동으로 만들어짐. 초안을 [Publish release]하면 배포되고, 그 버전 칸에 날짜가 달리며 함께 나간 칸은 `배포하지 않음(<버전>에 포함)`이 됨(자동).
 - 서버 연동 레벨(`runner_version`으로 보냄)은 19임 — 서버가 기능별 최소 레벨과 비교하는 정수. 앱 버전은 `0.<서버 연동 레벨>.<패치>`.
 
+## [0.19.2] - 미배포
+
+### 수정
+
+- [IP 복사]·[기록 복사]·[문의용 정보 복사]가 실패해도 '복사했어요'로 보이던 문제. 이제 실패 이유를 알림.
+- 지원하지 않는 거래소의 매크로를 열면 같은 안내가 두 번 보이던 문제.
+- macOS 키체인 확인 창이 떠 있는 동안 앱 전체가 멈출 수 있던 문제.
+- 거래소 이름 앞뒤에 공백이 있는 매크로에서 연결 확인 기록과 실행 보고가 다른 거래소 이름을 쓰던 문제.
+- 바이낸스 BTC·ETH 견적 종목(예: ETHBTC)의 기초 자산을 종목 이름 전체로 읽던 문제.
+
+### 변경
+
+- 회원 키 안내 문구를 '회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요.'로 통일.
+
+### 개발
+
+- 린트: TS·React에 oxlint(`npm run lint`, `.oxlintrc.json`) — 앱이 TypeScript 7이라 typescript-eslint(TypeScript JS API 필요)를 쓸 수 없음. CI에 추가.
+  - React 컴파일러 규칙에 걸린 13곳 수정(렌더 중 ref·시계 읽기, effect 안 동기 setState 등).
+- 리팩터링(동작 그대로):
+  - runner-core: 숫자·시각·심볼 도우미 하나로(`positive_f64`·`crate::clock`·`types::split_symbol`), 안 쓰는 코드 정리, 국내 오류 이름 목록 한 파일, `binance.rs`를 http·parse·rehearsal로 나눔, 주문 체결 반영·명령 실행·보관함 유지 보수 함수 분리(경계 테스트 먼저).
+  - 앱: 키체인 읽기·쓰기를 Core 잠금 밖으로(`key_io` 잠금), `edit_runs`·`SlotStatus`·`LaunchJob`·`GuideStep`, 문구 상수, 복사 명령 Result, 앱 쪽 잠금은 오염돼도 값을 씀, 저장 실패 알림은 잠금을 푼 뒤.
+  - 화면: 명령 목록 일치 테스트(`scripts/commands.test.mjs`), CSS 중복·흩어진 규칙 정리와 `--on-accent` 토큰, `useCopiedFlag`·`updateCopy`·`ConfirmDialog`, 상세 화면·도우미 그림 조각 파일 분리.
+- 테스트: JS 99→115, Rust 앱 37→50, runner-core 285→300.
+
 ## [0.19.1] - 미배포
 
 ### 변경

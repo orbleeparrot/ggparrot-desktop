@@ -7,11 +7,13 @@ use serde_json::{json, Value};
 use sha2::Sha256;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
+use crate::brokers::domestic::error_names::{IP_REJECTED, KEY_REJECTED, ORDER_EVALUATED, SCOPE_REJECTED};
 use crate::brokers::Broker;
+use crate::clock::unix_secs;
 use crate::outbox::py_dumps;
-use crate::types::{Credentials, IpObservation, Market, RunMode};
+use crate::types::{exchange_name_of, Credentials, IpObservation, Market, RunMode};
 
 pub const PUBLIC_IPV4_URL: &str = "https://api4.ipify.org?format=json";
 pub const PUBLIC_IP_MAX_AGE_SECS: f64 = 120.0;
@@ -40,6 +42,7 @@ pub const EXCHANGE_HOME_PAGES: [(&str, &str); 5] = [
 /// - testnet: 현물 테스트넷 testnet.binance.vision(GitHub 로그인, 바이낸스 계정과 무관)
 /// - demo: 선물 데모 demo.binance.com(바이낸스 계정 로그인)
 /// - live: binance.com 실거래. IP 제한 없는 키는 'Enable Reading'만 켤 수 있어 허용 IP가 필요함
+#[cfg(test)]
 pub const BINANCE_ENVS: [&str; 3] = ["testnet", "demo", "live"];
 
 /// 실행 모드·시장으로 바이낸스 키를 만들 곳을 고름. 실전이 아니면(모의 포함) 연습 환경임.
@@ -117,17 +120,6 @@ pub struct CheckNotes {
     pub ip: String,
     pub order: String,
 }
-
-// 키는 받아들였지만 호출한 IP가 허용 목록에 없음 — 업비트 no_authorization_ip, 빗썸 NotAllowIP.
-const IP_REJECTED: [&str; 2] = ["no_authorization_ip", "NotAllowIP"];
-// 키 자체를 받아들이지 않음(틀린 키·시크릿 짝 불일치·만료).
-const KEY_REJECTED: [&str; 4] =
-    ["invalid_access_key", "jwt_verification", "no_authorization_token", "expired_access_key"];
-// 키와 IP는 통과했고 주문하기 권한이 없음.
-const SCOPE_REJECTED: [&str; 1] = ["out_of_scope"];
-// 거래소가 주문 내용(잔고·최소 금액)까지 따져 본 오류 — 키·IP·주문 권한은 이미 통과했다는 뜻임.
-const ORDER_EVALUATED: [&str; 5] =
-    ["insufficient_funds_bid", "insufficient_funds_ask", "insufficient_funds", "over_krw_funds_bid", "under_min_total"];
 
 fn view(auth: Check, ip: Check, order: Check, connected: bool, problem: &str, headline: &str) -> CheckView {
     CheckView {
@@ -316,9 +308,9 @@ pub fn validate_public_ipv4(v: &str) -> Result<String, String> {
 
 /// 인증 없는 요청 한 번만 보냄 — 대체 주소·재시도·키를 실은 세션은 쓰지 않음.
 ///
-/// 리다이렉트를 따라가지 않도록 이 요청만을 위한 클라이언트를 따로 만듦(넘겨받은 클라이언트는
+/// 리다이렉트를 따라가지 않도록 이 요청만을 위한 클라이언트를 따로 만듦(공용 클라이언트는
 /// 리다이렉트 정책을 요청마다 끌 수 없음).
-pub async fn detect_public_ipv4(_http: &reqwest::Client) -> Result<String, String> {
+pub async fn detect_public_ipv4() -> Result<String, String> {
     detect_public_ipv4_from(PUBLIC_IPV4_URL).await
 }
 
@@ -342,14 +334,10 @@ pub async fn detect_public_ipv4_from(url: &str) -> Result<String, String> {
     }
 }
 
-fn unix_now() -> f64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
-}
-
 /// 벽시계로도 신선한지. macOS의 Instant는 잠자기 동안 멈춰서, 잠들기 전 결과가 깨어난 뒤에도
 /// 방금 것처럼 보임(집에서 확인하고 덮은 뒤 사무실에서 열면 옛 IP 등).
 fn wall_within(checked_wall: f64, max_age: f64) -> bool {
-    let elapsed = unix_now() - checked_wall;
+    let elapsed = unix_secs() - checked_wall;
     (0.0..max_age).contains(&elapsed)
 }
 
@@ -378,9 +366,9 @@ impl PublicIpResult {
             address: address.into(),
             reason: reason.into(),
             checked_at: Instant::now(),
-            observed_at: unix_now(),
+            observed_at: unix_secs(),
             changed: false,
-            checked_wall: unix_now(),
+            checked_wall: unix_secs(),
         }
     }
     pub fn fresh(&self) -> bool {
@@ -429,6 +417,7 @@ impl PublicIpCache {
     }
 
     /// 키체인에 저장된 JSON 값을 그대로 받는 판.
+    #[cfg(test)]
     pub fn seed_previous_value(&mut self, history: &Value) -> bool {
         match valid_ip_observation(history) {
             Some(observation) => {
@@ -490,9 +479,9 @@ impl PublicIpCache {
             address,
             reason: reason.into(),
             checked_at: now,
-            observed_at: unix_now(),
+            observed_at: unix_secs(),
             changed,
-            checked_wall: unix_now(),
+            checked_wall: unix_secs(),
         };
         self.result = Some(result.clone());
         Some(result)
@@ -544,20 +533,9 @@ fn local_hms(unix: f64) -> String {
     }
 }
 
-/// Python `str(macro.get("exchange") or "binance").lower()`.
-fn macro_exchange(m: &Value) -> String {
-    match m.get("exchange") {
-        Some(Value::String(s)) if !s.is_empty() => s.to_lowercase(),
-        Some(Value::Bool(true)) => "true".into(),
-        Some(Value::Number(n)) if n.as_f64() != Some(0.0) => n.to_string().to_lowercase(),
-        Some(v @ Value::Array(a)) if !a.is_empty() => v.to_string().to_lowercase(),
-        Some(v @ Value::Object(o)) if !o.is_empty() => v.to_string().to_lowercase(),
-        _ => "binance".into(),
-    }
-}
-
+/// 매크로·모드·고른 거래소 키 한 쌍의 지문. 거래소 이름은 세션 시작 payload와 같은 `exchange_name_of`로 읽음.
 pub fn preflight_fingerprint(m: &Value, mode: RunMode, c: &Credentials) -> String {
-    let exchange = macro_exchange(m);
+    let exchange = exchange_name_of(m);
     let pair = match c.exchanges.get(&exchange) {
         Some(p) => json!({"api_key": p.api_key, "api_secret": p.api_secret}),
         None => json!({}),
@@ -610,7 +588,7 @@ fn valid_observation(address: &Value, observed_at: &Value) -> Option<IpObservati
         Value::Number(n) => n.as_f64()?,
         _ => return None,
     };
-    if !(observed > 0.0 && observed <= unix_now() + HISTORY_MAX_FUTURE_SKEW_SECS) || !observed.is_finite() {
+    if !(observed > 0.0 && observed <= unix_secs() + HISTORY_MAX_FUTURE_SKEW_SECS) || !observed.is_finite() {
         return None;
     }
     let address = match address {
@@ -647,7 +625,7 @@ impl PreflightResult {
             reason: reason.into(),
             fingerprint: fingerprint.into(),
             checked_at: Instant::now(),
-            checked_wall: unix_now(),
+            checked_wall: unix_secs(),
             error_name: String::new(),
             broker: None,
             balance: String::new(),
@@ -689,7 +667,7 @@ pub fn with_successful_ip_history_at(
     if mode != RunMode::Live {
         return None;
     }
-    let exchange = macro_exchange(m);
+    let exchange = exchange_name_of(m);
     // 허용 IP 관측은 국내 거래소만 남김(바이낸스는 환경 없이 찾으면 없음).
     api_management_url(&exchange, "").ok()?;
     let saved_pair = remembered.exchanges.get(&exchange)?;

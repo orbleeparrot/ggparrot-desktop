@@ -334,8 +334,26 @@ impl ServerClient {
         }
     }
 
+    /// 메모리 보관 정리 → 디스크 손실 기록 → 손실 알림. 기록을 쓰거나 보낼 때마다 부름.
     fn maintain_locked(&self, st: &mut EventState) {
         let now = self.inner.outbox.now_ms();
+        Self::trim_memory(st, now);
+        let storage_failed = !self.flush_to_disk_locked(st);
+        let notice = self.loss_notice_locked(st, now, storage_failed);
+        if notice.values().any(|v| *v > 0) {
+            let get = |k: &str| notice.get(k).copied().unwrap_or(0);
+            let count: u64 = notice.values().sum();
+            let expired_count = get("disk_expired") + get("memory_expired");
+            let capacity_count = get("disk_capacity") + get("memory_capacity");
+            self.direct_warning(&format!(
+                "서버로 보내지 못한 활동 기록 {count}건을 더 보관할 수 없어 지웠어요\
+                 (7일 지남 {expired_count}건 · 용량 초과 {capacity_count}건). 이 기록은 서버에 남지 않았을 수 있어요."
+            ));
+        }
+    }
+
+    /// 메모리에 둔 기록 중 기한(7일)이 지난 것과 개수·바이트 한도를 넘는 오래된 것을 지우고 그 수를 셈.
+    fn trim_memory(st: &mut EventState, now: i64) {
         let ttl_ms = outbox::PENDING_TTL_SECONDS * 1000;
         let expired: HashSet<String> = st
             .events
@@ -361,68 +379,57 @@ impl ServerClient {
         let overflow_n = overflow.len() as u64;
         Self::remove_memory_keys(st, &overflow, true);
         *st.memory_loss_counts.entry("memory_capacity".into()).or_default() += overflow_n;
+    }
 
-        let mut storage_failed = self.inner.outbox.try_maintain(false).is_err();
+    /// 디스크 보관함 유지 보수, 아직 옮기지 않은 메모리 손실 수 기록, 세션 없는 기록 키 정리. 하나라도 실패하면 거짓.
+    fn flush_to_disk_locked(&self, st: &mut EventState) -> bool {
+        if self.inner.outbox.try_maintain(false).is_err() {
+            return false;
+        }
         let deltas: BTreeMap<String, u64> = st
             .memory_loss_counts
             .iter()
             .map(|(r, c)| (r.clone(), c.saturating_sub(st.memory_flushed_loss_counts.get(r).copied().unwrap_or(0))))
             .collect();
-        if !storage_failed && deltas.values().any(|v| *v > 0) {
-            if self.inner.outbox.try_record_memory_loss(&deltas).is_ok() {
-                st.memory_flushed_loss_counts = st.memory_loss_counts.clone();
-            } else {
-                storage_failed = true;
+        if deltas.values().any(|v| *v > 0) {
+            if self.inner.outbox.try_record_memory_loss(&deltas).is_err() {
+                return false;
             }
+            st.memory_flushed_loss_counts = st.memory_loss_counts.clone();
         }
-        if !storage_failed && !st.unassigned_event_keys.is_empty() {
+        if !st.unassigned_event_keys.is_empty() {
             let keys: Vec<String> = st.unassigned_event_keys.iter().cloned().collect();
-            match self.inner.outbox.existing_unassigned_keys(&self.inner.namespace, &keys) {
-                Ok(disk) => {
-                    let keep: HashSet<String> = disk.into_iter().chain(st.event_sessions.keys().cloned()).collect();
-                    st.unassigned_event_keys.retain(|k| keep.contains(k));
-                }
-                Err(_) => storage_failed = true,
-            }
+            let Ok(disk) = self.inner.outbox.existing_unassigned_keys(&self.inner.namespace, &keys) else {
+                return false;
+            };
+            let keep: HashSet<String> = disk.into_iter().chain(st.event_sessions.keys().cloned()).collect();
+            st.unassigned_event_keys.retain(|k| keep.contains(k));
         }
-        let mut notice = if storage_failed {
-            BTreeMap::new()
-        } else {
-            match self.inner.outbox.try_take_loss_notice() {
-                Ok(n) => n,
-                Err(_) => {
-                    storage_failed = true;
-                    BTreeMap::new()
-                }
-            }
-        };
-        if storage_failed {
-            self.storage_warning_locked(st);
-            let since = now - st.last_memory_notice_ms;
-            if !(0..outbox::MAINTENANCE_SECONDS * 1000).contains(&since) {
-                notice = st
-                    .memory_loss_counts
-                    .iter()
-                    .map(|(r, c)| {
-                        (r.clone(), c.saturating_sub(st.memory_noticed_loss_counts.get(r).copied().unwrap_or(0)))
-                    })
-                    .collect();
-                if notice.values().any(|v| *v > 0) {
-                    st.last_memory_notice_ms = now;
-                    st.memory_noticed_loss_counts = st.memory_loss_counts.clone();
-                }
-            }
+        true
+    }
+
+    /// 이번에 알릴 손실 수(사유별). 디스크가 되면 디스크 기록의 1분 단위 알림을, 막혔으면 저장 실패 경고와 함께
+    /// 메모리에서 센 수를 1분에 한 번 씀. 알릴 것이 없으면 0뿐이거나 빈 맵.
+    fn loss_notice_locked(&self, st: &mut EventState, now: i64, storage_failed: bool) -> BTreeMap<String, u64> {
+        let disk_notice = if storage_failed { None } else { self.inner.outbox.try_take_loss_notice().ok() };
+        if let Some(notice) = disk_notice {
+            return notice;
         }
+        self.storage_warning_locked(st);
+        let since = now - st.last_memory_notice_ms;
+        if (0..outbox::MAINTENANCE_SECONDS * 1000).contains(&since) {
+            return BTreeMap::new();
+        }
+        let notice: BTreeMap<String, u64> = st
+            .memory_loss_counts
+            .iter()
+            .map(|(r, c)| (r.clone(), c.saturating_sub(st.memory_noticed_loss_counts.get(r).copied().unwrap_or(0))))
+            .collect();
         if notice.values().any(|v| *v > 0) {
-            let get = |k: &str| notice.get(k).copied().unwrap_or(0);
-            let count: u64 = notice.values().sum();
-            let expired_count = get("disk_expired") + get("memory_expired");
-            let capacity_count = get("disk_capacity") + get("memory_capacity");
-            self.direct_warning(&format!(
-                "서버로 보내지 못한 활동 기록 {count}건을 더 보관할 수 없어 지웠어요\
-                 (7일 지남 {expired_count}건 · 용량 초과 {capacity_count}건). 이 기록은 서버에 남지 않았을 수 있어요."
-            ));
+            st.last_memory_notice_ms = now;
+            st.memory_noticed_loss_counts = st.memory_loss_counts.clone();
         }
+        notice
     }
 
     /// 보낼 기록 한 묶음(지우지 않음 — 서버가 저장했다고 답한 것만 ack로 지움).

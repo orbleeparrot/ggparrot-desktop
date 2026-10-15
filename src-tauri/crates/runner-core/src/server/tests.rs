@@ -366,3 +366,127 @@ async fn a_claimed_member_key_must_look_like_a_key() {
         .await;
     assert!(claim_ticket(&reqwest::Client::new(), &server.uri(), "t").await.is_err());
 }
+
+// --- 메모리 보관·손실 알림(maintain_locked) 경계 ---------------------------------
+
+struct Memo {
+    _dir: tempfile::TempDir,
+    now: Arc<std::sync::atomic::AtomicI64>,
+    client: ServerClient,
+    warnings: Arc<Mutex<Vec<String>>>,
+}
+
+impl Memo {
+    fn new(fault: crate::outbox::OutboxFault) -> Self {
+        use std::sync::atomic::{AtomicI64, Ordering};
+        let dir = tempfile::tempdir().unwrap();
+        let now = Arc::new(AtomicI64::new(1_800_000_000_000));
+        let tick = now.clone();
+        let clock: crate::outbox::Clock = Arc::new(move || tick.load(Ordering::SeqCst) as f64 / 1000.0);
+        let outbox = Arc::new(EventOutbox::open_with(
+            Some(dir.path().join("outbox.sqlite3")),
+            clock,
+            crate::outbox::OutboxLimits::default(),
+        ));
+        outbox.set_fault(fault);
+        let mut client =
+            ServerClient::new("ggp_member_key_value_123456", "http://127.0.0.1:9", outbox, reqwest::Client::new());
+        Arc::get_mut(&mut client.inner).unwrap().echo_stdout = false;
+        let warnings: Arc<Mutex<Vec<String>>> = Arc::default();
+        let sink = warnings.clone();
+        client.set_event_warning(Arc::new(move |m: String| sink.lock().unwrap().push(m)));
+        Memo { _dir: dir, now, client, warnings }
+    }
+    fn push(&self, n: usize) {
+        for _ in 0..n {
+            self.client.push_event("info", "x", "INFO", "runner.message", "", &Map::new());
+        }
+    }
+    fn advance_secs(&self, s: i64) {
+        self.now.fetch_add(s * 1000, std::sync::atomic::Ordering::SeqCst);
+    }
+    fn take_warnings(&self) -> Vec<String> {
+        std::mem::take(&mut *self.warnings.lock().unwrap())
+    }
+    fn memory_len(&self) -> usize {
+        self.client.inner.state.lock().unwrap().events.len()
+    }
+    fn loss(&self, reason: &str) -> u64 {
+        self.client.inner.state.lock().unwrap().memory_loss_counts[reason]
+    }
+}
+
+const STORAGE_WARNING: &str = "활동 기록을 이 기기에 저장하지 못했어요";
+
+#[test]
+fn a_working_disk_keeps_nothing_in_memory_and_warns_nothing() {
+    let m = Memo::new(crate::outbox::OutboxFault::None);
+    m.push(3);
+    assert_eq!(m.memory_len(), 0);
+    assert!(m.take_warnings().is_empty());
+}
+
+#[test]
+fn memory_overflow_is_recorded_on_disk_and_noticed_once_a_minute() {
+    // 쓰기만 막힘 — 메모리 보관 한도를 넘긴 수는 디스크 손실 기록으로 옮기고, 디스크 알림으로 알림.
+    let m = Memo::new(crate::outbox::OutboxFault::Append);
+    m.push(outbox::MEMORY_MAX_ROWS);
+    let w = m.take_warnings();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].starts_with(STORAGE_WARNING), "저장 실패 경고는 한 번만");
+    m.push(1);
+    assert_eq!(m.memory_len(), outbox::MEMORY_MAX_ROWS);
+    assert_eq!(m.loss("memory_capacity"), 1);
+    let w = m.take_warnings();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("활동 기록 1건") && w[0].contains("7일 지남 0건 · 용량 초과 1건"), "{}", w[0]);
+    {
+        let st = m.client.inner.state.lock().unwrap();
+        assert_eq!(st.memory_flushed_loss_counts["memory_capacity"], 1, "디스크에 옮긴 수");
+    }
+    // 1분 안의 손실은 다음 알림으로 미룸.
+    m.push(1);
+    assert!(m.take_warnings().is_empty());
+    m.advance_secs(61);
+    m.push(1);
+    let w = m.take_warnings();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("활동 기록 2건") && w[0].contains("용량 초과 2건"), "{}", w[0]);
+}
+
+#[test]
+fn expired_memory_records_are_counted_as_expired() {
+    let m = Memo::new(crate::outbox::OutboxFault::Append);
+    m.push(3);
+    m.take_warnings();
+    m.advance_secs(outbox::PENDING_TTL_SECONDS);
+    m.push(1);
+    assert_eq!(m.memory_len(), 1, "기한이 지난 3건은 지우고 새 1건만");
+    assert_eq!(m.loss("memory_expired"), 3);
+    let w = m.take_warnings();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("활동 기록 3건") && w[0].contains("7일 지남 3건 · 용량 초과 0건"), "{}", w[0]);
+}
+
+#[test]
+fn without_any_disk_the_memory_counts_are_noticed_once_a_minute() {
+    // 디스크 전체가 막힘 — 손실 수를 디스크에 옮기지 못하고 메모리의 수로 알림.
+    let m = Memo::new(crate::outbox::OutboxFault::All);
+    m.push(outbox::MEMORY_MAX_ROWS + 1);
+    let w = m.take_warnings();
+    assert_eq!(w.len(), 2, "{w:?}");
+    assert!(w[0].starts_with(STORAGE_WARNING));
+    assert!(w[1].contains("활동 기록 1건") && w[1].contains("용량 초과 1건"), "{}", w[1]);
+    {
+        let st = m.client.inner.state.lock().unwrap();
+        assert_eq!(st.memory_flushed_loss_counts["memory_capacity"], 0, "디스크에 옮기지 못함");
+        assert_eq!(st.memory_noticed_loss_counts["memory_capacity"], 1);
+    }
+    m.push(2);
+    assert!(m.take_warnings().is_empty(), "1분 안에는 다시 알리지 않음");
+    m.advance_secs(outbox::MAINTENANCE_SECONDS);
+    m.push(1);
+    let w = m.take_warnings();
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("활동 기록 3건") && w[0].contains("용량 초과 3건"), "{}", w[0]);
+}

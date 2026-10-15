@@ -85,11 +85,6 @@
   margin-top: -6px;
   color: var(--muted);
 }
-.settings-sub {
-  margin-top: 6px;
-  font-size: var(--fs-title);
-  font-weight: var(--fw-bold);
-}
 .slot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
@@ -139,6 +134,10 @@
   gap: 8px;
   min-width: 0;
 }
+.slot-head {
+  flex-wrap: wrap; /* 좁은 카드에서 상태 글자를 자르지 않고 다음 줄로 */
+  row-gap: 6px;
+}
 .slot-logo {
   position: relative;
   display: inline-flex;
@@ -151,7 +150,7 @@
   padding: 0 3px;
   border-radius: 4px;
   background: var(--info);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 8px;
   font-weight: var(--fw-bold);
   letter-spacing: 0.04em;
@@ -161,10 +160,6 @@
   font-size: var(--fs-title);
   font-weight: var(--fw-bold);
   white-space: nowrap;
-}
-.slot-head {
-  flex-wrap: wrap; /* 좁은 카드에서 상태 글자를 자르지 않고 다음 줄로 */
-  row-gap: 6px;
 }
 .slot-badge {
   display: inline-flex;
@@ -220,7 +215,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  color: #fff;
+  color: var(--on-accent);
 }
 .check-chip-icon svg {
   width: 10px;
@@ -257,6 +252,19 @@
   border-radius: var(--radius-sm);
   background: var(--card-sunken);
   border: 1px solid var(--line);
+}
+/* 껄무새 계정 — 웹 연결이 가져온 다른 계정의 회원 키 */
+.member-pending {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+.member-pending-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
 }
 .lib-folder-row {
   display: flex;
@@ -303,7 +311,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--on-accent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
   transition: transform 160ms var(--ease);
 }
@@ -355,6 +363,15 @@
   gap: 2px;
   min-width: 0;
 }
+.update-text .strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.update-text .muted {
+  font-size: var(--fs-small);
+}
 .update-headline {
   display: inline-flex;
   align-items: center;
@@ -372,10 +389,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-.icon-btn-sm {
-  width: 24px;
-  height: 24px;
 }
 .about-note {
   display: block;
@@ -395,15 +408,6 @@
 }
 .about-copy p {
   margin: 0;
-  font-size: var(--fs-small);
-}
-.update-text .strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-}
-.update-text .muted {
   font-size: var(--fs-small);
 }
 .update-notes {
@@ -507,35 +511,6 @@
   font-size: var(--fs-small);
   font-weight: var(--fw-bold);
 }
-.progress.progress-lg {
-  height: 10px;
-}
-.progress {
-  position: relative;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--hover);
-  overflow: hidden;
-}
-.progress-bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 999px;
-  background: var(--brand-hover);
-  transition: width 300ms var(--ease);
-}
-.progress.is-indeterminate .progress-bar {
-  width: 35%;
-  animation: indeterminate 1.2s var(--ease) infinite;
-}
-@keyframes indeterminate {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(300%);
-  }
-}
 
 @media (max-width: 899px) {
   .settings {
@@ -571,17 +546,4 @@
     flex-direction: column;
     align-items: flex-start;
   }
-}
-
-.member-pending {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-  margin-top: 10px;
-}
-.member-pending-actions {
-  display: inline-flex;
-  gap: 6px;
-  margin-left: auto;
 }

@@ -11,7 +11,7 @@ impl Bot {
         }
         // 서버는 진입 명령에 만료 시각을 달아 보냄 — 끊겼다 돌아와 늦게 받은 진입은 하지 않음.
         let expires = num(cmd.get("expires_ms"));
-        if expires > 0.0 && wall_ms() as f64 > expires + ENTRY_EXPIRY_GRACE_MS as f64 {
+        if expires > 0.0 && unix_ms() as f64 > expires + ENTRY_EXPIRY_GRACE_MS as f64 {
             return Some("진입 신호의 유효 시간이 지났어요".into());
         }
         let signal = num(cmd.get("signal_price"));

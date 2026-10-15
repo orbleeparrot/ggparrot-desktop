@@ -965,12 +965,12 @@ async fn bithumb_missing_market_is_reported() {
 
 #[test]
 fn thousands_and_plain() {
-    assert_eq!(thousands(10005.0), "10,005");
-    assert_eq!(thousands(999.0), "999");
-    assert_eq!(thousands(1234567.0), "1,234,567");
-    assert_eq!(plain_f64(5000.0), "5000");
-    assert_eq!(plain_f64(19992.0), "19992");
-    assert_eq!(plain_f64(0.00001), "0.00001");
+    assert_eq!(grouped(10005.0, 0), "10,005");
+    assert_eq!(grouped(999.0, 0), "999");
+    assert_eq!(grouped(1234567.0, 0), "1,234,567");
+    assert_eq!(plain_number(5000.0), "5000");
+    assert_eq!(plain_number(19992.0), "19992");
+    assert_eq!(plain_number(0.00001), "0.00001");
 }
 
 #[tokio::test]

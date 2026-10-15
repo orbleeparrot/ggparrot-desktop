@@ -184,11 +184,11 @@ input {
 .btn-danger:hover:not(:disabled) {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-live {
   background: var(--live);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-live:hover:not(:disabled) {
   background: var(--live-hover);
@@ -208,6 +208,10 @@ input {
 .icon-btn:hover {
   background: var(--hover);
   color: var(--ink);
+}
+.icon-btn-sm {
+  width: 24px;
+  height: 24px;
 }
 
 .link-btn {
@@ -374,7 +378,7 @@ input {
 }
 .btn-danger-solid {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-danger-solid:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 85%, #000);
@@ -427,7 +431,7 @@ input {
 .mode-badge.mode-live {
   border-color: var(--live);
   background: var(--live);
-  color: #fff;
+  color: var(--on-accent);
 }
 .path {
   min-width: 0;
@@ -480,4 +484,34 @@ input {
 }
 .stop-menu {
   position: relative;
+}
+/* 진행 막대 — 기본 굵기, .progress-lg는 굵게. 값을 모르면 .is-indeterminate로 오가는 막대. */
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.progress.progress-lg {
+  height: 10px;
+}
+.progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--brand-hover);
+  transition: width 300ms var(--ease);
+}
+.progress.is-indeterminate .progress-bar {
+  width: 35%;
+  animation: indeterminate 1.2s var(--ease) infinite;
+}
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }

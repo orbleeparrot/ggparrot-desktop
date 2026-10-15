@@ -6,7 +6,7 @@ import type { Activity, AppState, Notice, StateEvent } from "../types";
 import { EV_ACTIVITY, EV_NOTICE, EV_STATE } from "../types";
 import { mergeActivity } from "./activity";
 
-export const MAX_PRICE_POINTS = 180;
+const MAX_PRICE_POINTS = 180;
 
 /** 슬롯별 현재가 흐름 — 상태 카드의 작은 선 그래프용. 실행(run.startedAt)이 바뀌면 새로 시작함. UI 로컬 값임. */
 export type PriceTrail = { startedAt: number; points: number[] };
@@ -33,8 +33,11 @@ export function useRunner(onNotice: (n: Notice) => void): Runner {
   const [activityFailed, setActivityFailed] = useState<Record<string, boolean>>({});
   const [loadError, setLoadError] = useState("");
   const noticeRef = useRef(onNotice);
-  const lastEvent = useRef(Date.now());
-  noticeRef.current = onNotice;
+  // 마지막 상태 이벤트 시각 — 구독을 시작할 때 채움(렌더 중에는 시계를 읽지 않음).
+  const lastEvent = useRef(0);
+  useEffect(() => {
+    noticeRef.current = onNotice;
+  }, [onNotice]);
   const loaded = useRef(new Set<string>());
 
   // 매크로 폴더 목록은 바뀐 상태 이벤트에만 실림 — 마지막 목록을 들고 있다가 빠진 이벤트에 채움.
@@ -111,6 +114,7 @@ export function useRunner(onNotice: (n: Notice) => void): Runner {
         if (alive) setLoadError(err instanceof Error ? err.message : String(err));
       }
     })();
+    lastEvent.current = Date.now();
     // 상태 이벤트가 끊겨도 화면이 옛 값에 멈춰 있지 않게, 한동안 소식이 없으면 직접 다시 읽음.
     // 실행 중에는 5초마다 이벤트가 오므로 보통은 아무것도 하지 않음.
     const resync = setInterval(() => {
@@ -131,7 +135,7 @@ export function useRunner(onNotice: (n: Notice) => void): Runner {
   return { state, activity, prices, loadActivity, activityFailed, loadError };
 }
 
-export function trackPrices(prev: Record<string, PriceTrail>, next: AppState): Record<string, PriceTrail> {
+function trackPrices(prev: Record<string, PriceTrail>, next: AppState): Record<string, PriceTrail> {
   let changed = false;
   const out: Record<string, PriceTrail> = {};
   for (const slot of next.runs) {

@@ -289,6 +289,13 @@
 .detail-file {
   color: var(--ink);
 }
+/* 실행 중 매크로 설명 — 한 줄로 줄임 */
+.macro-summary.is-compact {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+}
 .detail-controls {
   display: flex;
   align-items: flex-start;
@@ -337,6 +344,52 @@
 .blocker-text {
   flex: 1;
   min-width: 0;
+}
+
+/* 투자 금액 — 보기·바꾸기 */
+.capital-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.capital-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.capital-value {
+  font-size: var(--fs-title);
+}
+.capital-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.capital-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.capital-input {
+  width: 140px;
+  text-align: right;
+}
+.capital-unit {
+  color: var(--muted);
+  font-weight: var(--fw-bold);
+}
+.capital-note {
+  margin: 0;
+  font-size: var(--fs-small);
+}
+.capital-risk {
+  margin: 0;
+  font-size: var(--fs-small);
 }
 
 /* --- 상태 카드 ---------------------------------------------------------------- */
@@ -397,6 +450,13 @@
   background: var(--danger-soft);
   color: var(--danger-ink);
 }
+/* 글자만 줄이고(…), 점과 퍼지는 고리는 자르지 않음. */
+.run-label-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .uncertain-banner {
   display: flex;
   align-items: center;
@@ -404,7 +464,7 @@
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: var(--fw-bold);
 }
 .pnl-row {
@@ -504,6 +564,18 @@
 }
 .run-table .unit {
   color: var(--muted);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-small);
+}
+/* 실현손익 아래 수수료 반영 여부 — 값 한 줄을 지키며 작게 덧붙임 */
+.run-table .realized-note {
+  display: block;
+  color: var(--muted);
+  font-weight: var(--fw-regular);
+  font-size: var(--fs-small);
+}
+/* 현재가 옆 전일 대비 등락률 */
+.run-table .day-change {
   font-weight: var(--fw-regular);
   font-size: var(--fs-small);
 }
@@ -674,88 +746,7 @@
     flex: 1;
     width: 100%;
   }
-}
-@media (min-width: 640px) and (max-width: 899px) {
-  .run-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  }
-}
-/* 글자만 줄이고(…), 점과 퍼지는 고리는 자르지 않음. */
-.run-label-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 투자 금액 — 보기·바꾸기 */
-.capital-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
-}
-.capital-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-.capital-value {
-  font-size: var(--fs-title);
-}
-.capital-actions {
-  display: inline-flex;
-  gap: 4px;
-  margin-left: auto;
-}
-.capital-form {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.capital-input {
-  width: 140px;
-  text-align: right;
-}
-.capital-unit {
-  color: var(--muted);
-  font-weight: var(--fw-bold);
-}
-.capital-note {
-  margin: 0;
-  font-size: var(--fs-small);
-}
-.capital-risk {
-  margin: 0;
-  font-size: var(--fs-small);
-}
-
-/* 실현손익 아래 수수료 반영 여부 — 값 한 줄을 지키며 작게 덧붙임 */
-.run-table .realized-note {
-  display: block;
-  color: var(--muted);
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-small);
-}
-/* 현재가 옆 전일 대비 등락률 */
-.run-table .day-change {
-  font-weight: var(--fw-regular);
-  font-size: var(--fs-small);
-}
-/* 실행 중 매크로 설명 — 한 줄로 줄임 */
-.macro-summary.is-compact {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--fs-small);
-}
-/* 좁은 창 — 두 단추가 종목 이름을 누르지 않게 머리줄 아래 줄로 내림 */
-@media (max-width: 560px) {
+  /* 두 단추가 종목 이름을 누르지 않게 머리줄 아래 줄로 내림 */
   .detail-head {
     flex-wrap: wrap;
   }
@@ -763,5 +754,11 @@
     justify-content: flex-start;
     width: 100%;
     margin-left: 0;
+  }
+}
+@media (min-width: 640px) and (max-width: 899px) {
+  .run-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
 }

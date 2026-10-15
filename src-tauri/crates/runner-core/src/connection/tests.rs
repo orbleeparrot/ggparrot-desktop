@@ -127,6 +127,22 @@ fn other_exchange_keys_are_not_part_of_the_selected_check() {
 }
 
 #[test]
+fn fingerprint_reads_the_exchange_name_like_the_session_payload() {
+    // 앞뒤 공백·대문자가 섞인 거래소 이름도 세션 시작 payload와 같은 이름(upbit)의 키로 지문을 만듦.
+    let m = json!({"exchange": " Upbit ", "symbol": "KRW-BTC"});
+    assert_eq!(crate::types::session_payload(&m, false, RunMode::Live)["exchange"], "upbit");
+    let original = preflight_fingerprint(&m, RunMode::Live, &creds(&[("upbit", "k", "s")], ""));
+    assert_ne!(original, preflight_fingerprint(&m, RunMode::Live, &creds(&[("upbit", "other", "s")], "")));
+    // 문자열이 아니거나 빈 이름은 payload처럼 binance로 읽음.
+    for odd in [json!(5), json!(true), json!("  "), json!(["upbit"])] {
+        let m = json!({"exchange": odd, "symbol": "BTCUSDT"});
+        assert_eq!(crate::types::session_payload(&m, false, RunMode::Live)["exchange"], "binance");
+        let with = |key: &str| preflight_fingerprint(&m, RunMode::Live, &creds(&[("binance", key, "s")], ""));
+        assert_ne!(with("k"), with("other"), "{odd}");
+    }
+}
+
+#[test]
 fn success_is_valid_only_for_the_current_snapshot_for_two_minutes() {
     let base = Instant::now();
     let mut result = PreflightResult::new(true, "확인", "fp");
@@ -430,6 +446,16 @@ fn success_adds_only_an_observation_preserving_all_saved_keys_and_other_history(
     assert!(!h.saved.connection_history.contains_key("upbit"));
     // same observation again → nothing to save
     assert!(h.updated(Some(updated.clone()), Some(updated), None, None, RunMode::Live).is_none());
+}
+
+#[test]
+fn padded_exchange_name_records_history_under_the_exchange() {
+    let mut h = History::new();
+    h.m = json!({"exchange": " UPBIT", "symbol": "KRW-BTC"});
+    h.check = PreflightResult::new(true, "검사", preflight_fingerprint(&h.m, RunMode::Live, &h.saved));
+    h.check.checked_at = at(h.base, 100.0);
+    let updated = h.updated(None, None, None, None, RunMode::Live).unwrap();
+    assert_eq!(updated.connection_history["upbit"].public_ipv4, "8.8.8.8");
 }
 
 #[test]

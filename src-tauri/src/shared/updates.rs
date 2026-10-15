@@ -38,16 +38,25 @@ impl Shared {
                 Ok(u) => u.check().await.map_err(|e| e.to_string()),
                 Err(e) => Err(e.to_string()),
             };
+            // 받은 업데이트는 Core 잠금 밖에서 먼저 넣어 둠 — 'available'이 보이면 내려받기가 늘 찾을 수 있게.
+            let found = match result {
+                Ok(Some(update)) => {
+                    let info = (update.version.clone(), update.body.clone().unwrap_or_default());
+                    *lock_or_recover(&me.pending_update) = Some(update);
+                    *lock_or_recover(&me.pending_bytes) = None;
+                    Ok(Some(info))
+                }
+                Ok(None) => Ok(None),
+                Err(e) => Err(e),
+            };
             {
                 let mut c = me.lock();
                 c.update.checked_at = now_ms();
-                match result {
-                    Ok(Some(update)) => {
+                match found {
+                    Ok(Some((version, notes))) => {
                         c.update.status = "available";
-                        c.update.version = update.version.clone();
-                        c.update.notes = update.body.clone().unwrap_or_default();
-                        *me.pending_update.lock().unwrap() = Some(update);
-                        *me.pending_bytes.lock().unwrap() = None;
+                        c.update.version = version;
+                        c.update.notes = notes;
                     }
                     Ok(None) => {
                         c.update.status = "none";
@@ -72,7 +81,7 @@ impl Shared {
 
     /// 새 버전 설치 파일을 내려받고 서명을 확인함. 설치는 하지 않음 — 끝나면 status=ready.
     pub fn update_install(self: &S) -> Result<(), String> {
-        let update = self.pending_update.lock().unwrap().clone().ok_or("먼저 업데이트를 확인하세요.")?;
+        let update = lock_or_recover(&self.pending_update).clone().ok_or("먼저 업데이트를 확인하세요.")?;
         {
             let mut c = self.lock();
             if !c.update.blocked.is_empty() {
@@ -90,71 +99,81 @@ impl Shared {
         self.emit();
         let me = self.clone();
         tauri::async_runtime::spawn(async move {
-            let got = Arc::new(Mutex::new(0u64));
-            let me2 = me.clone();
-            let got2 = got.clone();
-            let download = update.download(
-                move |chunk, total| {
-                    let mut g = got2.lock().unwrap();
-                    *g += chunk as u64;
-                    let total = total.unwrap_or(0);
-                    let progress = if total > 0 { (*g as f64 / total as f64).min(1.0) } else { -1.0 };
-                    let changed = {
-                        let mut c = me2.lock();
-                        // 0.5% 단위(크기를 모르면 256KB 단위)로만 다시 그림.
-                        let step =
-                            |p: f64, b: u64| if p >= 0.0 { (p * 200.0).floor() as u64 } else { b / (256 * 1024) };
-                        let before = step(c.update.progress, c.update.downloaded);
-                        c.update.progress = progress;
-                        c.update.downloaded = *g;
-                        c.update.total = total;
-                        step(progress, *g) != before
-                    };
-                    if changed {
-                        me2.emit();
-                    }
-                },
-                || {},
-            );
-            // 내려받기는 크기에 따라 오래 걸릴 수 있어 전체 제한 대신, 1분 넘게 한 바이트도 오지 않으면 멈춘 것으로 봄.
-            tokio::pin!(download);
-            let (mut seen, mut idle) = (0u64, 0u64);
-            let result = loop {
-                tokio::select! {
-                    r = &mut download => break r.map_err(|e| e.to_string()),
-                    _ = tokio::time::sleep(Duration::from_secs(15)) => {
-                        let now = *got.lock().unwrap();
-                        if now == seen {
-                            idle += 15;
-                            if idle >= 60 {
-                                break Err("download stalled for 60s".to_string());
-                            }
-                        } else {
-                            (seen, idle) = (now, 0);
+            let result = me.download_watched(&update).await;
+            me.finish_download(result);
+        });
+        Ok(())
+    }
+
+    /// 내려받기 — 크기에 따라 오래 걸릴 수 있어 전체 제한 대신, 1분 넘게 한 바이트도 오지 않으면 멈춘 것으로 봄.
+    async fn download_watched(self: &S, update: &tauri_plugin_updater::Update) -> Result<Vec<u8>, String> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        let got = Arc::new(AtomicU64::new(0));
+        let (me, got2) = (self.clone(), got.clone());
+        let download = update.download(
+            move |chunk, total| {
+                let now = got2.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
+                me.note_download_progress(now, total.unwrap_or(0));
+            },
+            || {},
+        );
+        tokio::pin!(download);
+        let (mut seen, mut idle) = (0u64, 0u64);
+        loop {
+            tokio::select! {
+                r = &mut download => return r.map_err(|e| e.to_string()),
+                _ = tokio::time::sleep(Duration::from_secs(15)) => {
+                    let now = got.load(Ordering::Relaxed);
+                    if now == seen {
+                        idle += 15;
+                        if idle >= 60 {
+                            return Err("download stalled for 60s".to_string());
                         }
-                    }
-                }
-            };
-            {
-                let mut c = me.lock();
-                match result {
-                    Ok(bytes) => {
-                        *me.pending_bytes.lock().unwrap() = Some(bytes);
-                        c.update.status = "ready";
-                        c.update.progress = 1.0;
-                        c.update.downloaded = c.update.total.max(c.update.downloaded);
-                    }
-                    Err(e) => {
-                        c.update.status = "error";
-                        eprintln!("update download failed: {e}");
-                        c.update.error =
-                            "업데이트를 내려받지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도하세요.".into();
+                    } else {
+                        (seen, idle) = (now, 0);
                     }
                 }
             }
-            me.emit();
-        });
-        Ok(())
+        }
+    }
+
+    /// 내려받은 바이트를 상태에 씀. 0.5% 단위(크기를 모르면 256KB 단위)로만 다시 그림.
+    fn note_download_progress(&self, got: u64, total: u64) {
+        let progress = if total > 0 { (got as f64 / total as f64).min(1.0) } else { -1.0 };
+        let step = |p: f64, b: u64| if p >= 0.0 { (p * 200.0).floor() as u64 } else { b / (256 * 1024) };
+        let changed = {
+            let mut c = self.lock();
+            let before = step(c.update.progress, c.update.downloaded);
+            c.update.progress = progress;
+            c.update.downloaded = got;
+            c.update.total = total;
+            step(progress, got) != before
+        };
+        if changed {
+            self.emit();
+        }
+    }
+
+    /// 내려받기 결과를 상태에 씀. 받은 파일은 다시 시작할 때 설치함([`Shared::update_restart`]).
+    fn finish_download(&self, result: Result<Vec<u8>, String>) {
+        // 받은 파일은 Core 잠금 밖에서 먼저 넣어 둠 — 'ready'가 보이면 설치가 늘 찾을 수 있게.
+        let result = result.map(|bytes| *lock_or_recover(&self.pending_bytes) = Some(bytes));
+        {
+            let mut c = self.lock();
+            match result {
+                Ok(()) => {
+                    c.update.status = "ready";
+                    c.update.progress = 1.0;
+                    c.update.downloaded = c.update.total.max(c.update.downloaded);
+                }
+                Err(e) => {
+                    c.update.status = "error";
+                    eprintln!("update download failed: {e}");
+                    c.update.error = "업데이트를 내려받지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도하세요.".into();
+                }
+            }
+        }
+        self.emit();
     }
 
     /// 내려받은 새 버전을 설치하고 다시 시작함. 실행 중인 매크로가 있으면 거절함.
@@ -166,8 +185,8 @@ impl Shared {
                 "실행 중이거나 시작하는 매크로가 {running}개 있어 지금은 설치할 수 없어요. 모두 종료한 뒤 다시 누르세요."
             ));
         }
-        let update = self.pending_update.lock().unwrap().clone().ok_or("먼저 업데이트를 내려받으세요.")?;
-        let bytes = self.pending_bytes.lock().unwrap().take().ok_or("먼저 업데이트를 내려받으세요.")?;
+        let update = lock_or_recover(&self.pending_update).clone().ok_or("먼저 업데이트를 내려받으세요.")?;
+        let bytes = lock_or_recover(&self.pending_bytes).take().ok_or("먼저 업데이트를 내려받으세요.")?;
         self.lock().update.status = "installing";
         self.emit();
         let me = self.clone();

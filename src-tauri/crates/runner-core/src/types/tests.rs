@@ -97,3 +97,63 @@ fn leverage_parsing() {
     assert_eq!(macro_leverage(&json!({"leverage": "5"})).unwrap(), 5);
     assert!(macro_leverage(&json!({"leverage": "x"})).is_err());
 }
+
+/// 하나로 합치기 전의 세 갈래(기초 자산·바이낸스 견적 통화·바이낸스 체결 수수료용 기초 자산) — 지원하는 심볼에서
+/// 결과가 같은지 비교하는 기준.
+mod before_split {
+    pub fn base_asset(symbol: &str) -> String {
+        let s = symbol.trim().to_uppercase();
+        if let Some(rest) = s.strip_prefix("KRW-") {
+            return rest.to_string();
+        }
+        for q in ["USDT", "BUSD", "USDC", "FDUSD"] {
+            if let Some(b) = s.strip_suffix(q) {
+                if !b.is_empty() {
+                    return b.to_string();
+                }
+            }
+        }
+        s
+    }
+    pub fn binance_quote(symbol: &str) -> &'static str {
+        ["FDUSD", "USDT", "USDC", "BUSD", "BTC", "ETH"]
+            .into_iter()
+            .find(|q| symbol.len() > q.len() && symbol.to_uppercase().ends_with(q))
+            .unwrap_or("")
+    }
+    pub fn fill_base(symbol: &str) -> String {
+        if symbol.ends_with("USDT") || symbol.ends_with("USDC") {
+            symbol[..symbol.len() - 4].to_string()
+        } else {
+            String::new()
+        }
+    }
+}
+
+#[test]
+fn supported_symbols_split_as_before() {
+    for s in ["BTCUSDT", "ETHUSDC", "1000PEPEUSDT", "USDCUSDT", "SOLUSDC", "BTCUSDT "] {
+        let (base, quote) = split_symbol(s);
+        assert_eq!(base, before_split::base_asset(s), "{s}");
+        assert_eq!(quote, before_split::binance_quote(s.trim()), "{s}");
+        assert_eq!(base, before_split::fill_base(s.trim()), "{s}");
+        assert_eq!(base_asset(s), before_split::base_asset(s), "{s}");
+    }
+    for s in ["KRW-BTC", "krw-eth", " KRW-XRP ", "KRW-USDT"] {
+        assert_eq!(split_symbol(s).0, before_split::base_asset(s), "{s}");
+        assert_eq!(split_symbol(s).1, "KRW", "{s}");
+    }
+}
+
+#[test]
+fn other_quotes_split_by_the_same_rule() {
+    // USDT·USDC 밖의 바이낸스 견적도 끝에서 찾음 — 예전 기초 자산 읽기는 심볼 전체를 돌려줬음.
+    assert_eq!(split_symbol("ETHBTC"), ("ETH".to_string(), "BTC"));
+    assert_eq!(split_symbol("BNBETH"), ("BNB".to_string(), "ETH"));
+    assert_eq!(split_symbol("BTCFDUSD"), ("BTC".to_string(), "FDUSD"));
+    assert_eq!(split_symbol("BTCBUSD"), ("BTC".to_string(), "BUSD"));
+    // 견적 통화를 모르거나 기초 자산이 비면 심볼 전체와 빈 견적.
+    assert_eq!(split_symbol("BTCKRW"), ("BTCKRW".to_string(), ""));
+    assert_eq!(split_symbol("USDT"), ("USDT".to_string(), ""));
+    assert_eq!(split_symbol(""), (String::new(), ""));
+}

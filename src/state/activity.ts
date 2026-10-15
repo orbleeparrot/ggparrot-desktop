@@ -30,7 +30,7 @@ export const ACTIVITY_FILTERS: { id: ActivityFilter; label: string }[] = [
   { id: "problem", label: "문제" },
 ];
 
-export function inFilter(kind: ActivityKind, filter: ActivityFilter): boolean {
+function inFilter(kind: ActivityKind, filter: ActivityFilter): boolean {
   return filter === "all" || FILTER_KINDS[filter].includes(kind);
 }
 

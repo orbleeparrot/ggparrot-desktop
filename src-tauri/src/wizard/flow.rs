@@ -13,13 +13,21 @@ pub fn flow(env: &str) -> &'static [&'static str] {
     }
 }
 
+/// 키를 넣는 단계 — 기존 키 길이면 기존 키 넣기, 아니면 키 복사.
+pub(super) fn key_stage(path: &str) -> &'static str {
+    if path == "existing" {
+        "existing"
+    } else {
+        "keys"
+    }
+}
+
 /// [이전]으로 갈 단계. None이면 도우미를 닫음.
 /// - 발급 단계는 앞 단계로, 첫 단계는 '발급 받은 적 있나요?'로.
 /// - 확인·결과 화면은 '처음이에요'(new)면 그 사이트의 마지막 단계(바이낸스 실거래는 허용 IP)로, 기존 키면 기존 키 넣기로.
 /// - 직접 입력·길을 정하지 않고 연 결과 화면은 키 넣는 단계로.
 pub(super) fn back_stage(env: &str, stage: &str, path: &str) -> Option<&'static str> {
     let steps = flow(env);
-    let key_stage = if path == "existing" { "existing" } else { "keys" };
     Some(match stage {
         "ask" => return None,
         "existing" => "ask",
@@ -27,7 +35,7 @@ pub(super) fn back_stage(env: &str, stage: &str, path: &str) -> Option<&'static 
         s => match steps.iter().position(|x| *x == s) {
             Some(0) => "ask",
             Some(i) => steps[i - 1],
-            None => key_stage,
+            None => key_stage(path),
         },
     })
 }

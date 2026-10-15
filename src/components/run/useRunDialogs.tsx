@@ -7,7 +7,7 @@ import { on, type ConfirmPayload } from "../../ipc";
 import type { Act } from "../../state/context";
 import { settingsTargetOf, stopChoices, type SettingsTarget } from "../../state/runs";
 import { EV_CONFIRM, type AppState, type StartReply, type StopMode } from "../../types";
-import { Dialog } from "../Dialog";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 interface Deps {
   state: AppState | null;
@@ -87,117 +87,66 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   const dialogs = (
     <>
       {live && (
-        <Dialog
+        <ConfirmDialog
           variant="sheet"
           tone="live"
           icon={<ShieldAlert size={20} />}
           title={live.title}
           onClose={() => setLive(null)}
-          actions={
-            <>
-              <button type="button" className="btn btn-ghost btn-lg" data-autofocus onClick={() => setLive(null)}>
-                취소
-              </button>
-              <button
-                type="button"
-                className="btn btn-live btn-lg"
-                onClick={() => {
-                  const id = live.runId;
-                  setLive(null);
-                  void send(id, "start_run_confirmed");
-                }}
-              >
-                실전으로 시작
-              </button>
-            </>
-          }
+          cancel={{ label: "취소" }}
+          confirm={{
+            label: "실전으로 시작",
+            className: "btn-live",
+            run: () => void send(live.runId, "start_run_confirmed"),
+          }}
+          large
         >
           <p className="pre">{live.message}</p>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       {blocked && (
-        <Dialog
+        <ConfirmDialog
           title="시작할 수 없어요"
           tone="warn"
           icon={<TriangleAlert size={20} />}
           onClose={() => setBlocked(null)}
-          actions={
-            <>
-              {blockedTarget && (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setBlocked(null);
-                    openSettings(blockedTarget);
-                  }}
-                >
-                  설정에서 입력
-                </button>
-              )}
-              <button type="button" className="btn btn-primary" data-autofocus onClick={() => setBlocked(null)}>
-                확인
-              </button>
-            </>
-          }
+          cancel={blockedTarget ? { label: "설정에서 입력", run: () => openSettings(blockedTarget) } : undefined}
+          confirm={{ label: "확인", className: "btn-primary" }}
+          focus="confirm"
         >
           <p className="pre">{blocked.message}</p>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       {stopAsk && (
-        <Dialog
+        <ConfirmDialog
           title={`${stopChoice?.label ?? "종료"}할까요?`}
           tone={stopChoice?.danger ? "danger" : "default"}
           onClose={() => setStopAsk(null)}
-          actions={
-            <>
-              <button type="button" className="btn btn-ghost" data-autofocus onClick={() => setStopAsk(null)}>
-                취소
-              </button>
-              <button
-                type="button"
-                className={`btn ${stopChoice?.danger ? "btn-danger-solid" : "btn-primary"}`}
-                onClick={() => {
-                  const { runId, mode } = stopAsk;
-                  setStopAsk(null);
-                  void act("stop_run", { runId, mode });
-                }}
-              >
-                {stopChoice?.label ?? "종료"}
-              </button>
-            </>
-          }
+          cancel={{ label: "취소" }}
+          confirm={{
+            label: stopChoice?.label ?? "종료",
+            className: stopChoice?.danger ? "btn-danger-solid" : "btn-primary",
+            run: () => void act("stop_run", { runId: stopAsk.runId, mode: stopAsk.mode }),
+          }}
         >
           <p>{stopChoice?.hint ?? "매크로를 끝내요."}</p>
           <p className="dialog-meta num">{name(stopAsk.runId)}</p>
-        </Dialog>
+        </ConfirmDialog>
       )}
 
       {removeAsk && (
-        <Dialog
+        <ConfirmDialog
           title="목록에서 뺄까요?"
           icon={<Trash2 size={18} />}
           onClose={() => setRemoveAsk(null)}
-          actions={
-            <>
-              <button type="button" className="btn btn-ghost" data-autofocus onClick={() => setRemoveAsk(null)}>
-                취소
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger-solid"
-                onClick={() => {
-                  const runId = removeAsk;
-                  setRemoveAsk(null);
-                  void act("remove_run", { runId });
-                }}
-              >
-                목록에서 빼기
-              </button>
-            </>
-          }
+          cancel={{ label: "취소" }}
+          confirm={{
+            label: "목록에서 빼기",
+            className: "btn-danger-solid",
+            run: () => void act("remove_run", { runId: removeAsk }),
+          }}
         >
           <p>
             {find(removeAsk)?.macro.source === "web"
@@ -205,7 +154,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
               : "매크로 파일은 지우지 않아요. 이 매크로의 활동 기록은 지워져요."}
           </p>
           <p className="dialog-meta num">{name(removeAsk)}</p>
-        </Dialog>
+        </ConfirmDialog>
       )}
     </>
   );

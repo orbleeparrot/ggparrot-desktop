@@ -1,8 +1,9 @@
 // 정보 — 문의할 때 알려 줄 사용 환경. 앱 버전(업데이트를 한 줄로 합침)·서버 연동 레벨·OS·공인 IP와
 // [문의용 정보 복사]. 서버 주소는 기본 운영 서버가 아니거나 개발자 로그를 켰을 때만 보여 줌.
 import { Check, ClipboardCopy, LoaderCircle, RefreshCw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
+import { useCopiedFlag } from "../useCopiedFlag";
 import { Section } from "./Section";
 import { UpdatePanel } from "./UpdatePanel";
 
@@ -42,19 +43,14 @@ function PublicIp() {
 
 function CopySupport() {
   const { ok } = useRunnerContext();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 2000);
-    return () => clearTimeout(t);
-  }, [copied]);
+  const [copied, markCopied] = useCopiedFlag(2000);
   return (
     <div className="about-copy">
       <p className="muted">문의할 때 이 정보를 붙여 넣어 주세요. 거래소 키·회원 키 값은 들어가지 않아요.</p>
       <button
         type="button"
         className="btn btn-ghost btn-sm"
-        onClick={async () => (await ok("copy_support_info")) && setCopied(true)}
+        onClick={async () => (await ok("copy_support_info")) && markCopied()}
       >
         {copied ? <Check size={14} aria-hidden="true" /> : <ClipboardCopy size={14} aria-hidden="true" />}
         {copied ? "복사했어요" : "문의용 정보 복사"}

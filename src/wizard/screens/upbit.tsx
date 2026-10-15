@@ -1,19 +1,6 @@
 // 업비트 Open API 관리 화면(단순화) — 남색 머리줄·흰 바탕·네모 체크·파란 버튼.
-import {
-  copyTarget,
-  CopyButton,
-  DIM,
-  FlatButton,
-  InputBox,
-  ModalBox,
-  MUTED,
-  T,
-  UP_BLUE,
-  UP_LINE,
-  UP_NAVY,
-  UpBox,
-  UpChrome,
-} from "./kit";
+import { copyTarget, CopyButton, DIM, FlatButton, InputBox, ModalBox, MUTED, T } from "./kit";
+import { UP_BLUE, UP_LINE, UP_NAVY, UpBox, UpChrome } from "./upbitKit";
 import { inputTarget, W, type Scene } from "./types";
 
 const URL = "upbit.com/mypage/open_api_management";

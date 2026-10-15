@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { call, on } from "./ipc";
-import { act as activity, makeRun, makeSettings, makeSlot, makeState, upbitMacro } from "./test/fixtures";
+import { act as activity, binanceMacro, makeRun, makeSettings, makeSlot, makeState, upbitMacro } from "./test/fixtures";
 import type { Activity, AppState, LibraryFile, StartReply } from "./types";
 import { EV_CONFIRM, EV_NAVIGATE, EV_STATE } from "./types";
 
@@ -156,12 +156,55 @@ describe("막힌 이유 → 설정", () => {
     current = makeState({
       runs: [makeSlot({ readiness: { canStart: false, blocker: "", needs: { kind: "member" } } })],
     });
-    startReply = { kind: "blocked", message: "회원 키가 필요해요.\n\n설정 › 껄무새 계정에서 입력하세요." };
+    startReply = { kind: "blocked", message: "회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요." };
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 시작" }));
     const dlg = await screen.findByRole("dialog", { name: "시작할 수 없어요" });
     fireEvent.click(within(dlg).getByRole("button", { name: "설정에서 입력" }));
     await waitFor(() => expect(document.activeElement?.id).toBe("member-key"));
+  });
+});
+
+describe("지원하지 않는 거래소", () => {
+  it("대기 중이면 막힌 이유 상자에만 한 번 적는다", async () => {
+    const sentence = "이 앱이 지원하지 않는 거래소(okx)예요. 바이낸스 · 업비트 · 빗썸 매크로만 실행할 수 있어요.";
+    current = makeState({
+      runs: [
+        makeSlot({
+          macro: { ...binanceMacro, exchange: null, exchangeName: "okx", exchangeLabel: "" },
+          readiness: { canStart: false, blocker: sentence, needs: null },
+        }),
+      ],
+    });
+    render(<App />);
+    expect(await screen.findByRole("note")).toBeTruthy();
+    const detail = document.getElementById("run-detail")!;
+    expect(detail.textContent!.split("지원하지 않는 거래소")).toHaveLength(2);
+    expect(within(screen.getByRole("note")).getByText(sentence)).toBeTruthy();
+  });
+});
+
+describe("목록에서 빼기", () => {
+  it("먼저 묻고(포커스는 취소), [목록에서 빼기]로 remove_run 을 보낸다", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 목록에서 빼기" }));
+    const dlg = await screen.findByRole("dialog", { name: "목록에서 뺄까요?" });
+    expect(dlg.textContent).toContain("매크로 파일은 지우지 않아요");
+    expect(document.activeElement?.textContent).toBe("취소");
+    fireEvent.click(within(dlg).getByRole("button", { name: "목록에서 빼기" }));
+    await waitFor(() => expect(calledWith("remove_run")).toEqual([["remove_run", { runId: "run-1" }]]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("웹 매크로는 웹에 그대로 있다고 말하고, [취소]면 보내지 않는다", async () => {
+    current = makeState({ runs: [makeSlot({ macro: upbitMacro })] });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "KRW-BTC 목록에서 빼기" }));
+    const dlg = await screen.findByRole("dialog", { name: "목록에서 뺄까요?" });
+    expect(dlg.textContent).toContain("웹에 저장한 매크로는 그대로예요");
+    fireEvent.click(within(dlg).getByRole("button", { name: "취소" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(calledWith("remove_run")).toHaveLength(0);
   });
 });
 

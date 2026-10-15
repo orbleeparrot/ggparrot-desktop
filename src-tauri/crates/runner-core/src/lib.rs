@@ -17,6 +17,7 @@ pub const APP_TITLE: &str = "껄무새";
 pub mod bot;
 pub mod brokers;
 pub mod check;
+pub mod clock;
 pub mod connection;
 pub mod credentials;
 pub mod library;

@@ -105,3 +105,9 @@ export function formatWhen(at: number, now = Date.now()): string {
     d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
   return `${same ? "오늘" : DAY.format(d)} ${CLOCK.format(d)}`;
 }
+
+/** 내려받은 크기 — 1 MB 이상은 "6.1 MB", 그 아래는 "512 KB". */
+export function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(0, Math.round(n / 1024))} KB`;
+}

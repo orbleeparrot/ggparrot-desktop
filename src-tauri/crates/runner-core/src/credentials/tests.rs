@@ -342,7 +342,7 @@ fn only_public_ipv4_and_valid_observation_time_are_roundtripped() {
 
 #[test]
 fn bad_address_time_and_future_observations_are_dropped() {
-    let future = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64() + 600.0;
+    let future = crate::clock::unix_secs() + 600.0;
     for (address, observed) in [
         (json!("192.168.0.1"), json!(100)),
         (json!("224.0.0.1"), json!(100)),

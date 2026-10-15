@@ -1,7 +1,8 @@
 // mock 연결 도우미 — 단계 이동·공인 IP 조회·클립보드 자동 채우기·연결 확인 결과. 키는 그 칸(m.keys[slot])에 넣음.
 // 바이낸스는 실행 환경(테스트넷·데모·실거래)마다 단계가 다름(Rust `wizard::flow`와 같은 순서).
-import { EXCHANGE_LABELS, FIELD_LABELS, type Model } from "./mockData";
+import { FIELD_LABELS, SLOT_LABELS, type Model } from "./mockData";
 import type { BinanceEnv, Exchange, KeyField, KeySlot, Market, WizardState } from "./types";
+import { flowOf } from "./wizard/steps";
 
 type Stage = WizardState["stage"];
 
@@ -18,24 +19,21 @@ interface Deps {
   checkNow(slot: KeySlot): void;
 }
 
-function flow(env: BinanceEnv): Stage[] {
-  if (env === "live") return ["perm", "keys", "ip"];
-  if (env === "testnet" || env === "demo") return ["perm", "keys"];
-  return ["ip", "perm", "keys"];
+/** '처음이에요'의 단계 순서 — 화면의 단계 점과 같은 표(Rust `wizard::flow`와 같은 순서). */
+function flow(env: BinanceEnv): readonly Stage[] {
+  return flowOf(env).stages;
 }
 
-const SITE: Record<BinanceEnv, [string, string]> = {
-  "": ["", ""],
-  testnet: ["바이낸스 테스트넷", "테스트넷"],
-  demo: ["바이낸스 데모", "데모"],
-  live: ["바이낸스", "바이낸스"],
-};
+/** 바이낸스 머리줄 '… 열기' 단추 이름. 국내는 거래소 이름. */
+const HOME_LABELS: Record<Exclude<BinanceEnv, "">, string> = { testnet: "테스트넷", demo: "데모", live: "바이낸스" };
 
 const NO_NOTES = { auth: "", ip: "", order: "" };
 
 export function createWizard(m: Model, { later, info, checkNow }: Deps) {
   function open(t: WizardTarget, stage: Stage = "ask") {
-    const [site, home] = t.env ? SITE[t.env] : [EXCHANGE_LABELS[t.exchange], EXCHANGE_LABELS[t.exchange]];
+    // 칸이 곧 사이트 — 사이트 이름은 칸 이름과 같음.
+    const site = SLOT_LABELS[t.slot];
+    const home = t.env ? HOME_LABELS[t.env] : site;
     m.wizard = {
       exchange: t.exchange,
       slot: t.slot,

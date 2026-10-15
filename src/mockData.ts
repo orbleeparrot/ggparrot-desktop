@@ -65,7 +65,7 @@ function macro(over: Partial<MacroInfo> & Pick<MacroInfo, "title" | "exchange" |
   };
 }
 
-export const WEB_MACRO = macro({
+const WEB_MACRO = macro({
   title: "업비트 비트코인 눌림목",
   source: "web",
   exchange: "upbit",
@@ -75,7 +75,7 @@ export const WEB_MACRO = macro({
 });
 
 /** 매크로 폴더에 처음부터 있는 파일. macro가 null이면 읽히지 않는 파일. */
-export const LIBRARY_SAMPLES: {
+const LIBRARY_SAMPLES: {
   fileName: string;
   macro: MacroInfo | null;
   error?: string;

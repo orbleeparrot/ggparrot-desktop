@@ -14,7 +14,7 @@ import {
   WifiOff,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useId, useState } from "react";
+import { createElement, memo, useId, useState } from "react";
 import { formatClock, formatClockSeconds } from "../../state/format";
 import type { Activity, ActivityKind } from "../../types";
 
@@ -30,7 +30,7 @@ const ICONS: Record<Exclude<ActivityKind, "connection">, LucideIcon> = {
   info: Info,
 };
 
-export const KIND_LABELS: Record<ActivityKind, string> = {
+const KIND_LABELS: Record<ActivityKind, string> = {
   start: "시작",
   signal: "신호",
   buy: "진입",
@@ -68,13 +68,14 @@ export const ActivityItem = memo(function ActivityItem({ item, fresh = false }: 
     );
   }
 
-  const Icon = iconOf(item);
   const fill = item.kind === "start" || item.kind === "stop";
+  // 아이콘은 표에서 고른 컴포넌트 — 렌더마다 새로 만드는 게 아니라 createElement로 그림.
+  const icon = createElement(iconOf(item), { size: 14, strokeWidth: 2.4, fill: fill ? "currentColor" : "none" });
   return (
     <li className={`act kind-${item.kind} ${fresh ? "is-fresh" : ""}`} data-tone={item.tone}>
       {time}
       <span className="act-icon" aria-hidden="true">
-        <Icon size={14} strokeWidth={2.4} fill={fill ? "currentColor" : "none"} />
+        {icon}
       </span>
       <div className="act-body">
         <p className="act-title">

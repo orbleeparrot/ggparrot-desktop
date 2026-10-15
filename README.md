@@ -139,6 +139,12 @@ cd src-tauri && cargo test --workspace
 npm run format
 ```
 
+- 린트는 oxlint(TS·React)와 clippy(Rust). 경고도 실패로 봄.
+
+```bash
+npm run lint
+```
+
 로컬 백엔드에 붙이려면 서버 주소를 바꿈.
 
 ```bash

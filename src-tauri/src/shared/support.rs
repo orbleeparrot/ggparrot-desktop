@@ -19,8 +19,8 @@ pub fn os_summary() -> &'static str {
 
 impl Shared {
     /// 문의용 정보를 클립보드로 — 공인 IP는 지금 아는 값(조회 중·지난 값이면 그 상태)으로 적음.
-    pub fn copy_support_info(&self) -> bool {
+    pub fn copy_support_info(&self) -> Result<(), String> {
         let text = self.lock().support_text(&self.version, os_summary(), chrono::Local::now());
-        self.write_clipboard(&text)
+        self.copy_text(&text, "문의용 정보를 복사하지 못했어요.")
     }
 }

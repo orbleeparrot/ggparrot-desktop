@@ -1,6 +1,9 @@
 use super::*;
-use crate::brokers::OrderSide;
+use crate::brokers::{FeePaid, OrderSide};
+use crate::clock::unix_ms;
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::json;
+use sha2::Sha256;
 use std::sync::Arc;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
@@ -102,9 +105,9 @@ fn filters_fold_and_g_format() {
     assert_eq!(py_g(0.00001), "1e-05");
     assert_eq!(py_g(100000.0), "100000");
     assert_eq!(py_g(0.0001), "0.0001");
-    assert_eq!(fmt_qty(0.001), "0.001");
-    assert_eq!(fmt_qty(2.0), "2");
-    assert_eq!(fmt_qty(0.00001), "0.00001");
+    assert_eq!(plain_number(0.001), "0.001");
+    assert_eq!(plain_number(2.0), "2");
+    assert_eq!(plain_number(0.00001), "0.00001");
 }
 
 #[tokio::test]
@@ -295,7 +298,7 @@ async fn clock_skew_resyncs_and_retries_the_signed_call_once() {
         .mount(&server)
         .await;
     mount(&server, "GET", "/fapi/v1/order", ok(json!({"status": "FILLED", "executedQty": "1", "avgPrice": "1"}))).await;
-    let far_future = now_ms() as i64 + 60_000;
+    let far_future = unix_ms() as i64 + 60_000;
     mount(&server, "GET", "/fapi/v1/time", ok(json!({"serverTime": far_future}))).await;
     let (b, logs) = make(&server, Market::Futures, 1);
     let lookup = [("symbol", "BTCUSDT".to_string()), ("origClientOrderId", "x".to_string())];
@@ -303,7 +306,7 @@ async fn clock_skew_resyncs_and_retries_the_signed_call_once() {
     let gets = requests(&server, "GET", "/fapi/v1/order").await;
     assert_eq!(gets.len(), 2);
     let ts: i64 = param(&gets[1], "timestamp").unwrap().parse().unwrap();
-    assert!(ts > now_ms() as i64 + 50_000, "두 번째 요청은 거래소 시계를 따른다");
+    assert!(ts > unix_ms() as i64 + 50_000, "두 번째 요청은 거래소 시계를 따른다");
     assert!(logs.lock().unwrap().iter().any(|l| l.contains("시계")));
 }
 
@@ -900,4 +903,49 @@ async fn orders_carry_the_fee_from_the_fills_already_received() {
     let o = b.submit(order(OrderSide::Buy, 1.0, "ggp-f")).await.unwrap();
     assert_eq!(o.fee, None);
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn spot_fee_before_ready_uses_the_symbol_split_for_any_known_quote() {
+    // 준비(load_market) 전에는 심볼에서 기초 자산을 끌어냄 — USDT·USDC는 예전과 같고, BTC 등 다른 견적도 같은 규칙.
+    let server = MockServer::start().await;
+    let fill = |asset: &str| {
+        json!({"orderId": 1, "status": "FILLED", "executedQty": "2", "avgPrice": "0.05",
+               "fills": [{"price": "0.05", "qty": "2", "commission": "0.002", "commissionAsset": asset}]})
+    };
+    for (symbol, base, quote) in [("BTCUSDT", "BTC", "USDT"), ("ETHUSDC", "ETH", "USDC"), ("ETHBTC", "ETH", "BTC")] {
+        let b = BinanceBroker::new(
+            "key",
+            "secret",
+            Market::Spot,
+            symbol,
+            Side::Long,
+            true,
+            1,
+            crate::brokers::null_log(),
+            reqwest::Client::new(),
+            Some(BinanceUrls { spot: server.uri(), futures: server.uri() }),
+        );
+        assert_eq!(b.base_asset(), "", "아직 준비 전");
+        let o = b.normalize(&fill(base), false).await;
+        assert!(o.fees_known, "{symbol}");
+        assert!((o.acquired_qty - 1.998).abs() < 1e-12, "{symbol}");
+        assert_eq!(b.quote_asset(), quote, "{symbol}");
+    }
+    // 견적 통화를 모르는 심볼은 기초 자산을 비워 둠 — 수수료를 모르는 것으로.
+    let b = BinanceBroker::new(
+        "key",
+        "secret",
+        Market::Spot,
+        "BTCKRW",
+        Side::Long,
+        true,
+        1,
+        crate::brokers::null_log(),
+        reqwest::Client::new(),
+        Some(BinanceUrls { spot: server.uri(), futures: server.uri() }),
+    );
+    let o = b.normalize(&fill("BTC"), false).await;
+    assert!(!o.fees_known);
+    assert_eq!(o.acquired_qty, 2.0);
 }

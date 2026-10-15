@@ -1,10 +1,11 @@
 // 활동 기록 — 밝은 카드. 아래가 최신이고, 맨 아래에 있으면 따라 내려감(위로 굴리면 멈춤).
 // 필터 칩: 전체·거래·신호·문제. 원문 줄은 설정의 '개발자 로그 보기'를 켰을 때만. [복사]는 원문 포함 전체.
 import { ArrowDown, Check, Copy } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ACTIVITY_FILTERS, countByFilter, visibleActivity, type ActivityFilter } from "../../state/activity";
 import { useRunnerContext } from "../../state/context";
 import type { Activity } from "../../types";
+import { useCopiedFlag } from "../useCopiedFlag";
 import { ActivityItem } from "./ActivityItem";
 
 const NEAR_BOTTOM_PX = 32;
@@ -24,19 +25,20 @@ export function ActivityFeed({
   const showDev = state.settings.showDevLog;
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const [follow, setFollow] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copied, markCopied] = useCopiedFlag(1500);
   const box = useRef<HTMLDivElement>(null);
   const programmatic = useRef(false);
 
   const shown = useMemo(() => visibleActivity(items, filter, showDev), [items, filter, showDev]);
   const counts = useMemo(() => countByFilter(items), [items]);
   const lastId = shown.length ? shown[shown.length - 1].id : 0;
-  const seenId = useRef(lastId);
+  // 맨 아래를 따라가는 동안 본 마지막 줄 — 따라가지 않을 때 새 줄이 왔는지 셈(렌더 중 조건부 갱신).
+  const [seenId, setSeenId] = useState(lastId);
+  if (follow && seenId !== lastId) setSeenId(lastId);
+  const unseen = !follow && lastId > seenId;
   // 처음 그린 뒤에 들어온 줄만 움직임을 줌.
-  const baseline = useRef<number | null>(null);
-  if (baseline.current === null && items.length > 0) baseline.current = items[items.length - 1].id;
-  if (follow) seenId.current = lastId;
-  const unseen = !follow && lastId > seenId.current;
+  const [baseline, setBaseline] = useState<number | null>(null);
+  if (baseline === null && items.length > 0) setBaseline(items[items.length - 1].id);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -44,12 +46,6 @@ export function ActivityFeed({
     programmatic.current = true;
     el.scrollTop = el.scrollHeight;
   }, [lastId, shown.length, follow]);
-
-  useEffect(() => {
-    if (!copied) return;
-    const t = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(t);
-  }, [copied]);
 
   function onScroll() {
     const el = box.current;
@@ -89,7 +85,7 @@ export function ActivityFeed({
         <button
           type="button"
           className="btn btn-quiet btn-sm feed-copy"
-          onClick={async () => (await ok("copy_activity", { runId })) && setCopied(true)}
+          onClick={async () => (await ok("copy_activity", { runId })) && markCopied()}
           disabled={items.length === 0}
           title="최근 기록부터 6만 자까지 복사해요(문의 글에 붙여 넣기 좋은 크기)"
         >
@@ -123,7 +119,7 @@ export function ActivityFeed({
         ) : (
           <ol className="feed-list">
             {shown.map((a) => (
-              <ActivityItem key={a.id} item={a} fresh={baseline.current !== null && a.id > baseline.current} />
+              <ActivityItem key={a.id} item={a} fresh={baseline !== null && a.id > baseline} />
             ))}
           </ol>
         )}

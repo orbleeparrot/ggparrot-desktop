@@ -28,7 +28,9 @@ export const SecretField = forwardRef<HTMLInputElement, Props>(function SecretFi
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pending = useRef<string | null>(null);
   const commitRef = useRef(onCommit);
-  commitRef.current = onCommit;
+  useEffect(() => {
+    commitRef.current = onCommit;
+  }, [onCommit]);
 
   const flush = useCallback(() => {
     clearTimeout(timer.current);

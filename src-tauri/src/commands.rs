@@ -81,33 +81,21 @@ pub fn stop_run(s: State<'_, S>, run_id: String, mode: String) -> R<()> {
 
 #[tauri::command]
 pub fn copy_activity(s: State<'_, S>, run_id: String) -> R<()> {
-    if s.copy_activity(&run_id) {
-        Ok(())
-    } else {
-        Err("활동 기록을 복사하지 못했어요.".into())
-    }
+    s.copy_activity(&run_id)
 }
 
 /// 실행의 거래소 종목 화면을 기본 브라우저로 엶 — 주소는 실행 정보로 Rust에서 만듦(웹뷰가 주소를 넘기지 않음).
 #[tauri::command]
 pub fn open_market_page(s: State<'_, S>, run_id: String) -> R<()> {
     let page = s.lock().run(&run_id).and_then(|r| r.market_page()).ok_or("이 매크로는 거래소 화면을 열 수 없어요.")?;
-    if s.open_url(&page.url) {
-        Ok(())
-    } else {
-        Err(format!("브라우저를 열지 못했어요. 주소창에 {} 을 입력하세요.", page.url))
-    }
+    s.open_url_or_hint(&page.url)
 }
 
 /// 껄무새 웹의 이 실행 기록 화면을 기본 브라우저로 엶 — 주소는 세션 번호로 Rust에서 만듦.
 #[tauri::command]
 pub fn open_run_web_page(s: State<'_, S>, run_id: String) -> R<()> {
     let url = s.lock().run(&run_id).and_then(|r| r.web_run_url()).ok_or("이 실행은 웹 기록이 아직 없어요.")?;
-    if s.open_url(&url) {
-        Ok(())
-    } else {
-        Err(format!("브라우저를 열지 못했어요. 주소창에 {url} 을 입력하세요."))
-    }
+    s.open_url_or_hint(&url)
 }
 
 // --- 설정 -------------------------------------------------------------------------
@@ -221,9 +209,7 @@ pub async fn library_import(s: State<'_, S>) -> R<usize> {
     let Some(files) = picked else { return Ok(0) };
     let paths: Vec<PathBuf> = files.into_iter().filter_map(|f| f.into_path().ok()).collect();
     let (ok, errors) = s.inner().import_paths(&paths);
-    if !errors.is_empty() {
-        s.notice("warn", format!("가져오지 못한 파일이 있어요.\n\n{}", errors.join("\n")));
-    }
+    s.warn_import_failures(&errors);
     Ok(ok.len())
 }
 
@@ -270,21 +256,19 @@ pub fn refresh_public_ip(s: State<'_, S>, force: bool) {
 
 #[tauri::command]
 pub fn copy_support_info(s: State<'_, S>) -> R<()> {
-    if s.copy_support_info() {
-        Ok(())
-    } else {
-        Err("문의용 정보를 복사하지 못했어요.".into())
-    }
+    s.copy_support_info()
 }
 
+/// 연결 도우미의 [다시 확인] — 정보 화면의 `refresh_public_ip { force: true }`와 같은 조회.
 #[tauri::command]
 pub fn wizard_refresh_ip(s: State<'_, S>) {
     s.inner().begin_public_ip(true);
 }
 
+/// 복사하지 못하면 오류 — 화면은 '복사됨'을 띄우지 않고 이유를 토스트로 보임.
 #[tauri::command]
-pub fn wizard_copy_ip(s: State<'_, S>) {
-    s.inner().wizard_copy_ip();
+pub fn wizard_copy_ip(s: State<'_, S>) -> R<()> {
+    s.inner().wizard_copy_ip()
 }
 
 #[tauri::command]

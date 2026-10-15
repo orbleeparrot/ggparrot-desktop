@@ -9,7 +9,7 @@ impl Shared {
     // --- 출력 -------------------------------------------------------------------
     pub fn emit(&self) {
         use std::sync::atomic::Ordering;
-        let _order = self.emit_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _order = lock_or_recover(&self.emit_lock);
         let (dto, progress, items) = {
             let mut c = self.lock();
             let items = std::mem::take(&mut c.pending_activity);
@@ -59,7 +59,7 @@ impl Shared {
     /// 활동만 보냄(상태 스냅샷은 그대로) — 로그 줄마다 전체 상태를 보내지 않게.
     pub(crate) fn emit_activity_only(&self) {
         // emit과 같은 순서 잠금 — 활동 줄이 두 경로로 나가며 순서가 뒤바뀌지 않게.
-        let _order = self.emit_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _order = lock_or_recover(&self.emit_lock);
         let items = std::mem::take(&mut self.lock().pending_activity);
         for item in items {
             let _ = self.app.emit(EV_ACTIVITY, item);

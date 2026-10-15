@@ -14,6 +14,7 @@ use crate::brokers::{
     fee_inclusive, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker, OrderSide,
     SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
 };
+use crate::clock::unix_ms;
 use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
 use crate::log_kind::event_kind;
 use crate::money::{
@@ -112,11 +113,6 @@ pub struct RunHealth {
     pub price_stale_since: u64,
     /// 손절·강제 청산 주문이 연달아 실패한 횟수(이만큼 남은 포지션을 정리하지 못함).
     pub close_failures: u32,
-}
-
-/// 벽시계 ms — 잠자기 동안 멈추는 Instant 대신 씀(깨어난 뒤 공백을 재려고).
-pub(crate) fn wall_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// 활동 기록 한 줄. kind: start·signal·buy·sell·stop_loss·blocked·connection·error·stop·info.

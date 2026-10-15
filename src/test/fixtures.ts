@@ -1,4 +1,4 @@
-// 테스트용 상태 스냅샷 만들기(계약 v2).
+// 테스트용 상태 스냅샷 만들기(계약 v2). 값은 Rust가 보내는 모양을 따름.
 import type { Activity, AppState, KeySlot, MacroInfo, RunSlot, RunStatus, SettingsState, SlotCard } from "../types";
 
 export const binanceMacro: MacroInfo = {
@@ -109,7 +109,7 @@ export function slotCard(slot: KeySlot, over: Partial<SlotCard> = {}): SlotCard 
     headline: "● 연결 안 됨",
     note: "",
     checks: { auth: "wait", ip: "wait", order: "wait" },
-    wizardAvailable: exchange !== "binance",
+    wizardAvailable: true,
     inUseBy: 0,
     ...over,
   };

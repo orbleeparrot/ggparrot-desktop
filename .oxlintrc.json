@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "oxc"],
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/button-has-type": "error",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "preserve-caught-error": "error"
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**", "*.config.*"],
+      "env": { "node": true, "browser": false }
+    }
+  ],
+  "ignorePatterns": ["dist/**", "coverage/**", "src-tauri/**", "docs/**", "tools/**"]
+}

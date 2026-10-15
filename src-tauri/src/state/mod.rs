@@ -97,19 +97,23 @@ pub struct SlotState {
     pub generation: u64,
 }
 
-/// 연결 도우미가 안내할 곳 — 키 칸, 바이낸스 사이트(testnet·demo·live, 국내는 ""), 시장.
+/// 연결 도우미가 안내할 곳 — 키 칸과 시장. 바이낸스 사이트는 칸이 정함([`WizardTarget::env`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WizardTarget {
     pub slot: KeySlot,
-    pub env: &'static str,
     pub market: Market,
 }
 
-pub struct Wizard {
-    pub slot: KeySlot,
+impl WizardTarget {
     /// 바이낸스 사이트(testnet·demo·live). 국내는 "".
-    pub env: &'static str,
-    pub market: Market,
+    pub fn env(&self) -> &'static str {
+        self.slot.binance_env()
+    }
+}
+
+pub struct Wizard {
+    /// 안내하는 칸·시장.
+    pub target: WizardTarget,
     pub stage: String,
     pub path: String,
     pub got_access: bool,
@@ -117,6 +121,28 @@ pub struct Wizard {
     pub advance_on_return: String,
     pub clip_seen: String,
     pub generation: u64,
+}
+
+impl Wizard {
+    pub fn slot(&self) -> KeySlot {
+        self.target.slot
+    }
+    /// 바이낸스 사이트(testnet·demo·live). 국내는 "".
+    pub fn env(&self) -> &'static str {
+        self.target.env()
+    }
+}
+
+/// 키 칸의 지금 확인 상태([`Core::slot_status`]) — 확인 지문을 한 번만 셈.
+pub enum SlotStatus<'a> {
+    /// 키 두 칸이 다 차지 않음.
+    Empty,
+    /// 확인을 예약했거나 확인 중. 같은 지문의 지난 결과가 있으면 함께 실음(강제로 다시 확인할 때).
+    Busy(Option<&'a KeyCheckRecord>),
+    /// 지금 키·시장의 확인 결과가 있음.
+    Done(&'a KeyCheckRecord),
+    /// 지금 키·시장으로는 확인한 적 없음.
+    Unchecked,
 }
 
 #[derive(Clone, Default)]
@@ -136,6 +162,54 @@ pub struct RunData {
 
 /// 지난 실행이 앱이 꺼지며 끝맺지 못했을 때 남기는 종료 이유.
 pub const INTERRUPTED_NOTE: &str = "지난 실행이 정상적으로 끝나지 않았어요(앱 강제 종료 · 전원 꺼짐 등)";
+
+/// 회원 키가 없어 시작하지 못할 때 — 시작 막힘 창과 카드의 막힌 이유가 같은 문장을 씀.
+pub const MEMBER_KEY_NEEDED: &str = "회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요.";
+/// 웹 매크로 연결(티켓 교환) 중에는 시작·확인을 미룸.
+pub const CLAIM_BUSY_WAIT: &str = "웹 매크로 연결이 끝날 때까지 잠시만 기다려 주세요.";
+/// 웹에서 연결한 매크로의 투자 금액을 바꾸려 할 때([`Run::capital_locked`]).
+pub const CAPITAL_LOCKED: &str =
+    "웹에서 연결한 매크로는 여기서 투자 금액을 바꿀 수 없어요. 웹에서 고친 뒤 다시 연결하세요.";
+
+/// 기본 운영 서버인지 여부 — 껄무새 웹의 실행 기록·정보 화면의 '기본 서버 아님' 표시가 씀.
+pub fn is_default_server(base: &str) -> bool {
+    base.trim_end_matches('/') == runner_core::types::DEFAULT_SERVER_BASE
+}
+
+/// 웹 가이드에 보낼 한 단계 — `setup_progress::progress_payload`의 인자 묶음.
+pub struct GuideStep<'a> {
+    pub stage: &'a str,
+    pub exchange: &'a str,
+    pub env: &'a str,
+    pub path: &'a str,
+    /// (Access 받음, Secret 받음)
+    pub slots: (bool, bool),
+    /// (인증, 허용 IP, 주문) — 결과를 보일 때만.
+    pub checks: Option<(Check, Check, Check)>,
+    pub problem: &'a str,
+    pub connected: bool,
+}
+
+impl<'a> GuideStep<'a> {
+    /// 단계·거래소·사이트만 있는 보고(시작함·닫힘).
+    pub fn bare(stage: &'a str, exchange: &'a str, env: &'a str) -> Self {
+        GuideStep { stage, exchange, env, path: "", slots: (false, false), checks: None, problem: "", connected: false }
+    }
+
+    /// 서버로 보낼 JSON. 모르는 단계·거래소 등이면 Err.
+    pub fn payload(&self) -> Result<Value, String> {
+        runner_core::setup_progress::progress_payload(
+            self.stage,
+            self.exchange,
+            self.env,
+            self.path,
+            self.slots,
+            self.checks,
+            self.problem,
+            self.connected,
+        )
+    }
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -289,6 +363,27 @@ impl Run {
     pub fn running(&self) -> bool {
         self.bot.is_some()
     }
+    /// 끄거나 다시 시작하면 안 되는 상태 — 실행 중·시작하는 중·시작 전 확인 중.
+    pub fn busy(&self) -> bool {
+        self.running() || self.start_pending || self.checking
+    }
+    /// 설정이 바뀌어 지난 시작 전 확인을 버림 — 판(generation)도 올려 늦게 온 확인 결과를 쓰지 않음.
+    pub fn invalidate_preflight(&mut self) {
+        self.generation += 1;
+        self.preflight = None;
+    }
+    /// 봇이 끝남 — 끝난 상태(stopped·error)와 이유를 남기고 봇을 뗌.
+    pub fn mark_ended(&mut self, status: &str, note: &str) {
+        if let Some(d) = self.data.as_mut() {
+            d.finished = Some((status.into(), note.into(), now_ms()));
+        }
+        self.bot = None;
+        self.stopping = false;
+    }
+    /// 웹에서 연결한 매크로 — 투자 금액을 여기서 바꿀 수 없음(서버가 웹 저장본과 다르면 시작을 거절함).
+    pub fn capital_locked(&self) -> bool {
+        self.source == "web" || self.user_macro_id.is_some()
+    }
     pub fn key_slot(&self) -> Option<KeySlot> {
         self.exchange().map(|e| KeySlot::for_run(e, self.mode, self.market()))
     }
@@ -300,7 +395,7 @@ impl Run {
     /// 기본 서버에서 만든 세션만 — 다른 서버(개발용 등)의 세션은 껄무새 웹에 없음.
     pub fn web_run_url(&self) -> Option<String> {
         let sid = self.data.as_ref()?.session_id.filter(|s| *s > 0)?;
-        if self.server_base.trim_end_matches('/') != runner_core::types::DEFAULT_SERVER_BASE {
+        if !is_default_server(&self.server_base) {
             return None;
         }
         Some(format!("{}agents?session={sid}", crate::shared::WEB_URL))
@@ -309,17 +404,7 @@ impl Run {
     /// 상태를 만들지 못하면(모르는 거래소) 보고만 닫으라고 None을 함께 돌려줌.
     pub fn take_closing_report(&mut self) -> Option<(Arc<SetupProgressReporter>, Option<Value>)> {
         let rep = self.reporter.take()?;
-        let payload = runner_core::setup_progress::progress_payload(
-            "closed",
-            &self.exchange_name(),
-            self.binance_env(),
-            "",
-            (false, false),
-            None,
-            "",
-            false,
-        )
-        .ok();
+        let payload = GuideStep::bare("closed", &self.exchange_name(), self.binance_env()).payload().ok();
         Some((rep, payload))
     }
     pub fn market(&self) -> Market {
@@ -350,7 +435,7 @@ impl Run {
         Some(self.target_of(KeySlot::for_run(self.exchange()?, RunMode::Testnet, self.market())))
     }
     fn target_of(&self, slot: KeySlot) -> WizardTarget {
-        WizardTarget { slot, env: slot.binance_env(), market: slot.fixed_market().unwrap_or(self.market()) }
+        WizardTarget { slot, market: slot.fixed_market().unwrap_or(self.market()) }
     }
     pub fn mode_choices(&self) -> Vec<RunMode> {
         match self.exchange() {
@@ -480,7 +565,7 @@ impl Core {
     }
     /// 끄거나 다시 시작하면 안 되는 매크로 수 — 실행 중 + 시작하는 중 + 시작 전 확인 중.
     pub fn busy_count(&self) -> usize {
-        self.runs.iter().filter(|r| r.running() || r.start_pending || r.checking).count()
+        self.runs.iter().filter(|r| r.busy()).count()
     }
 
     pub fn slot(&self, s: KeySlot) -> &SlotState {
@@ -537,7 +622,7 @@ impl Core {
 
     /// 설정 카드에서 연 연결 도우미의 대상 — 칸의 사이트와 확인 시장.
     pub fn wizard_target_for_slot(&self, s: KeySlot) -> WizardTarget {
-        WizardTarget { slot: s, env: s.binance_env(), market: self.probe_market(s) }
+        WizardTarget { slot: s, market: self.probe_market(s) }
     }
 
     /// 칸을 확인할 시장. 연습 칸·국내는 칸이 정함(`KeySlot::fixed_market`).
@@ -548,8 +633,8 @@ impl Core {
         if let Some(m) = s.fixed_market() {
             return m;
         }
-        if let Some(w) = self.wizard.as_ref().filter(|w| w.slot == s) {
-            return w.market;
+        if let Some(w) = self.wizard.as_ref().filter(|w| w.slot() == s) {
+            return w.target.market;
         }
         self.runs.iter().find(|r| r.key_slot() == Some(s)).map_or(Market::Spot, Run::market)
     }
@@ -563,28 +648,37 @@ impl Core {
         (m, mode, c, fp)
     }
 
-    pub fn slot_busy(&self, s: KeySlot) -> bool {
-        let st = self.slot(s);
-        st.scheduled || st.busy_fp.as_deref() == Some(self.slot_check_snapshot(s).3.as_str())
+    /// 칸의 지금 확인 지문(키·확인 시장·모드) — 바뀌면 지난 확인은 지금 키의 결과가 아님.
+    pub fn slot_fingerprint(&self, s: KeySlot) -> String {
+        self.slot_check_snapshot(s).3
     }
 
-    pub fn current_slot_check(&self, s: KeySlot) -> Option<&KeyCheckRecord> {
-        let fp = self.slot_check_snapshot(s).3;
-        self.slot(s).check.as_ref().filter(|c| c.fingerprint == fp)
+    /// 칸의 지금 확인 상태. 지문을 한 번만 셈.
+    pub fn slot_status(&self, s: KeySlot) -> SlotStatus<'_> {
+        if self.slot_pair(s).is_none() {
+            return SlotStatus::Empty;
+        }
+        self.slot_status_at(s, &self.slot_fingerprint(s))
+    }
+
+    /// 이미 뜬 지문 `fp`로 본 확인 상태 — 키가 다 찼는지는 보지 않음(부르는 쪽이 먼저 봄).
+    pub fn slot_status_at(&self, s: KeySlot, fp: &str) -> SlotStatus<'_> {
+        let st = self.slot(s);
+        let current = st.check.as_ref().filter(|c| c.fingerprint == fp);
+        if st.scheduled || st.busy_fp.as_deref() == Some(fp) {
+            SlotStatus::Busy(current)
+        } else {
+            current.map_or(SlotStatus::Unchecked, SlotStatus::Done)
+        }
     }
 
     /// 연결 도우미가 볼 검사 상태 — idle·busy·done.
     pub fn wizard_check(&self, s: KeySlot) -> (&'static str, CheckView, String) {
-        let idle = check_view(s.exchange().as_str(), false, "");
-        if self.slot_pair(s).is_none() {
-            return ("idle", idle, String::new());
-        }
-        if self.slot_busy(s) {
-            return ("busy", idle, String::new());
-        }
-        match self.current_slot_check(s) {
-            Some(c) => ("done", c.view.clone(), c.reason.clone()),
-            None => ("idle", idle, String::new()),
+        let idle = || check_view(s.exchange().as_str(), false, "");
+        match self.slot_status(s) {
+            SlotStatus::Busy(_) => ("busy", idle(), String::new()),
+            SlotStatus::Done(c) => ("done", c.view.clone(), c.reason.clone()),
+            SlotStatus::Empty | SlotStatus::Unchecked => ("idle", idle(), String::new()),
         }
     }
 
@@ -671,7 +765,7 @@ impl Core {
             let Some(target) = r.guide_target() else { continue };
             let (ex, slot) = (target.slot.exchange(), target.slot);
             // 바이낸스는 사이트마다 칸이 따로라 같은 칸을 연 도우미만 이 실행의 진행으로 봄.
-            let wizard = self.wizard.as_ref().filter(|w| w.slot == slot);
+            let wizard = self.wizard.as_ref().filter(|w| w.slot() == slot);
             let (stage, path, slots) = match wizard {
                 Some(w) => (w.stage.clone(), w.path.clone(), (w.got_access, w.got_secret)),
                 None => ("ready".to_string(), String::new(), (false, false)),
@@ -679,17 +773,17 @@ impl Core {
             let (state, view, _) = self.wizard_check(slot);
             let use_view =
                 if wizard.is_some() { matches!(stage.as_str(), "result_ok" | "result_fail") } else { state == "done" };
-            let checks = use_view.then_some((view.auth, view.ip, view.order));
-            if let Ok(p) = runner_core::setup_progress::progress_payload(
-                &stage,
-                ex.as_str(),
-                target.env,
-                &path,
+            let step = GuideStep {
+                stage: &stage,
+                exchange: ex.as_str(),
+                env: target.env(),
+                path: &path,
                 slots,
-                checks,
-                if use_view { &view.problem } else { "" },
-                use_view && view.connected,
-            ) {
+                checks: use_view.then_some((view.auth, view.ip, view.order)),
+                problem: if use_view { &view.problem } else { "" },
+                connected: use_view && view.connected,
+            };
+            if let Ok(p) = step.payload() {
                 out.push((rep, p));
             }
         }

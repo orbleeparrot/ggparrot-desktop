@@ -19,9 +19,10 @@ impl Shared {
                 let (watching, exchange) = {
                     let c = me.lock();
                     match c.wizard.as_ref() {
-                        Some(w) if w.generation == generation => {
-                            (WATCH_STAGES.contains(&w.stage.as_str()) && !c.hidden_to_tray, w.slot.exchange().as_str())
-                        }
+                        Some(w) if w.generation == generation => (
+                            WATCH_STAGES.contains(&w.stage.as_str()) && !c.hidden_to_tray,
+                            w.slot().exchange().as_str(),
+                        ),
                         _ => return,
                     }
                 };

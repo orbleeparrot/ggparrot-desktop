@@ -7,7 +7,7 @@ import { isTauri } from "../ipc";
 import { UpdateChip } from "./UpdateChip";
 import { WindowControls } from "./WindowControls";
 
-export const APP_NAME = "껄무새";
+const APP_NAME = "껄무새";
 
 /** ⚙은 설정을 여닫는 토글임(설정에서 누르면 실행 화면으로). */
 export function Header({ view, onGear }: { view: "run" | "settings"; onGear(): void }) {

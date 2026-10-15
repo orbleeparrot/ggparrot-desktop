@@ -199,6 +199,11 @@ pub fn price_text(price: f64, quote: &str) -> String {
     format!("{body} {unit}")
 }
 
+/// 지수 없이, 끝의 0 없이 쓴 숫자(`0.00001`·`2`) — 파이썬 `_plain(Decimal(repr(x)))`와 같은 글자.
+pub fn plain_number(x: f64) -> String {
+    format!("{x}")
+}
+
 /// 사람이 읽는 수량 — 지수 표기 없이, 뒤 0 없이(최대 8자리).
 pub fn qty_text(qty: f64) -> String {
     if !qty.is_finite() || qty <= 0.0 {
@@ -208,16 +213,7 @@ pub fn qty_text(qty: f64) -> String {
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
-/// 파이썬 float의 str() — 정수면 "30.0", 아니면 가장 짧은 표기.
-pub fn py_float(x: f64) -> String {
-    if x.is_finite() && x.fract() == 0.0 && x.abs() < 1e16 {
-        format!("{x:.1}")
-    } else {
-        format!("{x}")
-    }
-}
-
-/// 파이썬 `{x:g}` — 유효숫자 6자리.
+/// 파이썬 `{x:g}` — 유효숫자 6자리. NaN·무한은 Rust 표기(`NaN`·`inf`) 그대로.
 pub fn py_g(x: f64) -> String {
     py_gp(x, 6)
 }
@@ -248,7 +244,7 @@ pub fn py_gp(x: f64, p: usize) -> String {
     }
 }
 
-/// 파이썬 str(float) 근사 — 로그에 그대로 찍는 가격·수량.
+/// 파이썬 str(float) 근사 — 정수면 "30.0", 아니면 가장 짧은 표기. 로그에 그대로 찍는 가격·수량.
 pub fn py_num(x: f64) -> String {
     if x.is_finite() && x.fract() == 0.0 && x.abs() < 1e16 {
         format!("{x:.1}")
@@ -315,8 +311,8 @@ mod tests {
 
     #[test]
     fn python_number_strings() {
-        assert_eq!(py_float(30.0), "30.0");
-        assert_eq!(py_float(2.5), "2.5");
+        assert_eq!(py_num(30.0), "30.0");
+        assert_eq!(py_num(2.5), "2.5");
         assert_eq!(py_g(0.01), "0.01");
         assert_eq!(py_g(65000.0), "65000");
         assert_eq!(py_g(1234567.0), "1.23457e+06");

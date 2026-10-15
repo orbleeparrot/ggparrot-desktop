@@ -13,6 +13,8 @@
   --info-soft: #dbeafe;
   --info-ink: #1d4ed8;
   --brand-deep: #a16207;
+  /* 진한 색 바탕(실전·위험·정보·확인) 위의 글자·아이콘. 라이트·다크 같은 값. */
+  --on-accent: #fff;
 
   --ok: #16a34a;
   --warn: #d97706;
