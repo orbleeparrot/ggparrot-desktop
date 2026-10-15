@@ -3,7 +3,7 @@ import { GripVertical, X } from "lucide-react";
 import { forwardRef, type KeyboardEvent, type PointerEventHandler } from "react";
 import { useRunnerContext } from "../../state/context";
 import { formatElapsed, formatPercent, toneOf } from "../../state/format";
-import { isIdle, isLive, SIDE_LABELS } from "../../state/runs";
+import { isIdle, isLive, primaryAction, SIDE_LABELS } from "../../state/runs";
 import type { RunSlot } from "../../types";
 import { ExchangeLogo } from "../ExchangeLogo";
 import { ModeBadge } from "./ModeBadge";
@@ -44,10 +44,15 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
   const elapsed = useElapsed(slot.run);
   const m = slot.macro;
   const live = isLive(slot);
-  const sub = live || slot.run?.finished ? `경과 ${formatElapsed(elapsed)}` : m.title;
+  // 주 버튼 종류 — 버튼 너비만큼 아래 줄 글자 자리를 비움(run.css .act-*).
+  const actionKind = primaryAction(slot.phase).kind;
+  // 대기 중에는 어떤 매크로인지(전략·요약) — 파일 이름은 길어서 마우스를 올리면 보이고, 상세 머리줄에도 있음.
+  const sub = live || slot.run?.finished ? `경과 ${formatElapsed(elapsed)}` : m.strategy || m.title;
 
   return (
-    <li className={`run-card mode-${slot.mode} ${selected ? "is-selected" : ""} ${live ? "is-live" : ""} ${sorting}`}>
+    <li
+      className={`run-card mode-${slot.mode} act-${actionKind} ${selected ? "is-selected" : ""} ${live ? "is-live" : ""} ${sorting}`}
+    >
       {grab && (
         <span className="run-card-grip" title="끌어서 순서 바꾸기 (Alt+↑·↓)" aria-hidden="true" {...grab}>
           <GripVertical size={14} />

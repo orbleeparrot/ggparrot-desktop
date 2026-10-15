@@ -1,6 +1,7 @@
 // invoke/listen 얇은 래퍼. Tauri 안이면 진짜 명령을, 브라우저(`npm run dev`)면 mock 백엔드를 씀.
 import type {
   Activity,
+  AppLogEntry,
   AppState,
   Exchange,
   KeyField,
@@ -12,7 +13,7 @@ import type {
   StopMode,
   WizardState,
 } from "./types";
-import { EV_ACTIVITY, EV_CONFIRM, EV_NAVIGATE, EV_NOTICE, EV_STATE } from "./types";
+import { EV_ACTIVITY, EV_APP_LOG, EV_CONFIRM, EV_NAVIGATE, EV_NOTICE, EV_STATE } from "./types";
 
 type NoArgs = undefined;
 type RunArg = { runId: string };
@@ -43,7 +44,13 @@ export interface CommandMap {
   /** 껄무새 웹의 이 실행 기록 화면을 기본 브라우저로 엶. */
   open_run_web_page: { args: RunArg; ret: void };
   refresh_public_ip: { args: { force: boolean }; ret: void };
+  /** 문의용 정보 — 끝에 최근 앱 기록 20줄. */
   copy_support_info: { args: NoArgs; ret: void };
+  // 앱 기록
+  /** 앱 기록 전체(오래된 것 → 최근). 새 줄은 runner:app-log로 옴. */
+  get_app_log: { args: NoArgs; ret: AppLogEntry[] };
+  /** 머리말 + 줄마다 날짜·시각. 길면 최근 줄만. */
+  copy_app_log: { args: NoArgs; ret: void };
   // 설정
   set_slot_key: { args: { slot: KeySlot; field: KeyField; value: string }; ret: void };
   reveal_slot_key: { args: { slot: KeySlot; field: KeyField }; ret: string };
@@ -106,6 +113,7 @@ export interface EventMap {
   [EV_STATE]: StateEvent;
   [EV_ACTIVITY]: Activity;
   [EV_NOTICE]: Notice;
+  [EV_APP_LOG]: AppLogEntry;
   [EV_CONFIRM]: ConfirmPayload;
   [EV_NAVIGATE]: NavigatePayload;
 }

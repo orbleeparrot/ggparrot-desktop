@@ -53,6 +53,10 @@ impl Vault<'_> {
         if let Some(values) = loaded.values {
             apply_remembered(&mut c, &values, &before);
         }
+        if let Some(title) = load_problem_title(loaded.status) {
+            let note = c.load_failure_note();
+            c.push_app_log("warn", "keys", &title, &note);
+        }
     }
 
     /// 이 칸만 저장·삭제함. 다른 칸과 회원 키는 보존함.
@@ -195,6 +199,16 @@ impl Vault<'_> {
     }
 }
 
+/// 기억한 키를 읽지 못한 이유(앱 기록 제목). 문제가 없으면 None.
+fn load_problem_title(status: LoadStatus) -> Option<String> {
+    match status {
+        LoadStatus::ReadError => Some(format!("{}에서 기억한 키를 읽지 못했어요", credentials::KEY_STORE_NAME)),
+        LoadStatus::DecryptError => Some("기억한 키를 풀지 못했어요".into()),
+        LoadStatus::InvalidData => Some("기억한 키 저장 항목이 올바르지 않아요".into()),
+        LoadStatus::Missing | LoadStatus::Loaded => None,
+    }
+}
+
 /// 칸마다 지금 키 — 키체인을 읽는 동안 사용자가 고쳤는지 비교할 때 씀.
 fn key_snapshot(c: &Core) -> BTreeMap<KeySlot, KeyPair> {
     KeySlot::ALL.into_iter().map(|s| (s, c.slot(s).keys.clone())).collect()
@@ -238,7 +252,7 @@ impl Shared {
 
     fn notify_all(&self, notes: Notes) {
         for (level, message) in notes {
-            self.notice(level, message);
+            self.notice_from("keys", level, message);
         }
     }
 
@@ -271,7 +285,11 @@ impl Shared {
     pub fn recover_storage(self: &S) -> Result<(), String> {
         let notes = self.vault().recover()?;
         self.notify_all(notes);
-        self.notice("info", "읽지 못한 저장 항목을 지웠어요. '이 기기에 키 기억하기'를 켠 키는 새로 저장했어요.");
+        self.notice_from(
+            "keys",
+            "info",
+            "읽지 못한 저장 항목을 지웠어요. '이 기기에 키 기억하기'를 켠 키는 새로 저장했어요.",
+        );
         self.emit();
         Ok(())
     }
@@ -314,14 +332,26 @@ impl Shared {
     }
 
     pub fn set_member_key(self: &S, value: String) {
+        self.apply_member_key(value, None);
+    }
+
+    /// 회원 키를 바꿈. 실제로 바뀌었으면 앱 기록에 남김(키 값은 남기지 않음) — `title`이 없으면 바꿈·지움으로 적음.
+    fn apply_member_key(self: &S, value: String, title: Option<&str>) {
         if !self.key_length_ok(&value) {
             return;
         }
         {
             let mut c = self.lock();
+            let changed = c.member_key.trim() != value.trim();
             c.member_key = value;
             for r in c.runs.iter_mut().filter(|r| !r.running()) {
                 r.invalidate_preflight();
+            }
+            if changed {
+                let cleared = c.member_key.trim().is_empty();
+                let title =
+                    title.unwrap_or(if cleared { "회원 키를 지웠어요" } else { "회원 키를 바꿨어요" });
+                c.push_app_log("info", "keys", title, "");
             }
         }
         let notes = self.vault().persist_member_key();
@@ -332,7 +362,8 @@ impl Shared {
     /// 잘못 붙여 넣은 긴 글(인증서·JSON 등)은 키 칸에 넣지 않음.
     pub(crate) fn key_length_ok(&self, value: &str) -> bool {
         if value.trim().chars().count() > credentials::MAX_KEY_CHARS {
-            self.notice(
+            self.notice_from(
+                "keys",
                 "warn",
                 format!(
                     "키가 너무 길어요(최대 {}자). 거래소나 웹에서 복사한 키가 맞는지 확인하세요.",
@@ -348,8 +379,12 @@ impl Shared {
     pub fn resolve_member_key(self: &S, accept: bool) {
         let incoming = self.lock().pending_member_key.take();
         match incoming {
-            Some(key) if accept => self.set_member_key(key),
-            _ => self.emit(),
+            Some(key) if accept => self.apply_member_key(key, Some("웹 연결에서 받은 회원 키로 바꿨어요")),
+            Some(_) => {
+                self.lock().push_app_log("info", "keys", "웹 연결에서 받은 회원 키를 쓰지 않기로 했어요", "");
+                self.emit();
+            }
+            None => self.emit(),
         }
     }
 
@@ -577,5 +612,23 @@ mod tests {
         assert!(c.storage_error.contains("지금 입력한 키는 그대로 남아요"), "{}", c.storage_error);
         assert!(c.slot(KeySlot::Upbit).dirty);
         assert_eq!(c.slot(KeySlot::Upbit).keys, pair("access", "secret"));
+    }
+
+    #[test]
+    fn an_unreadable_keychain_entry_is_written_to_the_app_log() {
+        let rig = Rig::new();
+        rig.store.inner.write("not json").unwrap();
+        rig.vault().load();
+        let c = rig.core();
+        assert_ne!(c.load_status, LoadStatus::Loaded);
+        let e = c.app_log.back().expect("앱 기록 한 줄");
+        assert_eq!((e.level, e.source), ("warn", "keys"));
+        assert!(e.title.contains("기억한 키"), "{}", e.title);
+        assert_eq!(e.detail, c.load_failure_note());
+        drop(c);
+        // 정상으로 읽으면 남기지 않음.
+        let rig = Rig::new();
+        rig.vault().load();
+        assert!(rig.core().app_log.is_empty());
     }
 }

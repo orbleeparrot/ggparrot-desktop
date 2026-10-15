@@ -90,11 +90,14 @@ export function stopChoices(slot: Pick<RunSlot, "mode" | "run">): StopChoice[] {
   ];
 }
 
-/** 설정 화면에서 데려갈 곳. */
+/** 설정 화면에서 데려갈 곳. log: 앱 기록의 그 줄(알림 토스트의 [자세히]). */
 export type SettingsTarget =
-  { kind: "slot"; slot: KeySlot } | { kind: "member" } | { kind: "section"; section: SettingsSection };
+  | { kind: "slot"; slot: KeySlot }
+  | { kind: "member" }
+  | { kind: "section"; section: SettingsSection }
+  | { kind: "log"; id: number };
 
-export type SettingsSection = "exchanges" | "account" | "library" | "display" | "storage" | "about";
+export type SettingsSection = "exchanges" | "account" | "library" | "display" | "about" | "log";
 
 export function settingsTargetOf(needs: RunSlot["readiness"]["needs"]): SettingsTarget | null {
   if (!needs) return null;
@@ -105,5 +108,6 @@ export function settingsTargetOf(needs: RunSlot["readiness"]["needs"]): Settings
 export function settingsElementId(target: SettingsTarget): string {
   if (target.kind === "slot") return `settings-slot-${target.slot}`;
   if (target.kind === "member") return "settings-member";
+  if (target.kind === "log") return `app-log-${target.id}`;
   return `settings-${target.section}`;
 }

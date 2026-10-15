@@ -1,5 +1,5 @@
 // 오른쪽 상세 — 머리줄(종목·방향·거래소)·모드·시작/종료·막힌 이유·상태 카드·활동 기록.
-import { CircleAlert, LoaderCircle, Play, Settings } from "lucide-react";
+import { CircleAlert, Info, LoaderCircle, Play, Settings, TriangleAlert } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
 import { isIdle, MODE_NOTES, primaryAction, settingsTargetOf, stopChoices } from "../../state/runs";
@@ -16,6 +16,8 @@ interface Props {
   slot: RunSlot;
   activity: Activity[];
   prices: number[];
+  /** 그래프 첫 점을 받은 시각(epoch ms). */
+  pricesSince?: number;
   onBack?: () => void;
   loadActivity(runId: string): void;
   activityFailed?: boolean;
@@ -60,7 +62,15 @@ function Controls({ slot }: { slot: RunSlot }) {
   );
 }
 
-export function RunDetail({ slot, activity, prices, onBack, loadActivity, activityFailed = false }: Props) {
+export function RunDetail({
+  slot,
+  activity,
+  prices,
+  pricesSince = 0,
+  onBack,
+  loadActivity,
+  activityFailed = false,
+}: Props) {
   const { openSettings } = useRunnerContext();
   const m = slot.macro;
   const r = slot.readiness;
@@ -73,12 +83,22 @@ export function RunDetail({ slot, activity, prices, onBack, loadActivity, activi
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
       <DetailHeader slot={slot} onBack={onBack} />
 
+      {/* 세그먼트와 주 버튼은 한 줄·같은 높이, 모드 설명은 그 아래 한 줄 안내(버튼 높이에 끼어들지 않게). */}
       <div className="detail-controls">
-        <div className="detail-mode">
-          <ModeSegment slot={slot} />
-          <p className={`mode-note ${slot.mode === "live" ? "is-live" : ""}`}>{MODE_NOTES[slot.mode]}</p>
+        <div className="detail-controls-row">
+          <div className="detail-mode">
+            <ModeSegment slot={slot} />
+          </div>
+          <Controls slot={slot} />
         </div>
-        <Controls slot={slot} />
+        <p className={`mode-note mode-note-${slot.mode}`}>
+          {slot.mode === "live" ? (
+            <TriangleAlert size={13} aria-hidden="true" />
+          ) : (
+            <Info size={13} aria-hidden="true" />
+          )}
+          <span>{MODE_NOTES[slot.mode]}</span>
+        </p>
       </div>
 
       {showBlocker && (
@@ -106,7 +126,15 @@ export function RunDetail({ slot, activity, prices, onBack, loadActivity, activi
       {isIdle(slot.phase) && <CapitalRow slot={slot} />}
 
       {slot.run ? (
-        <StatusCard run={slot.run} macro={m} mode={slot.mode} phase={slot.phase} status={slot.status} prices={prices} />
+        <StatusCard
+          run={slot.run}
+          macro={m}
+          mode={slot.mode}
+          phase={slot.phase}
+          status={slot.status}
+          prices={prices}
+          pricesSince={pricesSince}
+        />
       ) : (
         <IdleCard />
       )}

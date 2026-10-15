@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   formatClock,
+  formatClockMillis,
+  formatClockSeconds,
   formatAmount,
   formatElapsed,
   formatWhen,
@@ -9,6 +11,7 @@ import {
   formatPrice,
   formatQty,
   formatSigned,
+  formatSpan,
   toneOf,
 } from "./format";
 
@@ -77,6 +80,12 @@ describe("formatClock · formatWhen (현지 시간)", () => {
     expect(formatClock(new Date(2026, 9, 15, 15, 12, 40).getTime())).toBe("오후 3:12");
     expect(formatClock(new Date(2026, 9, 15, 9, 5).getTime())).toBe("오전 9:05");
   });
+  it("활동 기록은 초까지, 꼬리표는 밀리초까지", () => {
+    const at = new Date(2026, 9, 15, 22, 11, 5, 123).getTime();
+    expect(formatClockSeconds(at)).toBe("오후 10:11:05");
+    expect(formatClockMillis(at)).toBe("오후 10:11:05.123");
+    expect(formatClockSeconds(new Date(2026, 9, 15, 9, 5, 7).getTime())).toBe("오전 9:05:07");
+  });
   it("오늘이면 '오늘', 아니면 날짜", () => {
     const now = new Date(2026, 9, 15, 18, 0).getTime();
     expect(formatWhen(new Date(2026, 9, 15, 15, 12).getTime(), now)).toBe("오늘 오후 3:12");
@@ -89,5 +98,17 @@ describe("formatAmount", () => {
     expect(formatAmount(1000, "USDT")).toBe("1,000 USDT");
     expect(formatAmount(250.5, "USDT")).toBe("250.5 USDT");
     expect(formatAmount(150000.4, "KRW")).toBe("150,000 KRW");
+  });
+});
+
+describe("formatSpan", () => {
+  it("그래프가 덮는 시간 — 초·분·시간", () => {
+    expect(formatSpan(0)).toBe("");
+    expect(formatSpan(800)).toBe("");
+    expect(formatSpan(45_000)).toBe("최근 45초");
+    expect(formatSpan(12 * 60_000 + 30_000)).toBe("최근 12분");
+    expect(formatSpan(2 * 3_600_000)).toBe("최근 2시간");
+    expect(formatSpan(2 * 3_600_000 + 5 * 60_000)).toBe("최근 2시간 5분");
+    expect(formatSpan(-5_000)).toBe("");
   });
 });

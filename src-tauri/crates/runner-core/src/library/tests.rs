@@ -117,3 +117,126 @@ fn read_refuses_paths_and_non_ggm_names() {
     assert!(read(lib.path(), "../a.ggm.json").is_err());
     assert!(read(lib.path(), "/etc/passwd").is_err());
 }
+
+fn at(rfc3339: &str) -> i64 {
+    chrono::DateTime::parse_from_rfc3339(rfc3339).unwrap().timestamp_millis()
+}
+
+fn json(text: &str) -> Value {
+    serde_json::from_str(text).unwrap()
+}
+
+#[test]
+fn file_names_follow_the_web_download_rule() {
+    // 웹 frontend/tests/macroFileName.test.js 와 같은 기대값.
+    let now = at("2026-10-13T06:00:00Z"); // KST 10/13 15:00
+    let name = |t: &str| macro_file_name(&json(t), now);
+    assert_eq!(
+        name(r#"{"exchange":"bithumb","symbol":"KRW-BTR","rule_type":"F","position_side":"long"}"#),
+        "bithumb_KRW-BTR_rsi_long_20261013.ggm.json"
+    );
+    assert_eq!(
+        name(r#"{"symbol":"BTCUSDT","rule_type":"A","position_side":"short"}"#),
+        "binance_BTCUSDT_tp-sl-reentry_short_20261013.ggm.json"
+    );
+    assert_eq!(
+        name(r#"{"exchange":"upbit","symbols":["KRW-XRP","KRW-ETH","KRW-SOL"],"rule_type":"D"}"#),
+        "upbit_KRW-XRP-plus2_grid_long_20261013.ggm.json"
+    );
+    assert_eq!(
+        macro_file_name(&json(r#"{"symbol":"BTCUSDT","rule_type":"C"}"#), at("2026-10-13T15:30:00Z")),
+        "binance_BTCUSDT_dca_long_20261014.ggm.json",
+        "KST 자정을 넘기면 다음 날짜"
+    );
+}
+
+#[test]
+fn file_names_keep_only_safe_ascii() {
+    let now = at("2026-10-13T06:00:00Z");
+    let name = macro_file_name(
+        &json(r#"{"exchange":"모름","symbol":"비트/코인:*","rule_type":"Z","position_side":"long"}"#),
+        now,
+    );
+    assert_eq!(name, "binance_macro_z_long_20261013.ggm.json");
+    let odd = macro_file_name(
+        &json(r#"{"exchange":"UPBIT","symbol":"../..\\KRW-BTC <>|?\u0000","rule_type":"","position_side":"SHORT"}"#),
+        now,
+    );
+    assert_eq!(odd, "upbit_KRW-BTC_custom_long_20261013.ggm.json");
+    let long = macro_file_name(&json(&format!(r#"{{"symbol":"{}","rule_type":"F"}}"#, "A".repeat(500))), now);
+    assert!(long.len() < 120, "이상하게 긴 종목은 잘림: {long}");
+    for n in [name, odd, long] {
+        assert!(n.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)), "{n}");
+        assert!(is_macro_file(&n));
+    }
+}
+
+#[test]
+fn saved_macros_read_back_as_valid_library_entries() {
+    let lib = tempfile::tempdir().unwrap();
+    let m = json(r#"{"symbol":"KRW-BTC","exchange":"upbit","rule_type":"F","position_side":"long","leverage":1}"#);
+    let saved = save_macro(lib.path(), &m, at("2026-10-13T06:00:00Z")).unwrap();
+    assert_eq!(saved, SavedMacro { file_name: "upbit_KRW-BTC_rsi_long_20261013.ggm.json".into(), reused: false });
+    assert_eq!(read(lib.path(), &saved.file_name).unwrap(), m, "파일 내용은 매크로 JSON 그대로");
+    let scan = scan(lib.path()).unwrap();
+    let e = &scan.files[0];
+    assert!(e.valid && e.unsupported.is_empty(), "{e:?}");
+    assert_eq!((e.symbol.as_str(), e.exchange_label.as_str()), ("KRW-BTC", "업비트"));
+}
+
+#[test]
+fn saving_the_same_macro_again_reuses_the_file() {
+    let lib = tempfile::tempdir().unwrap();
+    let now = at("2026-10-13T06:00:00Z");
+    let m = json(
+        r#"{"symbol":"BTCUSDT","exchange":"binance","rule_type":"F","position_side":"long","rsi":{"len":14,"lo":30}}"#,
+    );
+    let first = save_macro(lib.path(), &m, now).unwrap();
+    // 키 순서가 달라도 같은 매크로.
+    let reordered = json(
+        r#"{"rsi":{"lo":30,"len":14},"position_side":"long","rule_type":"F","exchange":"binance","symbol":"BTCUSDT"}"#,
+    );
+    let again = save_macro(lib.path(), &reordered, now + 86_400_000).unwrap();
+    assert_eq!(again, SavedMacro { file_name: first.file_name.clone(), reused: true });
+    assert_eq!(scan(lib.path()).unwrap().files.len(), 1);
+    // 웹에서 내려받은 파일(서명·설명이 붙음)도 같은 매크로로 봄 — 이름이 달라도.
+    let lib2 = tempfile::tempdir().unwrap();
+    let mut downloaded = m.clone();
+    downloaded["_sig"] = json(r#"{"v":1}"#);
+    downloaded["human_summary"] = "RSI 30 아래에서 사요".into();
+    fs::write(lib2.path().join("내가 받은 파일.ggm.json"), serde_json::to_string_pretty(&downloaded).unwrap()).unwrap();
+    let linked = save_macro(lib2.path(), &m, now).unwrap();
+    assert_eq!(linked, SavedMacro { file_name: "내가 받은 파일.ggm.json".into(), reused: true });
+    // 값이 하나라도 다르면 새 파일.
+    let mut other = m.clone();
+    other["rsi"]["lo"] = 25.into();
+    assert!(!save_macro(lib2.path(), &other, now).unwrap().reused);
+    assert_eq!(scan(lib2.path()).unwrap().files.len(), 2);
+}
+
+#[test]
+fn saving_never_overwrites_an_existing_file() {
+    let lib = tempfile::tempdir().unwrap();
+    let now = at("2026-10-13T06:00:00Z");
+    let taken = "binance_BTCUSDT_rsi_long_20261013.ggm.json";
+    fs::write(lib.path().join(taken), "{not json").unwrap();
+    let m = json(r#"{"symbol":"BTCUSDT","rule_type":"F"}"#);
+    let saved = save_macro(lib.path(), &m, now).unwrap();
+    assert_eq!(saved.file_name, "binance_BTCUSDT_rsi_long_20261013 (2).ggm.json");
+    assert_eq!(fs::read_to_string(lib.path().join(taken)).unwrap(), "{not json", "있던 파일은 그대로");
+    assert!(read(lib.path(), &saved.file_name).is_ok());
+}
+
+#[test]
+fn saving_refuses_what_the_folder_could_not_read_back() {
+    let lib = tempfile::tempdir().unwrap();
+    let now = at("2026-10-13T06:00:00Z");
+    assert_eq!(save_macro(lib.path(), &json(r#"{"symbol":"BTCUSDT"}"#), now).unwrap_err(), NOT_A_MACRO);
+    assert!(save_macro(lib.path(), &json("[1,2]"), now).is_err());
+    assert!(scan(lib.path()).unwrap().files.is_empty(), "아무것도 쓰지 않음");
+    // 폴더를 만들 수 없는 자리(파일 아래)면 이유와 함께 실패.
+    let blocker = lib.path().join("file");
+    fs::write(&blocker, "x").unwrap();
+    let err = save_macro(&blocker.join("macros"), &json(r#"{"symbol":"BTCUSDT","rule_type":"F"}"#), now).unwrap_err();
+    assert!(err.contains("매크로 폴더"), "{err}");
+}

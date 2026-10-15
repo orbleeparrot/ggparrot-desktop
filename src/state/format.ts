@@ -63,6 +63,17 @@ export function formatElapsed(ms: number): string {
   return `${pad(m)}:${pad(s)}`;
 }
 
+/** 그래프가 덮는 시간 "최근 45초"·"최근 12분"·"최근 2시간 5분". 1초 안쪽이면 빈 문자열. */
+export function formatSpan(ms: number): string {
+  const s = Math.floor(clean(ms) / 1000);
+  if (s < 1) return "";
+  if (s < 60) return `최근 ${s}초`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `최근 ${m}분`;
+  const h = Math.floor(m / 60);
+  return m % 60 ? `최근 ${h}시간 ${m % 60}분` : `최근 ${h}시간`;
+}
+
 /** 지난 시간을 짧게 — "12초 전", "3분 전". */
 export function formatAgo(ms: number): string {
   const s = Math.max(0, Math.floor(clean(ms) / 1000));
@@ -85,6 +96,12 @@ export function moneyDigits(quote: Quote): number {
 
 const CLOCK = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" });
 const CLOCK_SEC = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+const CLOCK_MS = new Intl.DateTimeFormat("ko-KR", {
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+});
 const DAY = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" });
 
 /** 활동 기록 시각 "오후 3:12"(현지 시간). */
@@ -92,9 +109,14 @@ export function formatClock(at: number): string {
   return CLOCK.format(new Date(at));
 }
 
-/** 마우스를 올렸을 때 보이는 초까지 "오후 3:12:05". */
+/** 활동 기록 시각 — 초까지 "오후 3:12:05". 같은 분에 여러 줄이 와도 순서를 읽을 수 있게 함. */
 export function formatClockSeconds(at: number): string {
   return CLOCK_SEC.format(new Date(at));
+}
+
+/** 마우스를 올렸을 때 보이는 밀리초까지 "오후 3:12:05.123". */
+export function formatClockMillis(at: number): string {
+  return CLOCK_MS.format(new Date(at));
 }
 
 /** 파일 수정 시각·업데이트 확인 시각. 오늘이면 "오늘 오후 3:12", 아니면 "10월 14일 오후 3:12". */

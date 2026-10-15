@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { call, on } from "./ipc";
 import { act as activity, binanceMacro, makeRun, makeSettings, makeSlot, makeState, upbitMacro } from "./test/fixtures";
-import type { Activity, AppState, LibraryFile, StartReply } from "./types";
-import { EV_CONFIRM, EV_NAVIGATE, EV_STATE } from "./types";
+import type { Activity, AppLogEntry, AppState, LibraryFile, StartReply } from "./types";
+import { EV_CONFIRM, EV_NAVIGATE, EV_NOTICE, EV_STATE } from "./types";
 
 vi.mock("./ipc", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./ipc")>();
@@ -15,12 +15,14 @@ const handlers = new Map<string, (p: unknown) => void>();
 let current: AppState;
 let startReply: StartReply;
 let history: Activity[];
+let appLog: AppLogEntry[];
 
 beforeEach(() => {
   handlers.clear();
   current = makeState();
   startReply = { kind: "started" };
   history = [];
+  appLog = [];
   vi.mocked(on).mockImplementation(async (name, handler) => {
     handlers.set(name, handler as (p: unknown) => void);
     return () => handlers.delete(name);
@@ -28,6 +30,7 @@ beforeEach(() => {
   vi.mocked(call).mockImplementation((async (cmd: string) => {
     if (cmd === "get_state") return current;
     if (cmd === "get_activity") return history;
+    if (cmd === "get_app_log") return appLog;
     if (cmd === "start_run") return startReply;
     if (cmd === "start_run_confirmed") return { kind: "started" };
     if (cmd === "add_run_from_library") return "run-2";
@@ -222,8 +225,12 @@ describe("활동 기록 · 개발자 로그", () => {
     render(<App />);
     expect(await screen.findByText("BTC 0.00122개를 81,806 USDT에 샀어요")).toBeTruthy();
     expect(screen.queryByText("heartbeat ok · price=81806")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "자세히" }));
-    expect(screen.getByText("BUY 체결: id=abc 수량=0.00122")).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: "자세히 보기" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.getAttribute("aria-label")).toBe("접기");
+    expect(screen.getByText("BUY 체결: id=abc 수량=0.00122").id).toBe(toggle.getAttribute("aria-controls"));
 
     fireEvent.click(screen.getByRole("button", { name: "설정" }));
     fireEvent.click(await screen.findByRole("switch", { name: "개발자 로그 보기" }));
@@ -286,5 +293,93 @@ describe("종료 · 이동", () => {
     expect(await screen.findByRole("heading", { name: "설정" })).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("heading", { name: "설정" })).toBeNull());
+  });
+});
+
+describe("설정 목차 · 기억한 키", () => {
+  const openSettings = async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "설정" }));
+    return screen.findByRole("navigation", { name: "설정 목차" });
+  };
+
+  it("목차에 '기억한 키'는 없고 맨 끝이 '앱 기록' — 평소에는 경고 카드 없이 보관 위치만 적는다", async () => {
+    const nav = await openSettings();
+    const items = within(nav)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(items).not.toContain("기억한 키");
+    expect(items.at(-1)).toBe("앱 기록");
+    expect(screen.getByText(/기억한 키는 이 기기의 (키체인|Windows 자격 증명 관리자)에 보관해요/)).toBeTruthy();
+    expect(screen.queryByText(/기억한 키를 읽지 못했어요/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "다시 읽기" })).toBeNull();
+  });
+
+  it("읽기 실패면 거래소 연결 맨 위에 경고 카드와 [다시 읽기]", async () => {
+    current = makeState({ settings: makeSettings({ storage: { status: "read_error", note: "잠금을 풀어 주세요." } }) });
+    await openSettings();
+    const section = document.getElementById("settings-exchanges")!;
+    expect(within(section).getByText(/기억한 키를 읽지 못했어요/)).toBeTruthy();
+    fireEvent.click(within(section).getByRole("button", { name: "다시 읽기" }));
+    await waitFor(() => expect(calledWith("reload_storage")).toHaveLength(1));
+    expect(within(section).queryByRole("button", { name: "지우고 새로 만들기" })).toBeNull();
+  });
+
+  it("내용이 깨졌으면 [지우고 새로 만들기]를 먼저 묻고 recover_storage", async () => {
+    current = makeState({ settings: makeSettings({ storage: { status: "decrypt_error", note: "" } }) });
+    await openSettings();
+    fireEvent.click(screen.getByRole("button", { name: "지우고 새로 만들기" }));
+    const dlg = await screen.findByRole("dialog", { name: "기억한 키를 지우고 새로 만들까요?" });
+    fireEvent.click(within(dlg).getByRole("button", { name: "지우고 새로 만들기" }));
+    await waitFor(() => expect(calledWith("recover_storage")).toHaveLength(1));
+  });
+
+  it("키를 기억할 수 없는 OS면 경고 대신 짧은 안내만", async () => {
+    current = makeState({ settings: makeSettings({ storage: { status: "unsupported", note: "" } }) });
+    await openSettings();
+    expect(screen.getByText("이 OS에서는 키를 이번 실행 동안만 기억해요.")).toBeTruthy();
+    expect(screen.queryByText(/에 보관해요\.$/)).toBeNull();
+  });
+});
+
+describe("알림 토스트 [자세히]", () => {
+  it("앱 기록 번호가 있는 알림은 [자세히]로 설정 › 앱 기록의 그 줄을 열고 토스트를 닫는다", async () => {
+    appLog = [
+      { id: 1, at: Date.now(), level: "info", source: "app", title: "앱을 시작했어요", detail: "" },
+      {
+        id: 2,
+        at: Date.now(),
+        level: "info",
+        source: "library",
+        title: "매크로 파일 2개를 가져왔어요",
+        detail: "바이낸스.ggm.json",
+      },
+    ];
+    render(<App />);
+    await ready();
+    await waitFor(() => expect(handlers.has(EV_NOTICE)).toBe(true));
+    act(() =>
+      handlers.get(EV_NOTICE)!({
+        level: "info",
+        title: "매크로 폴더",
+        message: "매크로 파일 2개를 가져왔어요",
+        logId: 2,
+      }),
+    );
+    const toast = (await screen.findByText("매크로 파일 2개를 가져왔어요")).closest(".toast") as HTMLElement;
+    fireEvent.click(within(toast).getByRole("button", { name: "자세히" }));
+    expect(await screen.findByRole("heading", { name: "설정" })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement?.id).toBe("app-log-2"));
+    expect(screen.getByText("바이낸스.ggm.json")).toBeTruthy();
+    expect(document.querySelector(".toast")).toBeNull();
+  });
+
+  it("앱 기록 번호가 없는 알림에는 [자세히]가 없다", async () => {
+    render(<App />);
+    await ready();
+    await waitFor(() => expect(handlers.has(EV_NOTICE)).toBe(true));
+    act(() => handlers.get(EV_NOTICE)!({ level: "info", title: "", message: "그냥 알림이에요" }));
+    const toast = (await screen.findByText("그냥 알림이에요")).closest(".toast") as HTMLElement;
+    expect(within(toast).queryByRole("button", { name: "자세히" })).toBeNull();
   });
 });

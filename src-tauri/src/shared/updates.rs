@@ -54,6 +54,10 @@ impl Shared {
                 c.update.checked_at = now_ms();
                 match found {
                     Ok(Some((version, notes))) => {
+                        // 같은 새 버전을 6시간마다 거듭 남기지 않음.
+                        if c.update.status != "available" || c.update.version != version {
+                            c.push_app_log("info", "update", &format!("새 버전 v{version}이 있어요"), "");
+                        }
                         c.update.status = "available";
                         c.update.version = version;
                         c.update.notes = notes;
@@ -62,6 +66,8 @@ impl Shared {
                         c.update.status = "none";
                     }
                     Err(e) => {
+                        let how = if silent { "자동 확인" } else { "직접 확인" };
+                        c.push_app_log("warn", "update", "업데이트 정보를 확인하지 못했어요", &format!("{how} · {e}"));
                         if silent {
                             if c.update.status != "available" {
                                 c.update.status = "idle";
@@ -162,6 +168,8 @@ impl Shared {
             let mut c = self.lock();
             match result {
                 Ok(()) => {
+                    let title = format!("v{} 설치 파일을 받았어요", c.update.version);
+                    c.push_app_log("info", "update", &title, "다시 시작하면 설치해요.");
                     c.update.status = "ready";
                     c.update.progress = 1.0;
                     c.update.downloaded = c.update.total.max(c.update.downloaded);
@@ -169,6 +177,7 @@ impl Shared {
                 Err(e) => {
                     c.update.status = "error";
                     eprintln!("update download failed: {e}");
+                    c.push_app_log("error", "update", "업데이트를 내려받지 못했어요", &e);
                     c.update.error = "업데이트를 내려받지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도하세요.".into();
                 }
             }
@@ -204,6 +213,7 @@ impl Shared {
                         c.closed = false;
                         c.update.status = "error";
                         eprintln!("update install failed: {e}");
+                        c.push_app_log("error", "update", "업데이트를 설치하지 못했어요", &e.to_string());
                         c.update.error = "업데이트를 설치하지 못했어요. 앱을 응용 프로그램(설치) 폴더에서 실행했는지 확인한 뒤 다시 시도하세요.".into();
                     }
                     me.emit();

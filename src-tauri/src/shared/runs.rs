@@ -2,6 +2,19 @@
 
 use super::*;
 
+/// 실행 목록에 넣을 수 있는 매크로인지 — 아니면 사람이 읽을 이유.
+/// 서버가 시작을 거절할 매크로(적립식·SAR·여러 종목)는 목록에 넣기 전에 알림.
+pub(crate) fn check_runnable(macro_: &Value) -> Result<(), String> {
+    if !macro_.is_object() || runner_core::types::macro_symbol(macro_).is_empty() {
+        return Err(library::NOT_A_MACRO.into());
+    }
+    if let Some(why) = runner_core::macro_info::unsupported_reason(macro_) {
+        return Err(why.into());
+    }
+    runner_core::types::macro_leverage(macro_).map_err(|_| library::NOT_A_MACRO.to_string())?;
+    Ok(())
+}
+
 impl Shared {
     /// 실행 목록 바꾸기의 공통 길 — 잠금 → `f` → runs.json 저장 → 잠금 풀기 → (저장 실패 알림) → 화면 보내기.
     /// `f`가 Err면 바꾼 것이 없다는 뜻 — 저장·화면 보내기 없이 그 값을 그대로 돌려줌.
@@ -35,14 +48,7 @@ impl Shared {
         library_file: Option<String>,
         base: Option<String>,
     ) -> Result<String, String> {
-        if !macro_.is_object() || runner_core::types::macro_symbol(&macro_).is_empty() {
-            return Err(library::NOT_A_MACRO.into());
-        }
-        // 서버가 시작을 거절할 매크로(적립식·SAR·여러 종목)는 목록에 넣기 전에 알림.
-        if let Some(why) = runner_core::macro_info::unsupported_reason(&macro_) {
-            return Err(why.into());
-        }
-        runner_core::types::macro_leverage(&macro_).map_err(|_| library::NOT_A_MACRO.to_string())?;
+        check_runnable(&macro_)?;
         let id = format!("run-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
         self.edit_runs_rechecking(|c| {
             let mut clean = macro_.clone();

@@ -283,7 +283,7 @@ impl Core {
     }
 
     /// 문의용 정보(설정 › 정보 › [문의용 정보 복사]) — 버전·OS·공인 IP·서버·키 칸 상태·매크로 상태.
-    /// 거래소 키·회원 키 값은 넣지 않음(입력 여부만).
+    /// 거래소 키·회원 키 값은 넣지 않음(입력 여부만). 끝에 최근 앱 기록 20줄.
     pub(crate) fn support_text(&self, version: &str, os: &str, now: chrono::DateTime<chrono::Local>) -> String {
         let when = |ms: i64| {
             chrono::DateTime::from_timestamp_millis(ms)
@@ -339,6 +339,12 @@ impl Core {
                 d.status.text,
                 r.title
             ));
+        }
+        // 최근 앱 기록 — 넣을 때 이미 키 값을 가렸음(Core::push_app_log).
+        let recent = self.recent_app_log_lines(super::SUPPORT_APP_LOG_LINES);
+        if !recent.is_empty() {
+            lines.push("최근 앱 기록:".into());
+            lines.extend(recent.into_iter().map(|l| format!("- {l}")));
         }
         lines.join("\n")
     }
@@ -497,6 +503,9 @@ pub struct Notice {
     pub level: String,
     pub title: String,
     pub message: String,
+    /// 이 알림을 남긴 앱 기록 번호 — 화면이 [자세히]로 앱 기록을 열 때 씀.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_id: Option<u64>,
 }
 
 #[derive(Serialize, Clone)]

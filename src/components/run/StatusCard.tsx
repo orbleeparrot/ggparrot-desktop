@@ -14,7 +14,7 @@ import {
 import { SIDE_LABELS } from "../../state/runs";
 import { alertOf, labelOf, serverCell, STALE_MS } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus, Tone } from "../../types";
-import { Sparkline } from "../Sparkline";
+import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
 
 export function StatusCard({
@@ -24,6 +24,7 @@ export function StatusCard({
   phase,
   status,
   prices,
+  pricesSince = 0,
 }: {
   run: RunStatus;
   macro: MacroInfo;
@@ -31,6 +32,8 @@ export function StatusCard({
   phase: RunSlot["phase"];
   status: RunSlot["status"];
   prices: number[];
+  /** 그래프 첫 점을 받은 시각(epoch ms). 0이면 덮는 시간을 보이지 않음. */
+  pricesSince?: number;
 }) {
   // 실행 중에는 1초마다 다시 그림 — 서버 소식이 끊긴 지 얼마인지도 이 시각으로 셈.
   const { now, elapsed } = useRunClock(run);
@@ -89,7 +92,12 @@ export function StatusCard({
           )}
         </div>
         <div className="pnl-chart">
-          <Sparkline points={prices} entry={run.inPosition ? run.entryPrice : undefined} />
+          <PriceChart
+            points={prices}
+            entry={run.inPosition ? run.entryPrice : undefined}
+            quote={q}
+            spanMs={pricesSince > 0 && run.updatedAt > pricesSince ? run.updatedAt - pricesSince : 0}
+          />
         </div>
       </div>
 

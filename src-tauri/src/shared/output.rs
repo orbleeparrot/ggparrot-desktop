@@ -1,4 +1,4 @@
-//! 화면으로 보내기 — 상태 스냅샷(모아 보내기·매크로 폴더 목록은 바뀐 판만)·활동·알림·화면 이동.
+//! 화면으로 보내기 — 상태 스냅샷(모아 보내기·매크로 폴더 목록은 바뀐 판만)·활동·앱 기록·알림·화면 이동.
 
 use super::*;
 
@@ -10,14 +10,18 @@ impl Shared {
     pub fn emit(&self) {
         use std::sync::atomic::Ordering;
         let _order = lock_or_recover(&self.emit_lock);
-        let (dto, progress, items) = {
+        let (dto, progress, items, logs) = {
             let mut c = self.lock();
             let items = std::mem::take(&mut c.pending_activity);
+            let logs = std::mem::take(&mut c.pending_app_log);
             let library = self.sent_library_rev.swap(c.library_rev, Ordering::Relaxed) != c.library_rev;
-            (c.render_with(&self.version, library), c.progress_payloads(), items)
+            (c.render_with(&self.version, library), c.progress_payloads(), items, logs)
         };
         for item in items {
             let _ = self.app.emit(EV_ACTIVITY, item);
+        }
+        for entry in logs {
+            let _ = self.app.emit(EV_APP_LOG, entry);
         }
         let _ = self.app.emit(EV_STATE, serde_json::to_value(dto).unwrap_or_default());
         for (rep, payload) in progress {
@@ -47,9 +51,29 @@ impl Shared {
         serde_json::to_value(self.lock().render(&self.version)).unwrap_or(Value::Null)
     }
 
+    /// 알림(토스트) — 출처 "app"으로 앱 기록에도 남김. 출처를 아는 곳은 [`Shared::notice_from`].
     pub fn notice(&self, level: &str, message: impl Into<String>) {
-        let _ =
-            self.app.emit(EV_NOTICE, Notice { level: level.into(), title: APP_TITLE.into(), message: message.into() });
+        self.notice_from("app", level, message);
+    }
+
+    /// 알림을 앱 기록에 남긴 뒤(첫 줄 = 제목, 나머지 = 설명) 띄움. 알림에는 그 기록 번호(logId)를 실음 —
+    /// 화면이 [자세히]로 앱 기록을 열 수 있게. 기록 줄을 먼저 보내 알림보다 늦게 도착하지 않게 함.
+    pub fn notice_from(&self, source: &'static str, level: &str, message: impl Into<String>) {
+        let message = message.into();
+        let log_id = {
+            let _order = lock_or_recover(&self.emit_lock);
+            let (id, logs) = {
+                let mut c = self.lock();
+                let id = c.push_notice_log(level, source, &message);
+                (id, std::mem::take(&mut c.pending_app_log))
+            };
+            for entry in logs {
+                let _ = self.app.emit(EV_APP_LOG, entry);
+            }
+            id
+        };
+        let notice = Notice { level: level.into(), title: APP_TITLE.into(), message, log_id: Some(log_id) };
+        let _ = self.app.emit(EV_NOTICE, notice);
     }
 
     pub fn navigate(&self, to: &str) {

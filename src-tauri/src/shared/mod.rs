@@ -1,6 +1,6 @@
 //! 앱 컨트롤러 — 키 확인·저장, 실행 슬롯 여러 개의 시작·종료, 웹 연결.
 //! 상태·출력은 여기, 나머지는 관심사별 하위 모듈(persist·keys·checks·library_folder·runs·launch·
-//! bot_events·run_check·deep_link·updates·lifecycle)의 `impl Shared`에 둠.
+//! bot_events·run_check·deep_link·updates·lifecycle·app_log)의 `impl Shared`에 둠.
 //! 락은 await를 넘어 들고 있지 않음. 바뀐 상태는 `emit()`으로 웹뷰에 스냅샷을 보냄.
 
 use runner_core::bot::{spawn_bot, BotEvent, BotHandle, StopMode};
@@ -35,6 +35,8 @@ use crate::state::{
 
 pub const EV_STATE: &str = "runner:state";
 pub const EV_ACTIVITY: &str = "runner:activity";
+/// 앱 기록 한 줄씩(payload: AppLogEntry).
+pub const EV_APP_LOG: &str = "runner:app-log";
 pub const EV_NOTICE: &str = "runner:notice";
 pub const EV_CONFIRM: &str = "runner:confirm";
 pub const EV_NAVIGATE: &str = "runner:navigate";
@@ -102,6 +104,7 @@ impl Shared {
             os_alerts: Mutex::new(Default::default()),
             key_io: Mutex::new(()),
         });
+        shared.log_app_start();
         shared.load_remembered();
         shared.load_saved();
         // 매크로 폴더는 창을 띄운 뒤 백그라운드에서 읽음(lib.rs setup).
@@ -160,6 +163,7 @@ pub(crate) fn lock_or_recover<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 mod alerts;
+mod app_log;
 mod bot_events;
 mod checks;
 mod support;

@@ -63,13 +63,13 @@ impl Shared {
         self.refresh_wizard();
         match next {
             RunCheckNext::Nothing => {}
-            RunCheckNext::Warn(m) => self.notice("warn", m),
+            RunCheckNext::Warn(m) => self.notice_from("run", "warn", m),
             RunCheckNext::Wizard(target) => self.wizard_open(target, "result_fail"),
             RunCheckNext::Start => match self.start_run(id) {
                 StartReply::ConfirmLive { title, message } => {
                     let _ = self.app.emit(EV_CONFIRM, json!({ "runId": id, "title": title, "message": message }));
                 }
-                StartReply::Blocked { message } if !message.is_empty() => self.notice("warn", message),
+                StartReply::Blocked { message } if !message.is_empty() => self.notice_from("run", "warn", message),
                 _ => {}
             },
         }

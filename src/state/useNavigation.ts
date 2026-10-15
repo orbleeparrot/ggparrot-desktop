@@ -19,8 +19,11 @@ export interface Navigation {
 }
 
 export function useNavigation(state: AppState | null, demo = "", openDetail = false): Navigation {
-  const [view, setView] = useState<"run" | "settings">(demo === "settings" ? "settings" : "run");
-  const [target, setTarget] = useState<Navigation["target"]>(null);
+  const [view, setView] = useState<"run" | "settings">(demo === "settings" || demo === "applog" ? "settings" : "run");
+  // ?demo=applog — 설정의 앱 기록 묶음으로 바로 감(디자인 검토용).
+  const [target, setTarget] = useState<Navigation["target"]>(
+    demo === "applog" ? { target: { kind: "section", section: "log" }, seq: 0 } : null,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(openDetail);
   const known = useRef<Set<string> | null>(null);

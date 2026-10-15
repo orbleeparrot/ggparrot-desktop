@@ -13,7 +13,7 @@ use runner_core::types::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -51,6 +51,11 @@ pub fn activity_copy_text(head: &str, items: &[ActivityDto], max_chars: usize) -
             line
         })
         .collect();
+    bounded_copy_text(head, lines, max_chars)
+}
+
+/// 복사 글 묶기(활동 기록·앱 기록 공용) — 머리말 + 줄들. 한도(글자)를 넘으면 오래된 줄부터 빼고 뺀 수를 적음.
+pub fn bounded_copy_text(head: &str, lines: Vec<String>, max_chars: usize) -> String {
     // 최근 줄부터 한도 안에서 담음.
     let mut used = head.chars().count() + 40;
     let mut keep = 0;
@@ -501,6 +506,13 @@ pub struct Core {
     pub activity_seq: u64,
     /// 아직 화면에 보내지 않은 활동 — emit이 함께 보냄.
     pub pending_activity: Vec<ActivityDto>,
+    /// 앱 기록(최근 500줄, 오래된 것 → 최근). 번호는 `app_log_seq`.
+    pub app_log: VecDeque<AppLogEntry>,
+    pub app_log_seq: u64,
+    /// 아직 화면에 보내지 않은 앱 기록 — emit이 함께 보냄.
+    pub pending_app_log: Vec<AppLogEntry>,
+    /// 마지막으로 앱 기록에 남긴 매크로 폴더 문제(폴더 읽기 실패 이유·읽지 못한 파일 이름들) — 같은 문제를 거듭 남기지 않게.
+    pub library_logged: (String, BTreeSet<String>),
 }
 
 pub fn now_ms() -> i64 {
@@ -551,6 +563,10 @@ impl Core {
             },
             activity_seq: 0,
             pending_activity: vec![],
+            app_log: VecDeque::new(),
+            app_log_seq: 0,
+            pending_app_log: vec![],
+            library_logged: Default::default(),
         }
     }
 
@@ -791,6 +807,8 @@ impl Core {
     }
 }
 
+mod app_log;
+pub use app_log::{app_log_copy_text, AppLogEntry, SUPPORT_APP_LOG_LINES};
 mod health;
 mod render;
 pub(crate) use render::finish_label;

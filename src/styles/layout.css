@@ -153,57 +153,100 @@
   color: var(--ink);
 }
 
-/* --- 토스트 ------------------------------------------------------------------ */
+/* --- 토스트 ------------------------------------------------------------------
+   머리줄 바로 아래 오른쪽 위. 밝은 카드 + 톤 색 왼쪽 띠·아이콘.
+   - 대화상자·확인 시트·연결 도우미(.scrim, z-index 50~)보다 아래 층 — 열린 대화상자를 가리지 않음(흐린 막 뒤로 비침).
+   - 넓은 창에서 매크로 추가 시트(오른쪽 패널)가 열려 있으면 시트 왼쪽으로 비켜서 그 위 층에 보임. */
 .toasts {
   position: fixed;
+  top: calc(var(--header-h) + 10px);
   right: var(--pad);
-  bottom: var(--pad);
-  z-index: 80;
+  z-index: 45;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(360px, calc(100vw - 32px));
+  width: min(360px, calc(100vw - var(--pad) * 2));
   pointer-events: none;
 }
 .toast {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 8px 10px 12px;
-  border-radius: 10px;
-  background: var(--ink);
-  color: var(--bg);
+  min-height: 48px;
+  padding: 10px 6px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
   box-shadow: var(--shadow-lift);
+  overflow: hidden;
   pointer-events: auto;
   animation: toast-in 220ms var(--ease);
 }
-.toast > svg {
-  flex: none;
-  margin-top: 2px;
+.toast::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--toast-tone);
 }
-.toast-error > svg {
-  color: #fca5a5;
+.toast-info {
+  --toast-tone: var(--info);
+}
+.toast-error {
+  --toast-tone: var(--danger);
+}
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--toast-tone) 14%, var(--card));
+  color: var(--toast-tone);
 }
 .toast-text {
   display: flex;
   flex-direction: column;
+  gap: 1px;
   flex: 1;
+  min-width: 0;
+  padding-top: 3px;
   font-size: var(--fs-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.toast-text strong {
+  font-size: var(--fs-body);
+}
+/* 제목이 있으면 본문은 흐리게, 본문뿐이면 진하게 */
+.toast-text strong + span {
+  color: var(--muted);
+}
+.toast-detail {
+  align-self: flex-start;
+  margin-top: 1px;
 }
 .toast .icon-btn {
-  width: 24px;
-  height: 24px;
-  color: inherit;
-  opacity: 0.7;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -4px 0 -4px;
 }
-.toast .icon-btn:hover {
-  background: rgb(255 255 255 / 0.12);
-  color: inherit;
-  opacity: 1;
+@media (min-width: 900px) {
+  body:has(.scrim-side) .toasts {
+    right: calc(min(480px, 100vw) + 12px);
+    z-index: 70;
+  }
+}
+body:has(.scrim-dialog, .scrim-sheet, .scrim-wizard) .toasts {
+  z-index: 45;
 }
 @keyframes toast-in {
   from {
-    transform: translateY(8px);
+    transform: translateY(-6px);
     opacity: 0;
   }
 }
@@ -275,7 +318,7 @@
    macOS: 신호등(닫기·최소화·전체 화면)이 머리줄 왼쪽에 겹쳐 그려짐 — 그만큼 비움.
    Windows: 시스템 제목 줄 대신 오른쪽 끝에 창 단추를 직접 그림. */
 .app-header {
-  min-height: 54px;
+  min-height: var(--header-h);
   user-select: none;
   -webkit-user-select: none;
 }

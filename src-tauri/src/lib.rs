@@ -157,7 +157,7 @@ pub fn run() {
                     }
                     "open_folder" => {
                         if let Err(e) = s3.open_library_folder() {
-                            s3.notice("warn", e);
+                            s3.notice_from("library", "warn", e);
                         }
                     }
                     _ => {}
@@ -169,7 +169,7 @@ pub fn run() {
             {
                 if let Err(e) = app.deep_link().register_all() {
                     eprintln!("deep link register failed: {e}");
-                    shared.notice("warn", "웹의 [실행기 열기]로 이 앱을 여는 설정을 하지 못했어요. 매크로 파일은 그대로 쓸 수 있어요. 앱을 다시 설치하면 고쳐질 수 있어요.");
+                    shared.notice_from("web", "warn", "웹의 [실행기 열기]로 이 앱을 여는 설정을 하지 못했어요. 매크로 파일은 그대로 쓸 수 있어요. 앱을 다시 설치하면 고쳐질 수 있어요.");
                 }
             }
             let s2 = shared.clone();
@@ -225,6 +225,8 @@ pub fn run() {
             commands::open_run_web_page,
             commands::refresh_public_ip,
             commands::copy_support_info,
+            commands::get_app_log,
+            commands::copy_app_log,
             commands::set_slot_key,
             commands::reveal_slot_key,
             commands::set_slot_remember,

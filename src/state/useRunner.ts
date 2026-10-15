@@ -8,8 +8,11 @@ import { mergeActivity } from "./activity";
 
 const MAX_PRICE_POINTS = 180;
 
-/** 슬롯별 현재가 흐름 — 상태 카드의 작은 선 그래프용. 실행(run.startedAt)이 바뀌면 새로 시작함. UI 로컬 값임. */
-export type PriceTrail = { startedAt: number; points: number[] };
+/**
+ * 슬롯별 현재가 흐름 — 상태 카드의 작은 선 그래프용. 실행(run.startedAt)이 바뀌면 새로 시작함. UI 로컬 값임.
+ * - times: 점마다 받은 시각(run.updatedAt, 없으면 시작 시각). 그래프가 덮는 시간("최근 12분")을 셈.
+ */
+export type PriceTrail = { startedAt: number; points: number[]; times: number[] };
 
 /** 상태 이벤트가 이만큼 없으면 get_state로 다시 읽음. */
 const RESYNC_MS = 15_000;
@@ -145,14 +148,19 @@ function trackPrices(prev: Record<string, PriceTrail>, next: AppState): Record<s
       if (old) changed = true;
       continue;
     }
+    const at = run.updatedAt > 0 ? run.updatedAt : run.startedAt;
     if (!old || old.startedAt !== run.startedAt) {
-      out[slot.id] = { startedAt: run.startedAt, points: run.price > 0 ? [run.price] : [] };
+      const first = run.price > 0;
+      out[slot.id] = { startedAt: run.startedAt, points: first ? [run.price] : [], times: first ? [at] : [] };
       changed = true;
     } else if (!run.finished && run.price > 0 && old.points[old.points.length - 1] !== run.price) {
       const points = old.points.concat(run.price);
+      const times = old.times.concat(at);
+      const cut = points.length > MAX_PRICE_POINTS;
       out[slot.id] = {
         startedAt: run.startedAt,
-        points: points.length > MAX_PRICE_POINTS ? points.slice(-MAX_PRICE_POINTS) : points,
+        points: cut ? points.slice(-MAX_PRICE_POINTS) : points,
+        times: cut ? times.slice(-MAX_PRICE_POINTS) : times,
       };
       changed = true;
     } else {

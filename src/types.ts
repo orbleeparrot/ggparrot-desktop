@@ -271,6 +271,26 @@ export interface Notice {
   level: "info" | "warn" | "error";
   title: string;
   message: string;
+  /** 이 알림을 남긴 앱 기록 번호(AppLogEntry.id) — [자세히]로 앱 기록을 열 때 씀. 없을 수 있음. */
+  logId?: number;
+}
+
+export type AppLogLevel = "info" | "warn" | "error";
+/** 앱 기록의 출처 — 앱 전체·웹 연결·업데이트·키(키체인·회원 키)·로컬 저장·매크로 폴더·서버·실행 시작·연결 도우미. */
+export type AppLogSource = "app" | "web" | "update" | "keys" | "storage" | "library" | "server" | "run" | "wizard";
+
+/** 앱 기록 한 줄 — 매크로 하나에 묶이지 않는 앱 전체의 일. 알림(토스트)도 모두 여기에 남음. 메모리에 최근 500줄. */
+export interface AppLogEntry {
+  /** 오르는 번호. get_app_log와 runner:app-log 이벤트가 같은 줄을 함께 줄 수 있으니 id로 합칠 것. */
+  id: number;
+  /** epoch ms */
+  at: number;
+  level: AppLogLevel;
+  source: AppLogSource;
+  /** 첫 줄(알림이면 알림 글의 첫 줄). */
+  title: string;
+  /** 나머지 줄. 없으면 "". 줄바꿈이 들어 있을 수 있음. */
+  detail: string;
 }
 
 export type StartReply =
@@ -288,6 +308,8 @@ export type StateEvent = Omit<AppState, "library"> & { library?: AppState["libra
 /** payload: Activity */
 export const EV_ACTIVITY = "runner:activity";
 export const EV_NOTICE = "runner:notice";
+/** payload: AppLogEntry — 앱 기록에 새 줄이 생길 때마다(알림이면 runner:notice보다 먼저). */
+export const EV_APP_LOG = "runner:app-log";
 /** payload: { runId, title, message } — 시작 전 검사가 끝난 뒤 실전 확인이 필요할 때. */
 export const EV_CONFIRM = "runner:confirm";
 /** payload: { to: "settings" | "settings:about" | "run" | "run:{id}" | "library" } — 앱 메뉴·트레이 등에서 화면을 바꿈. */

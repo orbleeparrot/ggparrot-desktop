@@ -24,7 +24,8 @@ impl Shared {
             let mut c = self.lock();
             if c.claim_busy {
                 drop(c);
-                self.notice(
+                self.notice_from(
+                    "wizard",
                     "warn",
                     "웹에서 매크로를 연결하는 동안에는 연결 도우미를 열 수 없어요. 잠시 뒤 다시 시도하세요.",
                 );
@@ -230,7 +231,8 @@ impl Shared {
         };
         let opened = url.map(|u| self.open_url(u)).unwrap_or(false);
         if !opened {
-            self.notice(
+            self.notice_from(
+                "wizard",
                 "warn",
                 "기본 브라우저를 열지 못했어요. 거래소 공식 홈페이지의 API 관리 메뉴에서 직접 진행하세요.",
             );
@@ -243,7 +245,7 @@ impl Shared {
         if !self.copy_public_ip() {
             return Err("주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 복사하세요.".into());
         }
-        self.notice("info", "이 기기 주소를 복사했어요.");
+        self.notice_from("wizard", "info", "이 기기 주소를 복사했어요.");
         Ok(())
     }
 
@@ -258,7 +260,11 @@ impl Shared {
             return;
         }
         if !copied {
-            self.notice("warn", "주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 다시 누르세요.");
+            self.notice_from(
+                "wizard",
+                "warn",
+                "주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 다시 누르세요.",
+            );
             return;
         }
         if self.wizard_open_page(true) {

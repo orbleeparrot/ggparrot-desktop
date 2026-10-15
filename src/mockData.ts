@@ -74,6 +74,9 @@ const WEB_MACRO = macro({
   signature: "web",
 });
 
+/** 웹 [실행기 열기]로 받은 견본 매크로의 파일 — 앱은 받은 매크로를 웹 내려받기와 같은 이름으로 매크로 폴더에 저장하고 그 파일과 이음. */
+export const WEB_FILE_NAME = "upbit_KRW-BTC_rsi_long_20261015.ggm.json";
+
 /** 매크로 폴더에 처음부터 있는 파일. macro가 null이면 읽히지 않는 파일. */
 const LIBRARY_SAMPLES: {
   fileName: string;
@@ -140,6 +143,18 @@ const LIBRARY_SAMPLES: {
     unsupported: "이 앱은 아직 이 매크로 유형(정기 분할매수 · 하락 방어 전환)을 지원하지 않아요.",
   },
   { fileName: "깨진 파일.ggm.json", macro: null, error: "올바른 껄무새 매크로 파일이 아니에요.", ageMin: 60 * 3 },
+  {
+    // 웹 연결로 받아 저장한 파일 — 서명은 없음(웹 연결 응답에는 서명이 실려 오지 않음).
+    fileName: WEB_FILE_NAME,
+    ageMin: 5,
+    macro: {
+      ...WEB_MACRO,
+      title: WEB_FILE_NAME.replace(/\.ggm\.json$/, ""),
+      source: "file",
+      signature: "unsigned",
+      capitalLocked: "",
+    },
+  },
 ];
 
 /** 매크로 형식 이름(.ggm.json)이 아니라 목록에서 뺀 .json 수(견본: 메모.json). */
@@ -289,7 +304,18 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
   };
   if (params.get("demo") !== "empty") {
     newRun(m, m.files[0].macro!, m.files[0].fileName);
-    newRun(m, WEB_MACRO, null, true);
+    newRun(m, WEB_MACRO, WEB_FILE_NAME, true);
+  }
+  // ?demo=many — 목록에 스크롤이 생기게 매크로를 스무 개 넘게 채움(읽히는 파일·가져오기 견본을 돌려 씀).
+  if (params.get("demo") === "many") {
+    const pool = [
+      ...m.files.filter((f) => f.macro && !f.unsupported).map((f) => [f.macro!, f.fileName] as const),
+      ...IMPORT_SAMPLES.map((mc) => [mc, `${mc.title}.ggm.json`] as const),
+    ];
+    for (let i = 0; i < 22; i += 1) {
+      const [mc, file] = pool[i % pool.length];
+      newRun(m, mc, file);
+    }
   }
   return m;
 }

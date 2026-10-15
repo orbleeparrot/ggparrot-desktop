@@ -594,3 +594,140 @@ fn run_status_carries_fees_day_change_and_macro_origin_for_the_screen() {
     let v = serde_json::to_value(render_run_data(&d, Side::Long)).unwrap();
     assert!(v["fees"].is_null() && v["dayChangePct"].is_null());
 }
+
+// --- 앱 기록 ---------------------------------------------------------------------
+
+#[test]
+fn app_log_keeps_the_latest_500_in_order() {
+    let mut c = core();
+    for i in 0..app_log::APP_LOG_LIMIT + 7 {
+        c.push_app_log("info", "app", &format!("줄 {i}"), "");
+    }
+    let all = c.app_log_list();
+    assert_eq!(all.len(), app_log::APP_LOG_LIMIT, "최근 500줄만");
+    assert_eq!(all[0].title, "줄 7", "오래된 줄부터 빠짐");
+    assert_eq!(all.last().unwrap().title, format!("줄 {}", app_log::APP_LOG_LIMIT + 6));
+    assert!(all.windows(2).all(|w| w[0].id + 1 == w[1].id), "번호는 하나씩 오름(오래된 것 → 최근)");
+    assert_eq!(c.pending_app_log.len(), app_log::APP_LOG_LIMIT + 7, "보낼 줄은 emit이 비움");
+}
+
+#[test]
+fn app_log_clips_like_activity() {
+    let mut c = core();
+    c.push_app_log("warn", "web", &"가".repeat(ACTIVITY_TITLE_CHARS + 50), &"나".repeat(ACTIVITY_DETAIL_CHARS + 50));
+    let e = c.app_log.back().unwrap();
+    assert_eq!(e.title.chars().count(), ACTIVITY_TITLE_CHARS + 1);
+    assert_eq!(e.detail.chars().count(), ACTIVITY_DETAIL_CHARS + 1);
+    assert!(e.title.ends_with('…') && e.detail.ends_with('…'));
+    let v = serde_json::to_value(e).unwrap();
+    for k in ["id", "at", "level", "source", "title", "detail"] {
+        assert!(v.get(k).is_some(), "{k} 없음: {v}");
+    }
+}
+
+#[test]
+fn a_notice_becomes_an_app_log_line_split_into_title_and_detail() {
+    let mut c = core();
+    let id = c.push_notice_log("warn", "web", "웹에서 보낸 매크로를 열지 못했어요.\n지원하지 않는 유형이에요.\n");
+    let e = c.app_log.back().unwrap();
+    assert_eq!(e.id, id);
+    assert_eq!((e.level, e.source), ("warn", "web"));
+    assert_eq!(e.title, "웹에서 보낸 매크로를 열지 못했어요.");
+    assert_eq!(e.detail, "지원하지 않는 유형이에요.");
+    c.push_notice_log("error", "server", "한 줄");
+    assert_eq!((c.app_log.back().unwrap().level, c.app_log.back().unwrap().detail.as_str()), ("error", ""));
+    c.push_notice_log("danger", "app", "x");
+    c.push_notice_log("뭔가", "app", "y");
+    let levels: Vec<&str> = c.app_log.iter().rev().take(2).map(|e| e.level).collect();
+    assert_eq!(levels, ["info", "error"], "모르는 수준은 info");
+    let n = Notice { level: "warn".into(), title: "껄무새".into(), message: "m".into(), log_id: Some(id) };
+    assert_eq!(serde_json::to_value(n).unwrap()["logId"], id);
+}
+
+#[test]
+fn app_log_hides_keys_and_tokens_in_lines_and_copy() {
+    let mut c = core();
+    c.member_key = "MEMBERSECRETVALUE".into();
+    c.pending_member_key = Some("OTHERACCOUNTKEY".into());
+    c.slot_mut(KeySlot::Upbit).keys = KeyPair { api_key: "UPACCESSVALUE".into(), api_secret: "UPSECRETVALUE".into() };
+    c.push_app_log(
+        "error",
+        "update",
+        "실패 MEMBERSECRETVALUE",
+        "UPACCESSVALUE / UPSECRETVALUE / OTHERACCOUNTKEY / Bearer abc.def.ghi https://x.test/p?ticket=T0P",
+    );
+    let text = app_log_copy_text("[앱 기록]", &c.app_log, ACTIVITY_COPY_CHARS);
+    for secret in ["MEMBERSECRETVALUE", "UPACCESSVALUE", "UPSECRETVALUE", "OTHERACCOUNTKEY", "abc.def", "T0P"] {
+        assert!(!text.contains(secret), "{secret} 이 보임: {text}");
+    }
+    assert!(text.contains("[키 숨김]") && text.contains("https://x.test/p"), "{text}");
+    let line = text.lines().nth(1).unwrap();
+    assert!(line.as_bytes()[2] == b'-' && line.contains("오류 [update] 실패"), "날짜·수준·출처: {line}");
+}
+
+#[test]
+fn app_log_copy_keeps_recent_lines_within_limit() {
+    let mut c = core();
+    for i in 0..300 {
+        c.push_app_log("info", "app", &format!("줄 {i}"), &"x".repeat(100));
+    }
+    let text = app_log_copy_text("[앱 기록]", &c.app_log, 5_000);
+    assert!(text.chars().count() <= 5_000);
+    assert!(text.starts_with("[앱 기록]\n(앞의 "), "뺀 수를 적음");
+    assert!(text.contains("줄 299 "), "가장 최근 줄은 남음");
+}
+
+#[test]
+fn support_text_ends_with_recent_app_log() {
+    let mut c = core();
+    c.member_key = "MEMBERSECRET".into();
+    for i in 0..30 {
+        c.push_app_log("info", "app", &format!("기록 {i}"), "");
+    }
+    c.push_notice_log("warn", "web", "웹 연결 요청을 확인하지 못했어요.\nMEMBERSECRET 둘째 줄");
+    let text = c.support_text("0.19.0", "macOS 15.6 (arm64)", chrono::Local::now());
+    let tail: Vec<&str> = text.split("최근 앱 기록:\n").nth(1).expect("앱 기록 칸").lines().collect();
+    assert_eq!(tail.len(), SUPPORT_APP_LOG_LINES, "최근 20줄만");
+    assert!(tail[0].contains("기록 11"), "{}", tail[0]);
+    assert!(tail.last().unwrap().contains("주의 [web] 웹 연결 요청을 확인하지 못했어요. — [키 숨김] 둘째 줄"));
+    assert!(!text.contains("MEMBERSECRET"));
+    assert!(
+        !core().support_text("0.19.0", "x", chrono::Local::now()).contains("최근 앱 기록"),
+        "기록이 없으면 칸도 없음"
+    );
+}
+
+#[test]
+fn library_problems_are_logged_once_until_they_change() {
+    let mut c = core();
+    let broken = |name: &str| runner_core::library::LibraryEntry {
+        file_name: name.into(),
+        valid: false,
+        error: "올바른 껄무새 매크로 파일이 아니에요.".into(),
+        title: String::new(),
+        exchange_name: String::new(),
+        exchange_label: String::new(),
+        symbol: String::new(),
+        side: String::new(),
+        strategy: String::new(),
+        unsupported: String::new(),
+        summary: String::new(),
+        signed: false,
+        modified_ms: 0,
+    };
+    c.library = vec![broken("a.ggm.json")];
+    c.log_library_problems(None);
+    c.log_library_problems(None);
+    assert_eq!(c.app_log.len(), 1, "같은 파일은 한 번만");
+    assert!(c.app_log[0].detail.starts_with("a.ggm.json: "), "{:?}", c.app_log[0]);
+    c.library.push(broken("b.ggm.json"));
+    c.log_library_problems(None);
+    assert_eq!(
+        (c.app_log.len(), c.app_log[1].detail.as_str()),
+        (2, "b.ggm.json: 올바른 껄무새 매크로 파일이 아니에요.")
+    );
+    c.log_library_problems(Some("권한 없음"));
+    c.log_library_problems(Some("권한 없음"));
+    assert_eq!(c.app_log.len(), 3, "같은 폴더 오류도 한 번만");
+    assert_eq!(c.app_log[2].level, "warn");
+}

@@ -12,20 +12,51 @@
 
 /* --- 목록 -------------------------------------------------------------------- */
 .run-list-panel {
+  --panel-pad-t: 14px;
+  --panel-pad-r: 12px;
+  --panel-pad-l: var(--pad);
+  --edge-shadow: color-mix(in srgb, var(--ink) 16%, transparent);
   position: relative; /* 안의 .sr-only 등이 이 스크롤 영역 밖(문서)으로 새지 않게 */
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-  padding: 14px 12px var(--pad) var(--pad);
+  padding: var(--panel-pad-t) var(--panel-pad-r) var(--pad) var(--panel-pad-l);
   overflow-y: auto;
   border-right: 1px solid var(--border);
 }
+/* 머리 — 스크롤해도 위에 붙음. 바탕을 패널 끝까지 넓혀 아래로 지나가는 카드를 가림. */
+/* sticky 기준선은 스크롤 영역의 안쪽 여백만큼 들어가 있음 — 여백만큼 음수로 당겨 맨 끝에 붙임. */
 .panel-head {
+  position: sticky;
+  top: calc(-1 * var(--panel-pad-t));
+  z-index: 3;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  padding: 2px 4px 4px;
+  margin: calc(-1 * var(--panel-pad-t)) calc(-1 * var(--panel-pad-r)) 0 calc(-1 * var(--panel-pad-l));
+  padding: calc(var(--panel-pad-t) + 2px) calc(var(--panel-pad-r) + 4px) 8px calc(var(--panel-pad-l) + 4px);
+  background: var(--bg);
+  transition: box-shadow 140ms var(--ease);
+}
+/* 위·아래로 가려진 카드가 있으면 그쪽 가장자리에 그림자(스크롤 힌트) */
+.run-list-panel.has-more-above .panel-head {
+  box-shadow: 0 8px 8px -8px var(--edge-shadow);
+}
+.run-list-foot {
+  position: sticky;
+  bottom: calc(-1 * var(--pad));
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  margin: 0 calc(-1 * var(--panel-pad-r)) calc(-1 * var(--pad)) calc(-1 * var(--panel-pad-l));
+  padding: 0 var(--panel-pad-r) var(--pad) var(--panel-pad-l);
+  background: var(--bg);
+  transition: box-shadow 140ms var(--ease);
+}
+.run-list-panel.has-more-below .run-list-foot {
+  padding-top: 8px;
+  box-shadow: 0 -8px 8px -8px var(--edge-shadow);
 }
 .panel-title {
   font-size: 12px;
@@ -45,6 +76,8 @@
 }
 .run-card {
   position: relative;
+  /* 고른 카드를 보이게 스크롤할 때 붙어 있는 머리·[+ 매크로 추가] 밑으로 숨지 않게 */
+  scroll-margin: 48px 0 76px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
@@ -52,6 +85,10 @@
   transition:
     border-color 140ms var(--ease),
     box-shadow 140ms var(--ease);
+}
+/* 실행 중 카드 — 긴 목록에서 눈에 띄게 테두리를 초록 쪽으로 */
+.run-card.is-live {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
 }
 .run-card:hover {
   border-color: color-mix(in srgb, var(--ink) 22%, var(--border));
@@ -74,9 +111,9 @@
 }
 .run-card-select {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  padding: 11px 38px 12px 14px;
+  padding: 11px 38px 12px 16px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
@@ -137,35 +174,48 @@
   font-weight: var(--fw-bold);
   color: var(--muted);
 }
+/* 아래 줄(전략·경과) — 오른쪽 아래 주 버튼 밑으로 들어가지 않게 버튼 너비만큼 비우고 줄임표(…)로 자름.
+   block이어야 text-overflow가 내용 상자 끝에서 걸림(flex면 여백 칸까지 글자가 흘러 버튼에 가려짐). */
 .run-card-sub {
-  min-height: 30px;
-  padding-right: 92px;
-  display: flex;
-  align-items: center;
+  --sub-reserve: 84px;
+  display: block;
+  height: 32px;
+  line-height: 32px;
+  margin-right: calc(var(--sub-reserve) - 38px);
   color: var(--muted);
   font-size: var(--fs-small);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.run-card.act-stop .run-card-sub {
+  --sub-reserve: 100px;
+}
+.run-card.act-busy .run-card-sub {
+  --sub-reserve: 136px;
+}
 .run-card-action {
   position: absolute;
   right: 12px;
-  bottom: 11px;
+  bottom: 12px;
+}
+.run-card-action .btn-sm {
+  min-height: 32px;
 }
 .run-card-remove {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 26px;
-  height: 26px;
+  top: 6px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
   opacity: 0.6;
 }
 .run-card:hover .run-card-remove,
 .run-card-remove:focus-visible {
   opacity: 1;
 }
-/* 순서 손잡이 — 카드 왼쪽 끝, 가리키거나 고른 카드에서만 보임. 끄는 동안 놓을 자리에 선을 그림. */
+/* 순서 손잡이 — 카드 왼쪽 끝. 가리킬 때·끄는 동안·카드 안에 키보드 포커스가 있을 때만 보임.
+   고른 카드라도 늘 보이지는 않음(목록이 어수선해짐). 끄는 동안 놓을 자리에 선을 그림. */
 .run-card-grip {
   position: absolute;
   top: 0;
@@ -182,7 +232,7 @@
   transition: opacity 120ms var(--ease);
 }
 .run-card:hover .run-card-grip,
-.run-card.is-selected .run-card-grip,
+.run-card:has(:focus-visible) .run-card-grip,
 .run-list.is-sorting .run-card-grip {
   opacity: 1;
 }
@@ -296,29 +346,36 @@
   white-space: nowrap;
   font-size: var(--fs-small);
 }
+/* 모드·시작/종료 — 세그먼트와 버튼은 한 줄에서 같은 높이(40px), 모드 설명은 그 아래 줄. */
 .detail-controls {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px 16px;
+  flex-direction: column;
+  gap: 10px;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
 }
-.detail-mode {
+.detail-controls-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.detail-mode {
   flex: 1 1 260px;
   max-width: 340px;
 }
 .detail-mode .segmented {
+  height: 40px;
   padding: 3px;
 }
 .detail-mode .segment {
-  height: 30px;
+  height: 34px;
+}
+.detail-controls-row .btn {
+  min-height: 40px;
 }
 .detail-start {
   min-width: 132px;
@@ -503,7 +560,91 @@
   letter-spacing: -0.02em;
 }
 .pnl-chart {
-  height: 56px;
+  min-width: 0;
+}
+/* 현재가 그래프 — 왼쪽 선(.chart-plot), 오른쪽 숫자 칸(.chart-gutter), 아래 덮는 시간(.chart-span).
+   글자는 HTML로 얹고 위치는 px(PriceChart의 PLOT_PX 기준)로 줌. */
+.price-chart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 6px;
+  row-gap: 2px;
+}
+.price-chart.dir-up {
+  --chart-tone: var(--ok);
+}
+.price-chart.dir-down {
+  --chart-tone: var(--danger);
+}
+.chart-plot {
+  position: relative;
+  min-width: 0;
+}
+.price-chart.is-empty .chart-plot {
+  grid-column: 1 / -1;
+}
+.chart-dot {
+  position: absolute;
+  right: -3.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chart-tone);
+  box-shadow: 0 0 0 2px var(--card);
+  transform: translateY(-50%);
+}
+.chart-extreme {
+  position: absolute;
+  left: 0;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--card) 82%, transparent);
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: var(--fw-bold);
+  line-height: 15px;
+  white-space: nowrap;
+}
+.chart-extreme.is-high {
+  top: -2px;
+}
+.chart-extreme.is-low {
+  bottom: -2px;
+}
+.chart-gutter {
+  display: grid;
+}
+/* 꼬리표는 한 칸에 겹쳐 두고 top(px)으로 세로 자리를 잡음 — 칸 너비는 가장 긴 꼬리표에 맞춰짐. */
+.chart-tag {
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: start;
+  position: relative;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: var(--fw-bold);
+  line-height: 18px;
+  white-space: nowrap;
+  transform: translateY(-50%);
+}
+.chart-tag.is-price {
+  background: var(--chart-tone);
+  color: var(--on-accent);
+}
+.chart-tag.is-entry {
+  border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent);
+  background: var(--card);
+  color: var(--muted);
+  line-height: 16px;
+}
+.chart-span {
+  grid-column: 1;
+  color: var(--faint);
+  font-size: 10.5px;
+  font-weight: var(--fw-bold);
+  text-align: right;
 }
 .sparkline {
   display: block;
@@ -717,10 +858,20 @@
 
 /* --- 한 열 ------------------------------------------------------------------ */
 @media (max-width: 899px) {
+  /* 한 열 — 문서가 스크롤함. 머리는 붙어 있는 앱 머리줄 아래에 붙음. */
   .run-list-panel {
+    --panel-pad-r: var(--pad);
     border-right: 0;
     overflow: visible;
-    padding: 14px var(--pad) var(--pad);
+  }
+  .panel-head {
+    top: var(--header-h);
+  }
+  .run-list-foot {
+    bottom: 0;
+  }
+  .run-card {
+    scroll-margin-top: calc(var(--header-h) + 48px);
   }
   .run-detail {
     overflow: visible;
@@ -737,6 +888,10 @@
   .idle-card {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .detail-mode {
+    flex-basis: 100%;
+    max-width: none;
   }
   .detail-stop {
     width: 100%;

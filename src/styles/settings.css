@@ -318,10 +318,126 @@
 .switch[aria-checked="true"] .switch-knob {
   transform: translateX(18px);
 }
+.settings-lead-note {
+  margin-top: -8px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+/* 거래소 연결 맨 위 — 기억한 키를 읽지 못했을 때만 */
+.storage-warning .note-with-action {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.storage-icon {
+  display: grid;
+  flex: none;
+  margin-top: 1px;
+  color: var(--warn);
+}
 .storage-text {
   display: flex;
+  flex: 1 1 260px;
   flex-direction: column;
   gap: 2px;
+}
+
+/* 앱 기록 — 머리(필터·복사)·카드 안에서만 구르는 목록. 시각·아이콘·펼치기 모양은 활동 기록(activity.css)과 같음. */
+.applog {
+  --act-time-w: 78px;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.applog-scroll {
+  position: relative; /* 안의 .sr-only가 이 스크롤 영역 밖으로 새지 않게 */
+  max-height: 360px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 0 8px;
+}
+.applog-scroll:focus-visible {
+  outline-offset: -2px;
+}
+.applog-list {
+  position: relative;
+}
+.applog-list::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: calc(var(--pad) + var(--act-time-w) + 10px + 12px);
+  width: 1px;
+  background: var(--border);
+}
+.applog-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--act-time-w) 24px minmax(0, 1fr);
+  column-gap: 10px;
+  padding: 7px var(--pad);
+}
+.applog-item:focus {
+  outline: none;
+}
+.applog-item.is-fresh {
+  animation: act-in 220ms var(--ease);
+}
+/* [자세히]로 온 줄 — 카드 안이라 테두리 빛 대신 바탕을 잠깐 밝힘 */
+.applog-item.is-target {
+  animation: applog-flash 1.8s var(--ease);
+}
+@keyframes applog-flash {
+  0%,
+  45% {
+    background: color-mix(in srgb, var(--brand) 18%, transparent);
+  }
+}
+.applog-body {
+  min-width: 0;
+  padding-top: 2px;
+}
+.applog-title {
+  font-weight: var(--fw-bold);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.applog-source {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--hover);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 18px;
+  vertical-align: 1px;
+  white-space: nowrap;
+}
+.applog-detail {
+  margin: 4px 0 2px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: var(--card-sunken);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.level-warn .applog-icon {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.level-error .applog-icon {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+}
+.level-error .applog-title {
+  color: var(--danger-ink);
 }
 .about-table {
   display: grid;
@@ -528,6 +644,18 @@
   }
 }
 @media (max-width: 480px) {
+  .applog {
+    --act-time-w: 70px;
+  }
+  .applog-item {
+    column-gap: 8px;
+  }
+  .applog-item .act-time {
+    font-size: 10.5px;
+  }
+  .applog-list::before {
+    left: calc(var(--pad) + var(--act-time-w) + 8px + 12px);
+  }
   .slot-grid {
     grid-template-columns: minmax(0, 1fr);
   }

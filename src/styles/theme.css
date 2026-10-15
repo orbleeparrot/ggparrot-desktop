@@ -41,6 +41,8 @@
   --focus: #2563eb;
 
   --rail: 340px;
+  /* 머리줄 높이 — 토스트가 그 아래에서 뜸. */
+  --header-h: 54px;
 
   --font:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",

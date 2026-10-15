@@ -25,7 +25,7 @@ impl Shared {
         if ok {
             self.save_warned.store(false, std::sync::atomic::Ordering::Relaxed);
         } else if !self.save_warned.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            self.notice(
+            self.notice_from("storage", 
                 "warn",
                 "실행 목록 · 설정을 저장하지 못했어요. 디스크 공간과 폴더 권한을 확인하세요. 이대로 앱을 끄면 최근 변경이 사라질 수 있어요.",
             );
@@ -79,7 +79,7 @@ impl Shared {
                     // 화면이 준비된 뒤 알림.
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     if let Some(s) = me.try_state::<S>() {
-                        s.notice("warn", msg);
+                        s.notice_from("storage", "warn", msg);
                     }
                 });
             }
@@ -91,6 +91,7 @@ impl Shared {
                 let last = v.get("last_version").and_then(Value::as_str).unwrap_or("");
                 if is_newer(&self.version, last) {
                     c.update.updated_from = last.to_string();
+                    c.push_app_log("info", "update", &format!("v{last}에서 v{}으로 업데이트했어요", self.version), "");
                 }
             }
         }

@@ -8,7 +8,7 @@ use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::shared::S;
-use crate::state::{ActivityDto, StartReply};
+use crate::state::{ActivityDto, AppLogEntry, StartReply};
 
 type R<T> = Result<T, String>;
 
@@ -257,6 +257,17 @@ pub fn refresh_public_ip(s: State<'_, S>, force: bool) {
 #[tauri::command]
 pub fn copy_support_info(s: State<'_, S>) -> R<()> {
     s.copy_support_info()
+}
+
+/// 앱 기록 전체(오래된 것 → 최근). 새 줄은 runner:app-log로 옴.
+#[tauri::command]
+pub fn get_app_log(s: State<'_, S>) -> Vec<AppLogEntry> {
+    s.app_log()
+}
+
+#[tauri::command]
+pub fn copy_app_log(s: State<'_, S>) -> R<()> {
+    s.copy_app_log()
 }
 
 /// 연결 도우미의 [다시 확인] — 정보 화면의 `refresh_public_ip { force: true }`와 같은 조회.

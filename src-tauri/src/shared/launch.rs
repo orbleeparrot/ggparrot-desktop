@@ -167,7 +167,7 @@ impl Shared {
                 let (head, msg) = start_error_text(&err, &job.creds);
                 self.lock().start_failed(&job.id, head, &msg);
                 self.emit();
-                self.notice("error", format!("{head}:\n{msg}"));
+                self.notice_from("server", "error", format!("{head}:\n{msg}"));
                 return;
             }
         };

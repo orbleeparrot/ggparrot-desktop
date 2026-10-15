@@ -138,7 +138,11 @@ export default function App() {
       {state.wizard && <Wizard wizard={state.wizard} />}
       {flows.dialogs}
       <DropOverlay />
-      <Toasts toasts={notices.toasts} onDismiss={notices.dismissToast} />
+      <Toasts
+        toasts={notices.toasts}
+        onDismiss={notices.dismissToast}
+        onDetail={(id) => nav.openSettings({ kind: "log", id })}
+      />
       {dialog && (
         <Dialog
           title={dialog.title}
