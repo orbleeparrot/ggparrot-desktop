@@ -132,7 +132,7 @@
   font-weight: var(--fw-bold);
 }
 .lib-when {
-  color: var(--faint);
+  color: var(--muted);
 }
 .lib-error {
   color: var(--danger-ink);

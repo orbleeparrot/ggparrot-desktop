@@ -60,6 +60,23 @@
   background: var(--hover);
   color: var(--ink);
 }
+/* 지금 보이는 묶음 — 왼쪽 노란 막대와 진한 글자 */
+.settings-nav-item[aria-current="true"] {
+  position: relative;
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.settings-nav-item[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand-hover);
+}
 .settings-content {
   display: flex;
   flex-direction: column;
@@ -176,6 +193,37 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* 키 칸·기억하기·안내·확인 — 접힌 칸은 hidden */
+.slot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.slot-body[hidden] {
+  display: none;
+}
+/* 쓰지 않는 칸 — 한 줄(로고 · 이름 · 연결 안 됨 · [연결 도우미] · ›). 펼치면 보통 칸과 같음. */
+.slot-card.is-collapsed {
+  grid-column: 1 / -1;
+  padding-block: 9px;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--card) 70%, var(--bg));
+}
+.slot-card.is-collapsed .slot-title {
+  font-size: var(--fs-body);
+}
+/* 로고 꼬리표(TEST·DEMO)가 오른쪽으로 삐져나가므로 이름과 붙지 않게 */
+.slot-logo:has(.slot-test) {
+  margin-right: 4px;
+}
+.slot-toggle {
+  flex: none;
+  margin-right: -6px;
+}
+/* 도우미 단추가 없으면 펼치기 단추가 오른쪽 끝으로 */
+.slot-toggle.is-alone {
+  margin-left: auto;
 }
 .slot-checks {
   display: flex;
@@ -580,7 +628,7 @@
   padding: 0;
   list-style: none;
   font-size: var(--fs-small);
-  color: var(--faint);
+  color: var(--muted);
 }
 .update-steps li {
   display: inline-flex;

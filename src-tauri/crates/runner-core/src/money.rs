@@ -254,8 +254,14 @@ pub fn plain_number(x: f64) -> String {
     format!("{x}")
 }
 
-/// 사람이 읽는 수량 — 지수 표기 없이, 뒤 0 없이(최대 8자리).
+/// 활동 문구의 수량 — 줄이지 않고 받은 자릿수 그대로(최대 8자리, 끝의 0만 지움). 보유량을 줄여 보이면 오해가 생김.
+/// 화면(src/state/format.ts)의 수량 표기와 같은 규칙임.
 pub fn qty_text(qty: f64) -> String {
+    qty_full(qty)
+}
+
+/// 자릿수를 다 살린 수량 — 지수 표기 없이, 뒤 0 없이(최대 8자리). 서버로 가는 오류 글자처럼 줄이면 안 되는 곳용.
+pub fn qty_full(qty: f64) -> String {
     if !qty.is_finite() || qty <= 0.0 {
         return "0".into();
     }
@@ -384,6 +390,27 @@ mod tests {
         assert!(rounds_to_zero(-0.49, money_dp("krw")));
         assert_eq!(grouped(-20000.4, 0), "-20,000");
         assert_eq!(grouped(150000.0, 0), "150,000");
+    }
+
+    #[test]
+    fn quantity_display_keeps_every_digit() {
+        // 화면(src/state/format.ts)의 수량 표기와 같은 규칙 — 1000 이상 소수 둘째·1 이상 소수 넷째·1 미만 유효숫자 6자리.
+        assert_eq!(qty_text(499.750_124_94), "499.75012494", "보유 수량은 줄이지 않음");
+        assert_eq!(qty_text(0.000_123_456_78), "0.00012346", "거래소 최소 단위(8자리)까지");
+        assert_eq!(qty_text(12_345.678_9), "12345.6789");
+        assert_eq!(qty_text(1000.0), "1000");
+        assert_eq!(qty_text(2.5), "2.5", "끝의 0은 지움");
+        assert_eq!(qty_text(1.000_04), "1.00004");
+        assert_eq!(qty_text(999.999_96), "999.99996");
+        assert_eq!(qty_text(0.01), "0.01");
+        assert_eq!(qty_text(0.123_456_78), "0.12345678");
+        assert_eq!(qty_text(0.000_939), "0.000939");
+        assert_eq!(qty_text(1e-8), "0.00000001", "거래소 최소 단위(1e-8)까지 그대로");
+        assert_eq!(qty_text(0.0), "0");
+        assert_eq!(qty_text(f64::NAN), "0");
+        // 서버로 가는 글자는 지금처럼 자릿수를 다 살림.
+        assert_eq!(qty_full(499.750_124_94), "499.75012494");
+        assert_eq!(qty_full(9.39e-6), "0.00000939");
     }
 
     #[test]

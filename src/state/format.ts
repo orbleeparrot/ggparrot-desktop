@@ -66,9 +66,16 @@ export function formatPrice(price: number, quote: Quote): string {
   return nf(2, 8).format(v);
 }
 
-/** 수량: 군더더기 0 없이 최대 8자리. */
+/** 수량 — 받은 자릿수 그대로(소수 최대 20자리), 끝의 0만 지움. 천 단위 쉼표는 정수부에만. */
+const QTY = new Intl.NumberFormat("en-US", { maximumFractionDigits: 20 });
+
+/**
+ * 수량 표시 "499.75012494"·"0.00127"·"1,234.5" — 줄이지 않고 실제 값 전체를 보임(자리가 모자라면 화면에서 말줄임).
+ * - 부동소수 찌꺼기(0.30000000000000004)만 유효숫자 15자리로 걷어 냄.
+ */
 export function formatQty(qty: number): string {
-  return nf(0, 8).format(clean(qty));
+  const v = clean(qty);
+  return QTY.format(v === 0 ? 0 : Number(v.toPrecision(15)));
 }
 
 /** 경과 시간 "05:12"·"1:05:12"·"2일 03:04:05". */
@@ -84,15 +91,17 @@ export function formatElapsed(ms: number): string {
   return `${pad(m)}:${pad(s)}`;
 }
 
-/** 그래프가 덮는 시간 "최근 45초"·"최근 12분"·"최근 2시간 5분". 1초 안쪽이면 빈 문자열. */
-export function formatSpan(ms: number): string {
+/** 걸린 시간 "45초"·"12분"·"1시간 20분"·"2일 3시간". 1초 안쪽이면 빈 문자열. 아래 단위는 버림. */
+export function formatDuration(ms: number): string {
   const s = Math.floor(clean(ms) / 1000);
   if (s < 1) return "";
-  if (s < 60) return `최근 ${s}초`;
+  if (s < 60) return `${s}초`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `최근 ${m}분`;
+  if (m < 60) return `${m}분`;
   const h = Math.floor(m / 60);
-  return m % 60 ? `최근 ${h}시간 ${m % 60}분` : `최근 ${h}시간`;
+  if (h < 24) return m % 60 ? `${h}시간 ${m % 60}분` : `${h}시간`;
+  const d = Math.floor(h / 24);
+  return h % 24 ? `${d}일 ${h % 24}시간` : `${d}일`;
 }
 
 /** 지난 시간을 짧게 — "12초 전", "3분 전". */

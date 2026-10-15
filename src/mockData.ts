@@ -246,7 +246,8 @@ export interface MockKey {
   secret: string;
   remembered: boolean;
   status: SlotCard["status"];
-  problem: "" | "ip" | "auth";
+  /** funds: 연결은 됐지만 주문할 잔고가 모자람(연결됨 칸의 주의 안내). */
+  problem: "" | "ip" | "auth" | "funds";
 }
 
 export interface MockRun {

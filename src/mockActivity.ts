@@ -128,10 +128,10 @@ export function refreshPnl(r: MockRun) {
 }
 
 /** 미리보기용 — 정해진 평단·현재가로 보유 중인 상태를 만듦(?demo=pnl 스크린샷). */
-export function holdAt(r: MockRun, entry: number, price: number) {
+export function holdAt(r: MockRun, entry: number, price: number, fixedQty?: number) {
   const run = r.run;
   if (!run) return;
-  const qty = Math.floor((r.macro.orderCap / entry) * 100000) / 100000;
+  const qty = fixedQty ?? Math.floor((r.macro.orderCap / entry) * 100000) / 100000;
   Object.assign(run, { inPosition: true, entryPrice: entry, qty, price });
   r.holdPrice = price;
   openFees.set(run, 0);

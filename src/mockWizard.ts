@@ -129,7 +129,8 @@ export function createWizard(m: Model, { later, info, checkNow }: Deps) {
       w.checks = { auth: "bad", ip: practice ? "na" : "wait", order: "wait" };
       if (practice) w.notes = { ...NO_NOTES, ip: "필요 없음" };
     }
-    w.problem = ok ? "" : k.problem;
+    // 잔고 부족(funds)은 연결됨 칸의 안내라 도우미 결과에는 문제로 싣지 않음.
+    w.problem = ok || k.problem === "funds" ? "" : k.problem;
     w.headline = ok ? "연결 완료" : k.problem === "ip" ? "허용 IP 확인 필요" : "키 확인 필요";
     w.reason = ok
       ? ""

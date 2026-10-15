@@ -563,6 +563,7 @@ export function createMockBackend(
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
   if (demo === "pnl") seedPnl();
+  if (demo === "settings") seedSettings();
   if (demo === "many") seedMany();
   if (demo === "wizard") wizard.open(slotTarget("upbit", "upbit"), "ask");
   if (demo === "applog") seedAppLog();
@@ -601,9 +602,10 @@ export function createMockBackend(
     }
   }
 
-  /** ?demo=pnl — 손익·청산 기준 막대 검토용. 정해진 평단·현재가로 보유 중인 매크로 다섯 개(신호 없이 시세만 흔듦).
-   *  업비트 원화 현물(실전·수수료 반영) · 바이낸스 선물 롱 트레일링(실전·수수료 모름) · 선물 숏(모의) ·
-   *  바이낸스 현물 USDT 익절만(+0.15% — 수수료 반영하면 손실) · 빗썸 손절만(익절은 신호). */
+  /** ?demo=pnl — 손익·청산 기준 막대 검토용. 정해진 평단·현재가로 보유 중인 매크로 여섯 개(신호 없이 시세만 흔듦).
+   *  업비트 원화 현물(실전·수수료 반영, 수량 0.00127) · 바이낸스 선물 롱 트레일링(실전·수수료 모름) · 선물 숏(모의) ·
+   *  바이낸스 현물 USDT 익절만(+0.15% — 수수료 반영하면 손실) · 빗썸 손절만(익절은 신호) ·
+   *  업비트 싼 코인(KRW-ZAMA, 수량 499.75012494 — 긴 수량이 잘리지 않는지). */
   function seedPnl() {
     const now = Date.now();
     m.keys.upbit = {
@@ -620,19 +622,44 @@ export function createMockBackend(
       return newRun(m, f.macro!, f.fileName);
     };
     const [futures, upbit] = m.runs;
-    const plan: [MockRun, RunMode, number, number][] = [
-      [upbit, "live", 118_000_000, 118_590_000],
+    const zama = newRun(
+      m,
+      {
+        ...upbit.macro,
+        title: "ZAMA 단타",
+        symbol: "KRW-ZAMA",
+        baseAsset: "ZAMA",
+        capital: 100_000,
+        capitalOriginal: null,
+      },
+      "ZAMA 단타.ggm.json",
+    );
+    const plan: [MockRun, RunMode, number, number, number?][] = [
+      [upbit, "live", 118_000_000, 118_590_000, 0.00127],
       [byTitle("BTC 단타 (내 수정)"), "mock", 81_806, 81_928.71],
       [futures, "live", 81_000, 82_900],
       [byTitle("ETH 숏 연습"), "mock", 3_150, 3_100.4],
       [byTitle("빗썸 이더 단타"), "mock", 4_812_000, 4_790_000],
+      [zama, "mock", 200.1, 201.3, 499.75012494],
     ];
-    for (const [r, mode, entry, price] of plan) {
+    for (const [r, mode, entry, price, qty] of plan) {
       r.mode = mode;
       beginRun(say, r, now - 9 * 60_000);
       goLive(r);
-      holdAt(r, entry, price);
+      holdAt(r, entry, price, qty);
     }
+  }
+
+  /** ?demo=settings — 설정 검토용. 업비트는 연결됐지만 원화 잔고가 모자란 상태(주의 안내),
+   *  바이낸스 테스트넷 · 데모는 비어 있어 한 줄로 접힘. */
+  function seedSettings() {
+    m.keys.upbit = {
+      access: "upAccessDemo0000",
+      secret: "upSecretDemo0000",
+      remembered: true,
+      status: "connected",
+      problem: "funds",
+    };
   }
 
   /** ?demo=applog — 설정 › 앱 기록을 열고, 여러 출처·수준의 줄을 채운 뒤 [자세히]가 달린 알림 토스트를 띄움. */

@@ -119,6 +119,7 @@ export function slotCard(slot: KeySlot, over: Partial<SlotCard> = {}): SlotCard 
     status: "empty",
     headline: "● 연결 안 됨",
     note: "",
+    noteTone: "muted",
     checks: { auth: "wait", ip: "wait", order: "wait" },
     wizardAvailable: true,
     inUseBy: 0,

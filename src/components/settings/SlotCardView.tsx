@@ -1,6 +1,11 @@
 // 거래소 연결 칸 하나 — 로고·이름·상태 배지·키 두 칸·기억하기·안내·세 줄 확인·[다시 확인]·[연결 도우미].
-import { LoaderCircle, RefreshCw, Wand2 } from "lucide-react";
+// - 쓰지 않는 칸(키 없음·연결 안 됨·실행에 안 쓰임)은 한 줄로 접어 둠: 로고 · 이름 · 연결 안 됨 · [연결 도우미] · 펼치기(›).
+//   펼치면 키 칸이 보임. 접혀 있어도 고쳐야 할 안내(warn)는 그대로 보임.
+// - 안내 색은 Rust가 주는 noteTone("warn"·"muted"). 없으면 막힘(blocked)·확인 실패·잔고·권한·허용 IP 문구로 짐작함.
+import { ChevronRight, LoaderCircle, RefreshCw, TriangleAlert, Wand2 } from "lucide-react";
+import { useState } from "react";
 import { useRunnerContext } from "../../state/context";
+import { noteToneOf, slotInUse } from "../../state/slots";
 import type { SlotCard } from "../../types";
 import { CheckChips } from "../../wizard/CheckRows";
 import { ExchangeLogo } from "../ExchangeLogo";
@@ -25,7 +30,13 @@ function badgeTone(s: SlotCard): string {
   return "muted";
 }
 
-export function SlotCardView({ slot }: { slot: SlotCard }) {
+interface Props {
+  slot: SlotCard;
+  /** [설정에서 입력]으로 이 칸에 데려올 때의 번호 — 바뀌면 접힌 칸을 펼침(키 칸에 포커스를 둘 수 있게). */
+  openSeq?: number;
+}
+
+export function SlotCardView({ slot, openSeq }: Props) {
   const { act } = useRunnerContext();
   const filled = slot.accessFilled && slot.secretFilled;
   const id = `settings-slot-${slot.slot}`;
@@ -33,12 +44,28 @@ export function SlotCardView({ slot }: { slot: SlotCard }) {
   const fields = ["access", "secret"] as const;
   const tag = PRACTICE_TAG[slot.slot];
   const binanceNote = BINANCE_NOTES[slot.slot];
+  const warn = noteToneOf(slot) === "warn";
+  const collapsible = !slotInUse(slot);
+  const [open, setOpen] = useState(false);
+  // 데려오기 번호가 바뀌면 펼침 — 렌더 중에 맞춰 같은 커밋에서 키 칸이 생기게 함(goToSettings가 바로 찾음).
+  const [seenSeq, setSeenSeq] = useState<number | undefined>(undefined);
+  if (openSeq !== undefined && openSeq !== seenSeq) {
+    setSeenSeq(openSeq);
+    setOpen(true);
+  }
+  const expanded = !collapsible || open;
+  const bodyId = `${id}-body`;
 
   return (
-    <article id={id} className={`slot-card status-${slot.status}`} tabIndex={-1} aria-labelledby={`${id}-title`}>
+    <article
+      id={id}
+      className={`slot-card status-${slot.status} ${expanded ? "" : "is-collapsed"}`}
+      tabIndex={-1}
+      aria-labelledby={`${id}-title`}
+    >
       <header className="slot-head">
         <span className="slot-logo">
-          <ExchangeLogo exchange={slot.exchange} size={26} />
+          <ExchangeLogo exchange={slot.exchange} size={collapsible ? 22 : 26} />
           {tag && (
             <span className="slot-test" aria-hidden="true">
               {tag}
@@ -55,60 +82,82 @@ export function SlotCardView({ slot }: { slot: SlotCard }) {
         {slot.wizardAvailable && (
           <button
             type="button"
-            className={`btn btn-sm ${slot.status === "connected" ? "btn-ghost" : "btn-primary"} slot-wizard`}
+            className={`btn btn-sm ${slot.status === "connected" || collapsible ? "btn-ghost" : "btn-primary"} slot-wizard`}
             onClick={() => act("wizard_open", { exchange: slot.exchange, slot: slot.slot })}
           >
             <Wand2 size={13} aria-hidden="true" />
             연결 도우미
           </button>
         )}
-      </header>
-
-      <div className="slot-fields">
-        {fields.map((field, i) => (
-          <SecretField
-            key={field}
-            id={`slot-${slot.slot}-${field}`}
-            label={slot.fieldLabels[i]}
-            filled={field === "access" ? slot.accessFilled : slot.secretFilled}
-            onCommit={(value) => act("set_slot_key", { slot: slot.slot, field, value })}
-            onReveal={() => act("reveal_slot_key", { slot: slot.slot, field })}
-          />
-        ))}
-      </div>
-
-      {slot.rememberSupported && (
-        <label className="check-row">
-          <input
-            type="checkbox"
-            checked={slot.remembered}
-            onChange={(e) => act("set_slot_remember", { slot: slot.slot, remember: e.target.checked })}
-          />
-          <span>이 기기에 키 기억하기 ({keyStoreName()}에 보관)</span>
-        </label>
-      )}
-      {slot.note && <p className={`note ${slot.status === "blocked" ? "note-warn" : "note-muted"}`}>{slot.note}</p>}
-      {binanceNote && <p className="note note-muted">{binanceNote}</p>}
-      <InUseNote count={slot.inUseBy} />
-
-      {showChecks && (
-        <div className="slot-checks">
-          <CheckChips checks={slot.checks} />
+        {collapsible && (
           <button
             type="button"
-            className="link-btn slot-recheck"
-            onClick={() => act("check_slot", { slot: slot.slot })}
-            disabled={!filled}
+            className={`icon-btn slot-toggle ${slot.wizardAvailable ? "" : "is-alone"}`}
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            aria-label={`${slot.label} 키 칸 ${expanded ? "접기" : "펼치기"}`}
+            title={expanded ? "접기" : "키 직접 넣기"}
+            onClick={() => setOpen(!expanded)}
           >
-            <RefreshCw size={13} aria-hidden="true" /> 다시 확인
+            <ChevronRight size={15} strokeWidth={2.4} className={`chevron ${expanded ? "is-open" : ""}`} />
           </button>
+        )}
+      </header>
+
+      {slot.note && warn && (
+        <p className="note note-warn">
+          <TriangleAlert size={14} aria-hidden="true" />
+          {slot.note}
+        </p>
+      )}
+
+      <div id={bodyId} className="slot-body" hidden={!expanded}>
+        <div className="slot-fields">
+          {fields.map((field, i) => (
+            <SecretField
+              key={field}
+              id={`slot-${slot.slot}-${field}`}
+              label={slot.fieldLabels[i]}
+              filled={field === "access" ? slot.accessFilled : slot.secretFilled}
+              onCommit={(value) => act("set_slot_key", { slot: slot.slot, field, value })}
+              onReveal={() => act("reveal_slot_key", { slot: slot.slot, field })}
+            />
+          ))}
         </div>
-      )}
-      {slot.status === "unchecked" && filled && (
-        <button type="button" className="link-btn" onClick={() => act("check_slot", { slot: slot.slot })}>
-          <RefreshCw size={13} aria-hidden="true" /> 지금 확인
-        </button>
-      )}
+
+        {slot.rememberSupported && (
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={slot.remembered}
+              onChange={(e) => act("set_slot_remember", { slot: slot.slot, remember: e.target.checked })}
+            />
+            <span>이 기기에 키 기억하기 ({keyStoreName()}에 보관)</span>
+          </label>
+        )}
+        {slot.note && !warn && <p className="note note-muted">{slot.note}</p>}
+        {binanceNote && <p className="note note-muted">{binanceNote}</p>}
+        <InUseNote count={slot.inUseBy} />
+
+        {showChecks && (
+          <div className="slot-checks">
+            <CheckChips checks={slot.checks} />
+            <button
+              type="button"
+              className="link-btn slot-recheck"
+              onClick={() => act("check_slot", { slot: slot.slot })}
+              disabled={!filled}
+            >
+              <RefreshCw size={13} aria-hidden="true" /> 다시 확인
+            </button>
+          </div>
+        )}
+        {slot.status === "unchecked" && filled && (
+          <button type="button" className="link-btn" onClick={() => act("check_slot", { slot: slot.slot })}>
+            <RefreshCw size={13} aria-hidden="true" /> 지금 확인
+          </button>
+        )}
+      </div>
     </article>
   );
 }

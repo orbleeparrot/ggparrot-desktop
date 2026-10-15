@@ -70,6 +70,33 @@ describe("청산 기준 막대", () => {
     expect(armed.beyond).toBe("right");
   });
 
+  it("막대 아래 거리 — 현재가에서 손절은 -, 익절은 +(롱 97·101·104 → -3.96% · +2.97%)", () => {
+    const four: ExitRules = { ...both, tp: { pct: 4, label: "익절 +4%" } };
+    const bar = exitBar(four, "long", 100, 101);
+    expect([bar.toLeft, bar.toRight]).toEqual(["손절까지 -3.96%", "익절까지 +2.97%"]);
+    expect(bar.move).toBeCloseTo(1, 9);
+  });
+
+  it("숏도 같은 축 — 손절(가격 위)까지 -, 익절(가격 아래)까지 +", () => {
+    const bar = exitBar(both, "short", 100, 99);
+    // 손절가 103: 99에서 4.04% 올라야 함(손실 쪽) · 익절가 95: 4.04% 내려야 함(이익 쪽).
+    expect([bar.toLeft, bar.toRight]).toEqual(["손절까지 -4.04%", "익절까지 +4.04%"]);
+  });
+
+  it("지나친 기준은 '…지남', 익절 없음은 '익절은 신호', 손절 없음은 '손절 규칙 없음'", () => {
+    expect(exitBar(both, "long", 100, 95).toLeft).toBe("손절선 지남");
+    expect(exitBar(both, "long", 100, 107).toRight).toBe("익절선 지남");
+    expect(exitBar(slOnly, "long", 100, 101).toRight).toBe("익절은 신호");
+    expect(exitBar(tpOnly, "long", 100, 101).toLeft).toBe("손절 규칙 없음");
+  });
+
+  it("트레일링 — 발동 전엔 '발동까지', 추적 중이면 끝 이름이 말하므로 비움", () => {
+    expect(exitBar(trailing, "long", 100, 101).toRight).toBe("발동까지 +3.96%");
+    expect(exitBar(trailing, "long", 100, 106).toRight).toBe("");
+    const fromStart: ExitRules = { ...trailing, trailing: { activation: 0, trail: 2, label: "고점 -2%" } };
+    expect(exitBar(fromStart, "long", 100, 101).toRight).toBe("고점 -2% 추적 중");
+  });
+
   it("규칙이 없거나 평단이 없으면 막대를 그리지 않음", () => {
     expect(exitBar(none, "long", 100, 101).show).toBe(false);
     expect(exitBar(both, "long", 0, 101).show).toBe(false);

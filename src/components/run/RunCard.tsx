@@ -118,7 +118,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
         </span>
       </button>
       <div className="run-card-action">
-        <RunAction slot={slot} />
+        <RunAction slot={slot} selected={selected} />
       </div>
       {idle && (
         <div className="run-card-remove-slot">

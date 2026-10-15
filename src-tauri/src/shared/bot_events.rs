@@ -16,8 +16,18 @@ impl Shared {
                         me.emit_activity_only();
                     }
                     BotEvent::Activity(a) => {
-                        me.lock().push_activity(&id, a.kind, &a.title, &a.detail, &a.raw, false, a.tone);
-                        me.emit_activity_only();
+                        let slot_changed = {
+                            let mut c = me.lock();
+                            c.push_activity(&id, a.kind, &a.title, &a.detail, &a.raw, false, a.tone);
+                            // 진입 체결("buy") — 잔고가 있었음. 설정 칸에 남은 잔고 부족 글을 지움.
+                            a.kind == "buy" && c.entry_filled(&id)
+                        };
+                        if slot_changed {
+                            me.emit();
+                            me.refresh_wizard();
+                        } else {
+                            me.emit_activity_only();
+                        }
                         // 손절이 멈춤·결과 모름·정리 실패 같은 위험은 창을 숨겨 둔 사람에게도 알림.
                         if a.tone == "danger" {
                             me.alert_os(&id, &a.title, &a.detail);

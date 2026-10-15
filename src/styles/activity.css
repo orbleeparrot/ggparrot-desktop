@@ -115,7 +115,7 @@
 }
 .act-time {
   padding-top: 3px;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11.5px;
   font-weight: var(--fw-bold);
   white-space: nowrap;
@@ -158,7 +158,7 @@
   border: 0;
   border-radius: 6px;
   background: none;
-  color: var(--faint);
+  color: var(--muted);
   vertical-align: middle;
   cursor: pointer;
 }
@@ -248,7 +248,7 @@
   box-shadow: 0 0 0 3px var(--card);
 }
 .act-dev-text {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.6;

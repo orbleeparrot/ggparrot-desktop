@@ -456,8 +456,9 @@
   color: var(--muted);
   font-size: var(--fs-small);
 }
-/* 실행 중 매크로 설명 — 한 줄로 줄임 */
+/* 끝난 매크로 설명 — 한 줄로 줄임. 넘치는 상세 안에서 높이 0으로 눌리지 않게 flex: none. */
 .macro-summary.is-compact {
+  flex: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -491,6 +492,65 @@
 }
 .detail-start {
   min-width: 132px;
+}
+.detail-controls.is-running {
+  padding-block: 10px;
+}
+/* 실행 중 — 세그먼트 대신 모드 배지와 매크로 설명 한 줄(왼쪽), 종료 단추(오른쪽). 빈 자리 없이 왼쪽 칸이 늘어남. */
+.detail-running {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 40px;
+}
+.detail-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.detail-mode-badge::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.detail-mode-badge.mode-testnet {
+  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+  background: var(--info-soft);
+  color: var(--info-ink);
+}
+.detail-mode-badge.mode-testnet::before {
+  background: var(--info);
+}
+.detail-mode-badge.mode-live {
+  border-color: var(--live);
+  background: var(--live);
+  color: var(--on-accent);
+}
+.detail-mode-badge.mode-live::before {
+  background: var(--on-accent);
+}
+.detail-running-summary {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .detail-stop {
   display: flex;
@@ -574,8 +634,8 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 14px var(--pad) 10px;
+  gap: 8px;
+  padding: 10px var(--pad) 7px;
   overflow: hidden;
 }
 .status-card.is-running::before {
@@ -598,6 +658,34 @@
   font-size: var(--fs-small);
   font-weight: var(--fw-bold);
   white-space: nowrap;
+}
+/* 서버 연결 — 점 색이 상태(목록 카드 상태 점과 같은 뜻): 연결됨 초록·다시 연결 중 주의·거절 빨강·확인 중 회색.
+   글자는 연결됨이면 흐리게, 문제가 있으면 그 색으로. */
+.server-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.server-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.server-meta.tone-up .server-dot {
+  background: var(--ok);
+}
+.server-meta.tone-warn .server-dot {
+  background: var(--warn);
+}
+.server-meta.tone-down .server-dot {
+  background: var(--danger);
+}
+.server-meta.tone-warn {
+  color: var(--warn-ink);
+}
+.server-meta.tone-down {
+  color: var(--danger-ink);
 }
 .run-label {
   display: inline-flex;
@@ -654,7 +742,7 @@
 .pnl {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 .pnl-figures {
@@ -664,18 +752,28 @@
   gap: 4px 12px;
 }
 .pnl-pct {
-  font-size: var(--fs-big);
+  font-size: 28px;
   font-weight: var(--fw-bold);
   letter-spacing: -0.03em;
-  line-height: 1.1;
+  line-height: 1.05;
 }
 .pnl-amount {
   font-size: var(--fs-title);
   font-weight: var(--fw-bold);
 }
-/* 큰 %의 기준(투입금 대비·평단 대비)과 선물의 증거금 대비 % — 작게 한 줄씩. */
+/* 큰 %의 기준(투입금 대비·평단 대비)과 선물의 증거금 대비 % — 작게 한 줄에 함께(좁으면 줄바꿈). */
+.pnl-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  line-height: 16px;
+}
+.pnl .eyebrow {
+  line-height: 15px;
+}
 .pnl-basis {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11px;
   font-weight: var(--fw-bold);
 }
@@ -730,7 +828,7 @@
   padding: 0 4px;
   border-radius: 4px;
   background: color-mix(in srgb, var(--card) 82%, transparent);
-  color: var(--faint);
+  color: var(--muted);
   font-size: 10.5px;
   font-weight: var(--fw-bold);
   line-height: 15px;
@@ -772,8 +870,9 @@
 }
 .chart-span {
   grid-column: 1;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 10.5px;
+  line-height: 14px;
   font-weight: var(--fw-bold);
   text-align: right;
 }
@@ -816,7 +915,8 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 7px 0;
+  padding: 3px 0;
+  line-height: 18px;
   border-bottom: 1px solid var(--line);
 }
 .run-table > div:nth-last-child(-n + 2) {
@@ -839,12 +939,12 @@
   font-weight: var(--fw-regular);
   font-size: var(--fs-small);
 }
-/* 실현손익 아래 수수료 반영 여부 — 값 한 줄을 지키며 작게 덧붙임 */
+/* 실현손익 옆 수수료 반영 여부 — 값 한 줄을 지키며 작게 덧붙임 */
 .run-table .realized-note {
-  display: block;
+  margin-left: 6px;
   color: var(--muted);
   font-weight: var(--fw-regular);
-  font-size: var(--fs-small);
+  font-size: 11px;
 }
 /* 현재가 옆 전일 대비 등락률 */
 .run-table .day-change {
@@ -860,17 +960,25 @@
   color: var(--muted);
 }
 .run-foot {
-  margin: -6px 0 0;
-  color: var(--faint);
+  margin: -4px 0 0;
+  color: var(--muted);
   font-size: 11px;
+  line-height: 15px;
 }
 
-/* 청산 기준 막대 — 위: 평단·현재가 꼬리표, 가운데: 막대(평단 눈금·현재가 점), 아래: 양 끝 손절·익절.
-   꼬리표 가로 위치는 %(ExitBar.tsx). 왼쪽 끝은 손절, 오른쪽 끝은 익절(숏도 같음). */
+/* 청산 기준 막대 — 머리줄(이름 · 현재가에서 기준까지 거리), 그 아래 한 줄: [손절 끝] [막대] [익절 끝].
+   막대 위는 현재가 꼬리표, 아래는 평단 눈금 이름. 꼬리표 가로 위치는 %(ExitBar.tsx anchor). */
 .exit-bar {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+}
+.exit-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 12px;
 }
 .exit-head,
 .exit-line-head {
@@ -878,6 +986,11 @@
   font-size: 11px;
   font-weight: var(--fw-bold);
   letter-spacing: 0.02em;
+}
+.exit-dist {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: var(--fw-bold);
 }
 .exit-line {
   margin: 0;
@@ -887,45 +1000,59 @@
 .exit-line-head {
   margin-right: 4px;
 }
-.exit-tags {
-  position: relative;
-  height: 20px;
+.exit-row {
+  display: grid;
+  grid-template-columns: auto minmax(80px, 1fr) auto;
+  align-items: center;
+  gap: 12px;
 }
-.exit-tag {
+/* 막대 칸 — 위 꼬리표 18px · 막대 6px · 아래 평단 이름 16px. 끝의 점(지름 12px)은 칸 옆 간격으로 살짝 나감. */
+.exit-scale {
+  position: relative;
+  display: grid;
+  grid-template-rows: 18px 6px 14px;
+  row-gap: 3px;
+  min-width: 0;
+}
+.exit-tag,
+.exit-entry {
   position: absolute;
-  top: 0;
+  max-width: 100%;
   height: 18px;
-  padding: 0 6px;
-  border-radius: 5px;
+  overflow: hidden;
   font-size: 11px;
   font-weight: var(--fw-bold);
   line-height: 18px;
   white-space: nowrap;
-  transform: translateX(-50%);
+  text-overflow: ellipsis;
 }
-.exit-tag.is-entry {
-  border: 1px dashed color-mix(in srgb, var(--muted) 60%, transparent);
-  background: var(--card);
-  color: var(--muted);
-  line-height: 16px;
-}
-.exit-tag.is-price {
+.exit-tag {
+  top: 0;
+  padding: 0 6px;
+  border-radius: 5px;
   background: var(--ok);
   color: var(--on-accent);
 }
-.exit-tag.is-price.tone-down {
+.exit-tag.tone-down {
   background: var(--danger);
 }
+.exit-entry {
+  bottom: 0;
+  height: 14px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 14px;
+}
 .exit-track {
+  grid-row: 2;
   position: relative;
   height: 6px;
-  margin: 0 4px;
   border-radius: 999px;
+  /* 평단(--entry) 왼쪽은 손실 쪽 옅은 빨강, 오른쪽은 이익 쪽 옅은 초록 */
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--danger) 26%, transparent),
-    var(--line) 50%,
-    color-mix(in srgb, var(--ok) 26%, transparent)
+    color-mix(in srgb, var(--danger) 18%, transparent) 0 var(--entry, 50%),
+    color-mix(in srgb, var(--ok) 18%, transparent) var(--entry, 50%) 100%
   );
 }
 .exit-fill {
@@ -971,25 +1098,22 @@
     0 0 0 2px var(--card),
     0 0 0 4px currentColor;
 }
-.exit-ends {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 4px;
-  font-size: 11px;
-}
+/* 양 끝 — 이름 위·가격 아래 두 줄, 막대 옆에 붙음 */
 .exit-end {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  font-size: 11px;
   font-weight: var(--fw-bold);
+  line-height: 15px;
+  white-space: nowrap;
 }
 .exit-end.is-right {
   align-items: flex-end;
   text-align: right;
 }
 .exit-end.tone-muted {
-  color: var(--faint);
+  color: var(--muted);
 }
 .exit-end-price {
   color: var(--ink);

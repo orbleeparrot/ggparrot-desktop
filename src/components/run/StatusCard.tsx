@@ -1,4 +1,5 @@
 // 실행 상태 카드 — 맨 윗줄(상태·경과 시간·서버 연결)·큰 평가손익 %·금액·현재가 흐름·청산 기준 막대·2열 표·확인 필요 띠.
+// - 1040×720 창에서 아래 활동 기록이 세 줄 넘게 보이도록 낮게 짬(그래프 46px·막대 한 줄·표 줄 간격 좁힘).
 // 상태 라벨은 목록 카드와 같은 slot.status를 씀(서버 끊김·시세 끊김을 두 곳이 다르게 말하지 않게).
 // 손익은 수수료 반영 값(지금 정리하면) — Rust 봇이 계산해 보냄. 서버·웹 기록은 수수료 전 금액임.
 import { TriangleAlert } from "lucide-react";
@@ -14,6 +15,7 @@ import {
   moneyDigits,
   toneOf,
 } from "../../state/format";
+import { trailSpanLabel } from "../../state/priceTrail";
 import { labelOf, serverCell, STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus, Tone } from "../../types";
 import { ExitBar } from "./ExitBar";
@@ -30,7 +32,7 @@ export function StatusCard({
   phase,
   status,
   prices,
-  pricesSince = 0,
+  priceTimes = [],
 }: {
   run: RunStatus;
   macro: MacroInfo;
@@ -38,8 +40,8 @@ export function StatusCard({
   phase: RunSlot["phase"];
   status: RunSlot["status"];
   prices: number[];
-  /** 그래프 첫 점을 받은 시각(epoch ms). 0이면 덮는 시간을 보이지 않음. */
-  pricesSince?: number;
+  /** 그래프 점마다 받은 시각(epoch ms). 비면 덮는 시간을 보이지 않음. */
+  priceTimes?: number[];
 }) {
   // 실행 중에는 1초마다 다시 그림 — 서버 소식이 끊긴 지 얼마인지도 이 시각으로 셈.
   const { now, elapsed } = useRunClock(run);
@@ -81,8 +83,9 @@ export function StatusCard({
           경과 {formatElapsed(elapsed)}
         </span>
         {!run.finished && (
-          <span className={`status-meta ${server.tone}`} title="서버 연결">
-            <span aria-hidden="true">● </span>서버 {server.text}
+          <span className={`status-meta server-meta ${server.tone}`} title="서버 연결">
+            <span className="server-dot" aria-hidden="true" />
+            서버 {server.text}
           </span>
         )}
       </div>
@@ -100,12 +103,14 @@ export function StatusCard({
                   {formatMoney(run.unrealized, q)}
                 </span>
               </div>
-              <span className="pnl-basis">{basis}</span>
-              {leveraged && (
-                <span className={`pnl-margin num tone-${toneOf(run.unrealizedPct * macro.leverage)}`}>
-                  증거금 대비 {formatPercent(run.unrealizedPct * macro.leverage)} ({macro.leverage}배)
-                </span>
-              )}
+              <span className="pnl-sub">
+                <span className="pnl-basis">{basis}</span>
+                {leveraged && (
+                  <span className={`pnl-margin num tone-${toneOf(run.unrealizedPct * macro.leverage)}`}>
+                    증거금 대비 {formatPercent(run.unrealizedPct * macro.leverage)} ({macro.leverage}배)
+                  </span>
+                )}
+              </span>
             </>
           ) : (
             <div className="pnl-figures">
@@ -116,9 +121,10 @@ export function StatusCard({
         <div className="pnl-chart">
           <PriceChart
             points={prices}
+            times={priceTimes}
             entry={run.inPosition ? run.entryPrice : undefined}
             quote={q}
-            spanMs={pricesSince > 0 && run.updatedAt > pricesSince ? run.updatedAt - pricesSince : 0}
+            span={trailSpanLabel(run.startedAt, priceTimes[0] ?? 0, run.updatedAt)}
           />
         </div>
       </div>
@@ -171,7 +177,9 @@ export function StatusCard({
         </div>
         <div>
           <dt>보유 수량</dt>
-          <dd className="num">{run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : "없음"}</dd>
+          <dd className="num" title={run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : undefined}>
+            {run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : "없음"}
+          </dd>
         </div>
         <div>
           <dt>낸 수수료</dt>

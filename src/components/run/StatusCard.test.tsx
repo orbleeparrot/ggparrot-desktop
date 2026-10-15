@@ -23,6 +23,9 @@ describe("실행 상태 카드", () => {
     expect(screen.getByText("실행 중 · 서버 재시도 중")).toBeTruthy();
     expect(container.querySelector(".status-dot.is-live")).toBeNull();
     expect(screen.getByText(/다시 연결하는 중 · 2분째/)).toBeTruthy();
+    // 서버 칸의 점 색은 상태를 따름 — 다시 연결 중이면 주의 색.
+    expect(container.querySelector(".server-meta")?.className).toContain("tone-warn");
+    expect(container.querySelector(".server-meta .server-dot")).toBeTruthy();
   });
 
   it("포지션을 든 채 시세가 끊기면 손절을 못 본다고 띠로 알린다", () => {
@@ -224,9 +227,58 @@ describe("실행 상태 카드", () => {
     expect(container.querySelector(".exit-head")?.textContent).toBe("청산 기준 · 평단 대비 가격");
     const ends = [...container.querySelectorAll(".exit-end")].map((e) => e.textContent);
     expect(ends).toEqual(["손절 -3%97.00", "익절 +5%105.00"]);
-    expect(container.querySelector(".exit-tag.is-entry")?.textContent).toBe("평단 100.00");
-    expect(container.querySelector(".exit-tag.is-price")?.textContent).toBe("102.00");
+    // 평단은 막대 아래 작은 눈금 이름(가격은 풍선 도움말), 현재가 꼬리표는 평단 대비 %와 함께.
+    const entry = container.querySelector(".exit-entry") as HTMLElement;
+    expect(entry.textContent).toBe("평단");
+    expect(entry.title).toBe("평단 100.00 USDT");
+    expect(container.querySelector(".exit-tag.is-price")?.textContent).toBe("현재 102.00 · 평단 대비 +2.00%");
+    expect(container.querySelector(".exit-dist")?.textContent).toBe("손절까지 -4.90% · 익절까지 +2.94%");
     expect(parseFloat((container.querySelector(".exit-dot") as HTMLElement).style.left)).toBeCloseTo(62.5, 9);
+    // 평단 왼쪽은 손실 쪽, 오른쪽은 이익 쪽 — 막대 바탕의 경계가 평단 위치.
+    expect((container.querySelector(".exit-track") as HTMLElement).style.getPropertyValue("--entry")).toBe("37.5%");
+  });
+
+  it("보유 수량은 받은 자릿수 그대로(줄이지 않음), 풍선 도움말에도 같은 값", () => {
+    render(
+      <StatusCard
+        run={makeRun({ inPosition: true, qty: 499.75012494, entryPrice: 200, price: 201 })}
+        macro={{ ...upbitMacro, baseAsset: "ZAMA" }}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    const cell = screen.getByText("보유 수량").nextElementSibling as HTMLElement;
+    expect(cell.textContent).toBe("499.75012494 ZAMA");
+    expect(cell.title).toBe("499.75012494 ZAMA");
+  });
+
+  it("그래프 아래 덮는 시간 — 실행 시작부터, 앱을 실행 뒤에 열었으면 앱을 연 뒤부터", () => {
+    const now = Date.now();
+    const start = now - 80 * 60_000;
+    const run = makeRun({ startedAt: start, updatedAt: now, inPosition: false });
+    const { container, rerender } = render(
+      <StatusCard
+        run={run}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[100, 101]}
+        priceTimes={[start + 5_000, now]}
+      />,
+    );
+    expect(container.querySelector(".chart-span")?.textContent).toBe("실행 시작부터 · 1시간 20분");
+    rerender(
+      <StatusCard
+        run={run}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[100, 101]}
+        priceTimes={[now - 12 * 60_000, now]}
+      />,
+    );
+    expect(container.querySelector(".chart-span")?.textContent).toBe("앱을 연 뒤부터 · 12분");
   });
 
   it("국내 시세에 함께 온 전일 대비 등락률을 현재가 옆에 보인다", () => {

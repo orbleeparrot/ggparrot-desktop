@@ -160,6 +160,17 @@ input {
 .btn-primary:hover:not(:disabled) {
   background: var(--brand-hover);
 }
+/* 덜 앞세운 주 버튼 — 목록 카드의 [▶ 시작](고른 카드가 아닐 때). 글자는 진한 노랑(--brand-deep, 흰 바탕 4.9:1). */
+.btn-brand-outline {
+  background: var(--card);
+  border-color: color-mix(in srgb, var(--brand-hover) 70%, var(--border));
+  color: var(--brand-deep);
+}
+.btn-brand-outline:hover:not(:disabled) {
+  background: var(--brand-soft);
+  border-color: var(--brand-hover);
+  color: var(--ink);
+}
 .btn-ghost {
   background: var(--card);
   border-color: var(--border);
@@ -249,7 +260,7 @@ input {
     box-shadow 120ms var(--ease);
 }
 .input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font);
   letter-spacing: 0;
 }

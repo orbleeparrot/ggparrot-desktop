@@ -1,8 +1,10 @@
 // 오른쪽 상세 — 머리줄(종목·방향·거래소)·모드·시작/종료·막힌 이유·상태 카드·활동 기록.
+// - 대기·끝남: 모드 세그먼트 + [시작]. 그 밖(확인·시작·실행·종료 중): 모드를 바꿀 수 없어 세그먼트 대신
+//   "실전으로 실행 중" 배지와 매크로 설명 한 줄을 두고 오른쪽에 종료 단추.
 import { CircleAlert, LoaderCircle, Play, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
-import { isIdle, primaryAction, settingsTargetOf, stopChoices } from "../../state/runs";
+import { isIdle, MODE_LABELS, primaryAction, runningModeText, settingsTargetOf, stopChoices } from "../../state/runs";
 import type { Activity, RunSlot } from "../../types";
 import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
@@ -16,8 +18,8 @@ interface Props {
   slot: RunSlot;
   activity: Activity[];
   prices: number[];
-  /** 그래프 첫 점을 받은 시각(epoch ms). */
-  pricesSince?: number;
+  /** 그래프 점마다 받은 시각(epoch ms). */
+  priceTimes?: number[];
   onBack?: () => void;
   loadActivity(runId: string): void;
   activityFailed?: boolean;
@@ -62,11 +64,31 @@ function Controls({ slot }: { slot: RunSlot }) {
   );
 }
 
+/** 실행 중 조작 줄 왼쪽 — 모드 배지와 매크로 설명 한 줄(전체는 마우스를 올리면). */
+function RunningMode({ slot }: { slot: RunSlot }) {
+  const summary = slot.macro.summary;
+  return (
+    <div className="detail-running">
+      <span
+        className={`detail-mode-badge mode-${slot.mode}`}
+        title={`${MODE_LABELS[slot.mode]} 모드 — 실행 중에는 모드를 바꿀 수 없어요`}
+      >
+        {runningModeText(slot.mode, slot.phase)}
+      </span>
+      {summary && (
+        <p className="detail-running-summary" title={summary}>
+          {summary}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function RunDetail({
   slot,
   activity,
   prices,
-  pricesSince = 0,
+  priceTimes = [],
   onBack,
   loadActivity,
   activityFailed = false,
@@ -75,7 +97,8 @@ export function RunDetail({
   const m = slot.macro;
   const r = slot.readiness;
   const target = settingsTargetOf(r.needs);
-  const showBlocker = isIdle(slot.phase) && !r.canStart && !!r.blocker;
+  const idle = isIdle(slot.phase);
+  const showBlocker = idle && !r.canStart && !!r.blocker;
 
   useEffect(() => loadActivity(slot.id), [slot.id, loadActivity]);
 
@@ -83,11 +106,15 @@ export function RunDetail({
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
       <DetailHeader slot={slot} onBack={onBack} />
 
-      {/* 세그먼트와 주 버튼은 한 줄·같은 높이. 모드 설명은 세그먼트 단추의 풍선 도움말(ModeSegment). */}
-      <div className="detail-controls">
-        <div className="detail-mode">
-          <ModeSegment slot={slot} />
-        </div>
+      {/* 세그먼트(또는 실행 중 배지)와 주 버튼은 한 줄. 모드 설명은 세그먼트 단추의 풍선 도움말(ModeSegment). */}
+      <div className={`detail-controls ${idle ? "" : "is-running"}`}>
+        {idle ? (
+          <div className="detail-mode">
+            <ModeSegment slot={slot} />
+          </div>
+        ) : (
+          <RunningMode slot={slot} />
+        )}
         <Controls slot={slot} />
       </div>
 
@@ -104,16 +131,13 @@ export function RunDetail({
         </div>
       )}
       <MacroNotes slot={slot} blockerShown={showBlocker} />
-      {m.summary &&
-        (slot.run ? (
-          // 실행 중에는 한 줄로 줄여 상태 카드를 밀어내지 않게 — 전체는 마우스를 올리면 보임.
-          <p className="macro-summary is-compact" title={m.summary}>
-            {m.summary}
-          </p>
-        ) : (
-          <p className="macro-summary">{m.summary}</p>
-        ))}
-      {isIdle(slot.phase) && <CapitalRow slot={slot} />}
+      {/* 실행 중이면 설명은 조작 줄 안(RunningMode). 끝난 뒤에는 한 줄로 줄여 상태 카드를 밀어내지 않게. */}
+      {m.summary && idle && (
+        <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>
+          {m.summary}
+        </p>
+      )}
+      {idle && <CapitalRow slot={slot} />}
 
       {slot.run ? (
         <StatusCard
@@ -123,7 +147,7 @@ export function RunDetail({
           phase={slot.phase}
           status={slot.status}
           prices={prices}
-          pricesSince={pricesSince}
+          priceTimes={priceTimes}
         />
       ) : (
         <IdleCard />

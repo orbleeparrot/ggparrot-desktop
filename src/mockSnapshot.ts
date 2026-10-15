@@ -138,6 +138,8 @@ function headlineOf(m: Model, slot: KeySlot): string {
 
 function noteOf(m: Model, slot: KeySlot): string {
   const k = m.keys[slot];
+  if (k.status === "connected" && k.problem === "funds")
+    return "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.";
   if (k.status !== "blocked") return "";
   if (k.problem === "ip")
     return "이 기기 주소가 거래소에 등록된 허용 IP와 달라요. 거래소 API 관리에서 허용 IP를 고치세요.";
@@ -161,6 +163,7 @@ export function slotCard(m: Model, slot: KeySlot): SlotCard {
     status: k.status,
     headline: headlineOf(m, slot),
     note: noteOf(m, slot),
+    noteTone: k.status === "blocked" || k.problem === "funds" ? "warn" : "muted",
     checks: checksOf(m, slot),
     wizardAvailable: true,
     inUseBy: m.runs.filter((r) => isActive(r) && r.mode !== "mock" && keySlotOf(r) === slot).length,

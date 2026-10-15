@@ -12,7 +12,7 @@ import {
   formatPrice,
   formatQty,
   formatSigned,
-  formatSpan,
+  formatDuration,
   roundAway,
   toneOf,
 } from "./format";
@@ -86,6 +86,15 @@ describe("formatPrice · formatQty", () => {
     expect(formatQty(0.0046)).toBe("0.0046");
     expect(formatQty(2)).toBe("2");
   });
+  it("수량은 줄이지 않고 받은 자릿수 그대로 — 끝의 0만 지우고 정수부에 쉼표", () => {
+    expect(formatQty(499.75012494)).toBe("499.75012494");
+    expect(formatQty(0.00127)).toBe("0.00127");
+    expect(formatQty(0.000000123456789)).toBe("0.000000123456789");
+    expect(formatQty(1234.5)).toBe("1,234.5");
+    expect(formatQty(0.1 + 0.2)).toBe("0.3");
+    expect(formatQty(0)).toBe("0");
+    expect(formatQty(Number.NaN)).toBe("0");
+  });
 });
 
 describe("formatElapsed", () => {
@@ -133,14 +142,16 @@ describe("formatAmount", () => {
   });
 });
 
-describe("formatSpan", () => {
-  it("그래프가 덮는 시간 — 초·분·시간", () => {
-    expect(formatSpan(0)).toBe("");
-    expect(formatSpan(800)).toBe("");
-    expect(formatSpan(45_000)).toBe("최근 45초");
-    expect(formatSpan(12 * 60_000 + 30_000)).toBe("최근 12분");
-    expect(formatSpan(2 * 3_600_000)).toBe("최근 2시간");
-    expect(formatSpan(2 * 3_600_000 + 5 * 60_000)).toBe("최근 2시간 5분");
-    expect(formatSpan(-5_000)).toBe("");
+describe("formatDuration", () => {
+  it("걸린 시간 — 초·분·시간·일, 아래 단위는 버림", () => {
+    expect(formatDuration(0)).toBe("");
+    expect(formatDuration(800)).toBe("");
+    expect(formatDuration(45_000)).toBe("45초");
+    expect(formatDuration(12 * 60_000 + 30_000)).toBe("12분");
+    expect(formatDuration(2 * 3_600_000)).toBe("2시간");
+    expect(formatDuration(80 * 60_000)).toBe("1시간 20분");
+    expect(formatDuration(51 * 3_600_000 + 59 * 60_000)).toBe("2일 3시간");
+    expect(formatDuration(3 * 86_400_000)).toBe("3일");
+    expect(formatDuration(-5_000)).toBe("");
   });
 });

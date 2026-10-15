@@ -216,30 +216,40 @@ impl Core {
         let st = self.slot(s);
         let ex = s.exchange();
         let check = self.slot_status(s);
-        let (status, headline, mut note) = match check {
-            SlotStatus::Empty => ("empty", "● 연결 안 됨".to_string(), String::new()),
-            SlotStatus::Busy(_) => ("checking", "● 확인 중".to_string(), String::new()),
+        // 칸 아래 글의 색 — warn: 사용자가 고쳐야 할 문제(잔고 부족·권한·허용 IP·키 저장소),
+        // muted: 참고 글(오래된 확인 결과·이 칸으로 주문할 매크로가 없을 때의 잔고 부족).
+        let (status, headline, mut note, mut note_tone) = match check {
+            SlotStatus::Empty => ("empty", "● 연결 안 됨".to_string(), String::new(), "muted"),
+            SlotStatus::Busy(_) => ("checking", "● 확인 중".to_string(), String::new(), "muted"),
             SlotStatus::Done(c) if c.view.connected => {
-                let n = if c.view.problem == "order_size" {
-                    c.reason.clone()
+                let (n, tone) = if c.view.problem == "order_size" {
+                    // 잔고 부족·최소 주문 금액 미달 — 이 칸으로 주문할 매크로(실거래·테스트넷)가 있을 때만 경고.
+                    // 없으면 지금 막힌 매매가 없으니 참고로만 둠. 진입이 체결되면 지움(`Core::entry_filled`).
+                    (c.reason.clone(), if self.slot_places_orders(s) { "warn" } else { "muted" })
                 } else if now_ms() - c.checked_at > KEY_CHECK_STALE_MS {
-                    "확인한 지 30분이 넘었어요. 매크로를 시작할 때 다시 확인해요.".to_string()
+                    ("확인한 지 30분이 넘었어요. 매크로를 시작할 때 다시 확인해요.".to_string(), "muted")
                 } else {
-                    String::new()
+                    (String::new(), "muted")
                 };
-                ("connected", "✓ 연결됨".to_string(), n)
+                ("connected", "✓ 연결됨".to_string(), n, tone)
             }
             SlotStatus::Done(c) => {
                 // 막힌 곳을 머리줄에 바로 씀 — 고치는 길은 [연결 도우미]에 있음.
                 // 바이낸스는 어느 권한을 켤지(선물은 키를 새로 만들어야 하는 경우까지)가 이유에 있어 아래에 둠.
                 let note = if ex.is_domestic() { String::new() } else { c.reason.clone() };
-                ("blocked", format!("● {}", c.view.headline), note)
+                ("blocked", format!("● {}", c.view.headline), note, "warn")
             }
-            SlotStatus::Unchecked => ("unchecked", "● 확인 전".to_string(), String::new()),
+            SlotStatus::Unchecked => ("unchecked", "● 확인 전".to_string(), String::new(), "muted"),
         };
         if note.is_empty() {
             let failure = self.load_failure_note();
             note = if !failure.is_empty() { failure } else { self.storage_error.clone() };
+            if !note.is_empty() {
+                note_tone = "warn"; // 키 저장소 문제 — 다시 읽기·새로 만들기가 필요함
+            }
+        }
+        if note.is_empty() {
+            note_tone = "muted";
         }
         // 다시 확인하는 중에도 같은 지문의 지난 결과는 세 줄에 그대로 둠.
         let checks = match check {
@@ -261,6 +271,7 @@ impl Core {
             status: status.into(),
             headline,
             note,
+            note_tone: note_tone.into(),
             checks,
             // 업비트·빗썸·바이낸스(실거래·테스트넷·데모 칸 모두) — 바이낸스는 칸이 곧 사이트임.
             wizard_available: true,
@@ -694,6 +705,8 @@ pub(crate) struct SlotDto {
     status: String,
     headline: String,
     note: String,
+    /// 칸 아래 글의 색 — "warn"(고쳐야 할 문제)·"muted"(참고).
+    note_tone: String,
     checks: ChecksDto,
     wizard_available: bool,
     in_use_by: usize,

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { canStop, isIdle, primaryAction, settingsElementId, settingsTargetOf, statusParts } from "./runs";
+import {
+  canStop,
+  isIdle,
+  primaryAction,
+  runningModeText,
+  settingsElementId,
+  settingsTargetOf,
+  statusParts,
+} from "./runs";
 
 describe("막힌 이유 → 설정의 칸", () => {
   it("키가 필요하면 그 키 칸으로", () => {
@@ -40,5 +48,14 @@ describe("상태 문구 나누기", () => {
     expect(statusParts("실행 중 · 서버 재시도 중")).toEqual(["실행 중", "서버 재시도 중"]);
     expect(statusParts("종료됨 · 손절 · 수동")).toEqual(["종료됨", "손절 · 수동"]);
     expect(statusParts("시작 전")).toEqual(["시작 전", ""]);
+  });
+});
+
+describe("실행 중 모드 배지", () => {
+  it("받침에 맞춘 조사와 단계별 문구", () => {
+    expect(runningModeText("mock", "running")).toBe("모의로 실행 중");
+    expect(runningModeText("testnet", "starting")).toBe("테스트넷으로 시작하는 중");
+    expect(runningModeText("live", "checking")).toBe("실전으로 시작 전 확인 중");
+    expect(runningModeText("live", "stopping")).toBe("실전으로 실행 중");
   });
 });

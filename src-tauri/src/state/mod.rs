@@ -690,6 +690,30 @@ impl Core {
         }
     }
 
+    /// 이 칸의 키로 실제 주문을 낼 매크로(실거래·테스트넷)가 목록에 있는지 — 실행 중이 아니어도 시작하면 주문함.
+    /// 모의 실행은 실거래 칸의 키로 시세만 봄.
+    pub fn slot_places_orders(&self, s: KeySlot) -> bool {
+        self.runs.iter().any(|r| r.mode != RunMode::Mock && r.key_slot() == Some(s))
+    }
+
+    /// 실거래·테스트넷 실행의 진입 주문이 체결됨 — 그 칸에 남은 잔고 부족(order_size) 글을 지움.
+    /// - 잔고 부족 글은 시작 전 확인·칸 확인 때 남고 다음 확인 전까지는 그대로라, 체결로 잔고가 있었음을 알면 지움
+    /// - 막힌 칸(키·허용 IP·권한)은 건드리지 않음 — 실행은 시작할 때의 키를 계속 씀
+    /// - 지웠으면 참(화면을 다시 그려야 함)
+    pub fn entry_filled(&mut self, id: &str) -> bool {
+        let Some(slot) = self.run(id).filter(|r| r.mode != RunMode::Mock).and_then(Run::key_slot) else {
+            return false;
+        };
+        match self.slot_mut(slot).check.as_mut() {
+            Some(c) if c.view.connected && c.view.problem == "order_size" => {
+                c.view.problem.clear();
+                c.reason.clear();
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// 연결 도우미가 볼 검사 상태 — idle·busy·done.
     pub fn wizard_check(&self, s: KeySlot) -> (&'static str, CheckView, String) {
         let idle = || check_view(s.exchange().as_str(), false, "");

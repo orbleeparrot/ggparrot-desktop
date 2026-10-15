@@ -5,14 +5,7 @@ import { call, on } from "../ipc";
 import type { Activity, AppState, Notice, StateEvent } from "../types";
 import { EV_ACTIVITY, EV_NOTICE, EV_STATE } from "../types";
 import { mergeActivity } from "./activity";
-
-const MAX_PRICE_POINTS = 180;
-
-/**
- * 슬롯별 현재가 흐름 — 상태 카드의 작은 선 그래프용. 실행(run.startedAt)이 바뀌면 새로 시작함. UI 로컬 값임.
- * - times: 점마다 받은 시각(run.updatedAt, 없으면 시작 시각). 그래프가 덮는 시간("최근 12분")을 셈.
- */
-export type PriceTrail = { startedAt: number; points: number[]; times: number[] };
+import { trackPrices, type PriceTrail } from "./priceTrail";
 
 /** 상태 이벤트가 이만큼 없으면 get_state로 다시 읽음. */
 const RESYNC_MS = 15_000;
@@ -136,37 +129,4 @@ export function useRunner(onNotice: (n: Notice) => void): Runner {
   }, [accept, append]);
 
   return { state, activity, prices, loadActivity, activityFailed, loadError };
-}
-
-function trackPrices(prev: Record<string, PriceTrail>, next: AppState): Record<string, PriceTrail> {
-  let changed = false;
-  const out: Record<string, PriceTrail> = {};
-  for (const slot of next.runs) {
-    const run = slot.run;
-    const old = prev[slot.id];
-    if (!run) {
-      if (old) changed = true;
-      continue;
-    }
-    const at = run.updatedAt > 0 ? run.updatedAt : run.startedAt;
-    if (!old || old.startedAt !== run.startedAt) {
-      const first = run.price > 0;
-      out[slot.id] = { startedAt: run.startedAt, points: first ? [run.price] : [], times: first ? [at] : [] };
-      changed = true;
-    } else if (!run.finished && run.price > 0 && old.points[old.points.length - 1] !== run.price) {
-      const points = old.points.concat(run.price);
-      const times = old.times.concat(at);
-      const cut = points.length > MAX_PRICE_POINTS;
-      out[slot.id] = {
-        startedAt: run.startedAt,
-        points: cut ? points.slice(-MAX_PRICE_POINTS) : points,
-        times: cut ? times.slice(-MAX_PRICE_POINTS) : times,
-      };
-      changed = true;
-    } else {
-      out[slot.id] = old;
-    }
-  }
-  if (!changed && Object.keys(prev).length === Object.keys(out).length) return prev;
-  return out;
 }

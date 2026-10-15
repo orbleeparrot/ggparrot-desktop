@@ -1245,6 +1245,25 @@ async fn upbit_round_trip_shows_fee_aware_realized_pnl() {
 }
 
 #[tokio::test]
+async fn a_long_fill_quantity_is_shown_whole_on_screen_in_the_raw_line_and_the_server_error() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-ZAMA", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(499.750_124_94, 100.0, fee(25.0)));
+    bot.place(OrderSide::Buy, 0.0, false, 50_000.0).await.unwrap();
+    let bought = activities(&mut rx).into_iter().find(|a| a.kind == "buy").unwrap();
+    assert_eq!(bought.title, "ZAMA 499.75012494개를 100 KRW에 샀어요");
+    assert!(bought.raw.contains("수량=499.75012494"), "원본 줄은 자릿수를 다 살림: {}", bought.raw);
+    // 일부 체결 오류 문장은 서버 ack의 error로도 가므로 자릿수를 줄이지 않음.
+    let mut part = result("CANCELED", 0.123_456_78, 100.0, 0.123_456_78, true);
+    part.raw_status = "cancel".into();
+    fb.push(part);
+    let err = bot.place(OrderSide::Buy, 0.0, false, 50_000.0).await.unwrap_err();
+    assert!(err.contains("체결된 0.12345678 ZAMA만"), "{err}");
+    let partial = activities(&mut rx).into_iter().find(|a| a.kind == "buy").unwrap();
+    assert_eq!(partial.title, "ZAMA 0.12345678개를 100 KRW에 샀어요");
+}
+
+#[tokio::test]
 async fn binance_spot_up_015_pct_reads_as_a_small_loss_now() {
     // 1,000 USDT 매수(수수료 1 USDT) 뒤 +0.15% — 지금 정리하면 1.5 − 1 − 1.0015 = −0.5015 USDT.
     let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);

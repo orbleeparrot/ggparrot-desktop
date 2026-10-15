@@ -18,8 +18,8 @@ use crate::clock::unix_ms;
 use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
 use crate::log_kind::event_kind;
 use crate::money::{
-    grouped, money, order_qty, pnl_amount, pnl_pct, price_text, py_g, py_gp, py_num, qty_text, round_step, signed_pct,
-    smallest_entry_notional,
+    grouped, money, order_qty, pnl_amount, pnl_pct, price_text, py_g, py_gp, py_num, qty_full, qty_text, round_step,
+    signed_pct, smallest_entry_notional,
 };
 use crate::risk::RiskGuard;
 use crate::server::ServerClient;

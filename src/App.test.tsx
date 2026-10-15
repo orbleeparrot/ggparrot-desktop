@@ -282,6 +282,19 @@ describe("종료 · 이동", () => {
     expect(dlg.textContent).toContain("보유 포지션이 없어요");
   });
 
+  it("실행 중이면 모드 세그먼트 대신 모드 배지 — 조작 줄은 배지와 종료 단추뿐, 대기면 세그먼트", async () => {
+    current = makeState({ runs: [makeSlot({ phase: "running", mode: "live", run: makeRun() })] });
+    render(<App />);
+    const detail = await screen.findByRole("region", { name: /BTCUSDT/ });
+    const row = detail.querySelector(".detail-controls")!;
+    expect(within(row as HTMLElement).queryByRole("radiogroup")).toBeNull();
+    expect(row.querySelector(".detail-mode-badge")?.textContent).toBe("실전으로 실행 중");
+    expect(within(row as HTMLElement).getByRole("button", { name: "종료" })).toBeTruthy();
+    pushState(makeState({ runs: [makeSlot({ phase: "idle", mode: "mock" })] }));
+    expect(await within(row as HTMLElement).findByRole("radiogroup", { name: "실행 모드" })).toBeTruthy();
+    expect(row.querySelector(".detail-mode-badge")).toBeNull();
+  });
+
   it("runner:navigate 와 ⌘/Ctrl+, 로 화면을 바꾼다", async () => {
     current = makeState({ runs: [makeSlot(), makeSlot({ id: "run-9", macro: upbitMacro })] });
     render(<App />);
@@ -302,6 +315,39 @@ describe("설정 목차 · 기억한 키", () => {
     fireEvent.click(await screen.findByRole("button", { name: "설정" }));
     return screen.findByRole("navigation", { name: "설정 목차" });
   };
+
+  it("목차는 보이는 묶음을 aria-current로 밝힘 — 굴리면(IntersectionObserver) 따라가고, 누르면 바로", async () => {
+    let notify: ((entries: Partial<IntersectionObserverEntry>[]) => void) | null = null;
+    class FakeObserver {
+      constructor(cb: (entries: Partial<IntersectionObserverEntry>[]) => void) {
+        notify = cb;
+      }
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", FakeObserver);
+    try {
+      const nav = await openSettings();
+      const current = () =>
+        within(nav)
+          .getAllByRole("button")
+          .filter((b) => b.getAttribute("aria-current") === "true")
+          .map((b) => b.textContent);
+      expect(current()).toEqual(["거래소 연결"]);
+      const section = (id: string) => document.getElementById(`settings-${id}`)!;
+      act(() =>
+        notify!([
+          { target: section("exchanges"), isIntersecting: false },
+          { target: section("library"), isIntersecting: true },
+        ]),
+      );
+      expect(current()).toEqual(["매크로 폴더"]);
+      fireEvent.click(within(nav).getByRole("button", { name: "정보" }));
+      expect(current()).toEqual(["정보"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("목차에 '기억한 키'는 없고 맨 끝이 '앱 기록' — 평소에는 경고 카드 없이 보관 위치만 적는다", async () => {
     const nav = await openSettings();

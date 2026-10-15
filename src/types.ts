@@ -146,6 +146,8 @@ export interface SlotCard {
   headline: string;
   /** 칸 아래 한두 줄(막힌 이유·저장 문제). 없으면 "". */
   note: string;
+  /** note의 색 — "warn"(잔고 부족·권한·허용 IP·키 저장소처럼 고쳐야 할 문제)·"muted"(참고). 없으면 muted. */
+  noteTone?: "muted" | "warn";
   checks: { auth: Check; ip: Check; order: Check };
   /** 연결 도우미(업비트·빗썸·바이낸스). 바이낸스는 칸(실거래·테스트넷·데모)이 곧 사이트임. */
   wizardAvailable: boolean;

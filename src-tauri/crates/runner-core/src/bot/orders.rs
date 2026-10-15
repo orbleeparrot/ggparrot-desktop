@@ -112,10 +112,11 @@ impl Bot {
             );
             self.logger.ui(&raw);
             self.fill_activity(side, closing, executed, average, close.as_ref(), order.fee.as_ref(), raw);
+            // 이 문장은 서버 ack의 error로도 감 — 수량 자릿수를 줄이지 않음(qty_full).
             return Err(format!(
                 "주문이 일부만 체결되고 끝났어요(거래소 상태: {}). 체결된 {} {}만 보유에 반영했어요.",
                 order.raw_status,
-                qty_text(executed),
+                qty_full(executed),
                 base_asset(&self.symbol)
             ));
         }

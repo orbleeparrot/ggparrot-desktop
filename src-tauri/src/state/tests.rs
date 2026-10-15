@@ -838,3 +838,93 @@ fn library_problems_are_logged_once_until_they_change() {
     assert_eq!(c.app_log.len(), 3, "같은 폴더 오류도 한 번만");
     assert_eq!(c.app_log[2].level, "warn");
 }
+
+/// 업비트 칸에 키를 넣고 확인 결과 하나를 남김.
+fn upbit_checked(c: &mut Core, ok: bool, error_name: &str, reason: &str, age_ms: i64) {
+    c.slot_mut(KeySlot::Upbit).keys = KeyPair { api_key: "k".into(), api_secret: "s".into() };
+    let fp = c.slot_fingerprint(KeySlot::Upbit);
+    c.slot_mut(KeySlot::Upbit).check = Some(KeyCheckRecord {
+        fingerprint: fp,
+        reason: reason.into(),
+        view: check_view("upbit", ok, error_name),
+        checked_at: now_ms() - age_ms,
+    });
+}
+
+fn slot_note(c: &Core, s: KeySlot) -> (String, String, String) {
+    let v = serde_json::to_value(c.render_slot(s)).unwrap();
+    let text = |k: &str| v[k].as_str().unwrap_or("").to_string();
+    (text("status"), text("note"), text("noteTone"))
+}
+
+const NO_KRW: &str = "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.";
+
+#[test]
+fn slot_notes_say_whether_the_user_must_act() {
+    let mut c = core();
+    upbit_checked(&mut c, true, "", "", 0);
+    assert_eq!(slot_note(&c, KeySlot::Upbit), ("connected".into(), String::new(), "muted".into()));
+
+    // 오래된 '연결됨'은 참고 글.
+    upbit_checked(&mut c, true, "", "", KEY_CHECK_STALE_MS + 1);
+    let (_, note, tone) = slot_note(&c, KeySlot::Upbit);
+    assert!(note.starts_with("확인한 지 30분이 넘었어요"), "{note}");
+    assert_eq!(tone, "muted");
+
+    // 허용 IP·키·권한이 막힘 — 고쳐야 함(바이낸스는 이유가 칸 아래에 옴).
+    c.slot_mut(KeySlot::Binance).keys = KeyPair { api_key: "k".into(), api_secret: "s".into() };
+    let fp = c.slot_fingerprint(KeySlot::Binance);
+    c.slot_mut(KeySlot::Binance).check = Some(KeyCheckRecord {
+        fingerprint: fp,
+        reason: "바이낸스에서 키를 거절했어요. 키 · 허용 IP · 권한 설정을 확인하세요.".into(),
+        view: check_view("binance", false, "binance_access"),
+        checked_at: now_ms(),
+    });
+    assert_eq!(slot_note(&c, KeySlot::Binance).2, "warn");
+
+    // 키 저장소 문제도 고쳐야 할 일.
+    c.storage_error = "키체인에 저장하지 못했어요.".into();
+    assert_eq!(slot_note(&c, KeySlot::Bithumb), ("empty".into(), "키체인에 저장하지 못했어요.".into(), "warn".into()));
+}
+
+#[test]
+fn a_funds_note_warns_only_while_a_real_run_uses_the_slot() {
+    let mut c = core();
+    upbit_checked(&mut c, false, "insufficient_funds_bid", NO_KRW, 0);
+    // 이 칸으로 주문할 매크로가 없으면 참고 글 — 지금 막힌 매매가 없음.
+    assert_eq!(slot_note(&c, KeySlot::Upbit), ("connected".into(), NO_KRW.into(), "muted".into()));
+    // 모의 실행은 실제 잔고를 쓰지 않음.
+    let mut mock = run("m", "KRW-BTC", "upbit");
+    mock.mode = RunMode::Mock;
+    c.runs.push(mock);
+    assert_eq!(slot_note(&c, KeySlot::Upbit).2, "muted");
+    // 실거래 매크로가 이 칸을 쓰면(실행 중이 아니어도 시작하면 주문함) 경고.
+    let mut live = run("a", "KRW-ETH", "upbit");
+    live.mode = RunMode::Live;
+    c.runs.push(live);
+    assert_eq!(slot_note(&c, KeySlot::Upbit), ("connected".into(), NO_KRW.into(), "warn".into()));
+}
+
+#[test]
+fn an_entry_fill_clears_a_stale_funds_note() {
+    let mut c = core();
+    upbit_checked(&mut c, false, "insufficient_funds_bid", NO_KRW, 0);
+    let mut live = run("a", "KRW-ETH", "upbit");
+    live.mode = RunMode::Live;
+    c.runs.push(live);
+    let mut mock = run("m", "KRW-BTC", "upbit");
+    mock.mode = RunMode::Mock;
+    c.runs.push(mock);
+    assert!(!c.entry_filled("m"), "모의 체결은 실제 잔고를 말해 주지 않음");
+    assert_eq!(slot_note(&c, KeySlot::Upbit).1, NO_KRW);
+    assert!(c.entry_filled("a"), "실거래 진입이 체결됨 — 잔고가 있었음");
+    assert_eq!(slot_note(&c, KeySlot::Upbit), ("connected".into(), String::new(), "muted".into()));
+    let rec = c.slot(KeySlot::Upbit).check.clone().unwrap();
+    assert_eq!((rec.view.problem.as_str(), rec.view.connected), ("", true));
+    assert!(!c.entry_filled("a"), "지울 글이 없으면 그대로");
+
+    // 막힌 칸(키·IP)은 체결로 지우지 않음 — 실행은 시작할 때의 키를 계속 씀.
+    upbit_checked(&mut c, false, "no_authorization_ip", "허용 IP가 아니에요.", 0);
+    assert!(!c.entry_filled("a"));
+    assert_eq!(slot_note(&c, KeySlot::Upbit).0, "blocked");
+}

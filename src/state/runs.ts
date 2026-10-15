@@ -10,6 +10,16 @@ export const MODE_NOTES: Record<RunMode, string> = {
   live: "실제 자금으로 주문해요. 시작할 때 한 번 더 확인해요.",
 };
 
+/** "모의로"·"테스트넷으로"·"실전으로" — 받침에 맞춘 조사. */
+const MODE_WITH: Record<RunMode, string> = { mock: "모의로", testnet: "테스트넷으로", live: "실전으로" };
+
+/** 상세 조작 줄의 모드 배지 — 모드를 바꿀 수 없는 단계(확인·시작·실행·종료 중)에 세그먼트 대신 보임. */
+export function runningModeText(mode: RunMode, phase: Phase): string {
+  if (phase === "checking") return `${MODE_WITH[mode]} 시작 전 확인 중`;
+  if (phase === "starting") return `${MODE_WITH[mode]} 시작하는 중`;
+  return `${MODE_WITH[mode]} 실행 중`;
+}
+
 export const SIDE_LABELS = { long: "롱", short: "숏" } as const;
 export const MARKET_LABELS = { spot: "현물", futures: "선물" } as const;
 

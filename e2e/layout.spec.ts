@@ -193,41 +193,84 @@ for (const vp of VIEWPORTS) {
       expect(focused.texts, "포커스여도 글자 자리가 그대로").toEqual(before.texts);
     });
 
-    for (const [label, query] of [
-      ["대기(시작 단추)", "?open=1"],
-      ["실행 중(종료 단추)", "?demo=running&open=1"],
-    ] as const) {
-      test(`상세 조작 줄 — ${label}: 세그먼트·주 단추 같은 높이·가운데·모드 설명 줄 없음`, async ({ page }, info) => {
-        await open(page, query);
-        await page.locator(".detail-controls").waitFor();
-        await snap(page, info, "detail");
-        const r = await page.evaluate(() => {
-          const g = window.__geo;
-          const row = document.querySelector(".detail-controls")!;
-          const seg = row.querySelector(".segmented")!;
-          const btn = row.querySelector(".detail-start, .detail-stop .btn, .btn")!;
-          const hints = Array.from(
-            document.querySelectorAll(".run-detail [class*='mode-hint'], .run-detail [class*='mode-note']"),
-          )
-            .filter((el) => g.shown(el))
-            .map((el) => el.className);
-          // 조작 줄 안에 세그먼트·단추 말고 보이는 글자가 있는지(설명 줄).
-          const owners = [seg, ...Array.from(row.querySelectorAll(".btn"))].map((el) => g.box(el));
-          const stray = g
-            .textBoxes(row)
-            .filter((t) => !owners.some((o) => g.inside(t.box, o, 1)))
-            .map((t) => t.text);
-          return { seg: g.box(seg), btn: g.box(btn), hints, stray, children: row.children.length };
-        });
-        expect(Math.abs(r.seg.h - r.btn.h), `높이 세그먼트 ${r.seg.h} · 단추 ${r.btn.h}`).toBeLessThanOrEqual(1);
-        const segMid = (r.seg.t + r.seg.b) / 2;
-        const btnMid = (r.btn.t + r.btn.b) / 2;
-        expect(Math.abs(segMid - btnMid), `세로 가운데 세그먼트 ${segMid} · 단추 ${btnMid}`).toBeLessThanOrEqual(1);
-        expect(r.hints, "모드 설명 줄").toEqual([]);
-        expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
-        expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
+    test("상세 조작 줄 — 대기(시작 단추): 세그먼트·주 단추 같은 높이·가운데·모드 설명 줄 없음", async ({
+      page,
+    }, info) => {
+      await open(page, "?open=1");
+      await page.locator(".detail-controls").waitFor();
+      await snap(page, info, "detail");
+      const r = await page.evaluate(() => {
+        const g = window.__geo;
+        const row = document.querySelector(".detail-controls")!;
+        const seg = row.querySelector(".segmented")!;
+        const btn = row.querySelector(".detail-start, .detail-stop .btn, .btn")!;
+        const hints = Array.from(
+          document.querySelectorAll(".run-detail [class*='mode-hint'], .run-detail [class*='mode-note']"),
+        )
+          .filter((el) => g.shown(el))
+          .map((el) => el.className);
+        // 조작 줄 안에 세그먼트·단추 말고 보이는 글자가 있는지(설명 줄).
+        const owners = [seg, ...Array.from(row.querySelectorAll(".btn"))].map((el) => g.box(el));
+        const stray = g
+          .textBoxes(row)
+          .filter((t) => !owners.some((o) => g.inside(t.box, o, 1)))
+          .map((t) => t.text);
+        return { seg: g.box(seg), btn: g.box(btn), hints, stray, children: row.children.length };
       });
-    }
+      expect(Math.abs(r.seg.h - r.btn.h), `높이 세그먼트 ${r.seg.h} · 단추 ${r.btn.h}`).toBeLessThanOrEqual(1);
+      const segMid = (r.seg.t + r.seg.b) / 2;
+      const btnMid = (r.btn.t + r.btn.b) / 2;
+      expect(Math.abs(segMid - btnMid), `세로 가운데 세그먼트 ${segMid} · 단추 ${btnMid}`).toBeLessThanOrEqual(1);
+      expect(r.hints, "모드 설명 줄").toEqual([]);
+      expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
+      expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
+    });
+
+    test("상세 조작 줄 — 실행 중: 세그먼트 없이 모드 배지·설명 한 줄 + 종료 단추, 큰 빈 자리 없음", async ({
+      page,
+    }, info) => {
+      await open(page, "?demo=running&open=1");
+      await page.locator(".detail-controls.is-running").waitFor();
+      await snap(page, info, "detail-running");
+      const r = await page.evaluate(() => {
+        const g = window.__geo;
+        const row = document.querySelector(".detail-controls")!;
+        const left = row.querySelector(".detail-running")!;
+        const badge = left.querySelector(".detail-mode-badge")!;
+        const summary = left.querySelector(".detail-running-summary");
+        const btns = Array.from(row.querySelectorAll(".btn"));
+        const owners = [badge, summary, ...btns].filter((el): el is Element => !!el).map((el) => g.box(el));
+        const stray = g
+          .textBoxes(row)
+          .filter((t) => !owners.some((o) => g.inside(t.box, o, 1)))
+          .map((t) => t.text);
+        const pad = parseFloat(getComputedStyle(row).paddingLeft);
+        const firstBtn = g.box(btns[0]);
+        return {
+          segmented: row.querySelectorAll(".segmented, [role='radiogroup']").length,
+          badge: badge.textContent,
+          children: row.children.length,
+          stray,
+          left: g.box(left),
+          btn: firstBtn,
+          row: g.box(row),
+          pad,
+          summaryTruncatedOk: !summary || getComputedStyle(summary).textOverflow === "ellipsis",
+        };
+      });
+      expect(r.segmented, "실행 중 세그먼트").toBe(0);
+      expect(r.badge).toMatch(/^(모의로|테스트넷으로|실전으로) (실행 중|시작하는 중)$/);
+      expect(r.children, "조작 줄 칸 수(배지 칸·단추)").toBe(2);
+      expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
+      expect(r.summaryTruncatedOk, "설명 한 줄은 줄임표").toBe(true);
+      // 왼쪽 칸이 단추 앞까지 채움 — 큰 빈 자리 없음(같은 줄일 때).
+      if (Math.abs(r.left.t - r.btn.t) < r.btn.h)
+        expect(r.btn.l - r.left.r, `왼쪽 칸 끝 ${r.left.r} · 단추 ${r.btn.l}`).toBeLessThanOrEqual(24);
+      const leftMid = (r.left.t + r.left.b) / 2;
+      const btnMid = (r.btn.t + r.btn.b) / 2;
+      if (Math.abs(r.left.t - r.btn.t) < r.btn.h)
+        expect(Math.abs(leftMid - btnMid), "배지 칸과 단추 세로 가운데").toBeLessThanOrEqual(2);
+    });
 
     test("상태 카드(?demo=pnl) — 막대·차트 꼬리표 안 겹침·표 정렬·가로 넘침 없음", async ({ page }, info) => {
       await open(page, "?demo=pnl&open=1");
@@ -264,12 +307,28 @@ for (const vp of VIEWPORTS) {
             const bar = card.querySelector(".exit-bar");
             if (bar) {
               const bb = g.box(bar);
-              for (const t of [
-                ...pairwise(".exit-tag", "청산 막대 위 꼬리표"),
-                ...pairwise(".exit-end", "청산 막대 양끝"),
-              ])
+              // 막대의 모든 글자(머리·거리·현재가 꼬리표·평단 이름·양 끝)는 서로 겹치지 않고 막대 칸 안.
+              for (const t of pairwise(".exit-head, .exit-dist, .exit-tag, .exit-entry, .exit-end", "청산 막대 글자"))
                 if (!g.inside(t.box, bb, 1))
                   out.push(`${where} 청산 막대: "${t.text}" ${g.fmt(t.box)}가 막대 ${g.fmt(bb)} 밖`);
+              // 꼬리표·평단 이름은 막대 칸(.exit-scale) 안에서 잘리지 않음.
+              const scale = g.box(bar.querySelector(".exit-scale")!);
+              for (const el of Array.from(bar.querySelectorAll<HTMLElement>(".exit-tag, .exit-entry"))) {
+                if (!g.inside(g.box(el), scale, 1))
+                  out.push(`${where} 청산 막대: "${el.textContent}" ${g.fmt(g.box(el))}가 막대 칸 ${g.fmt(scale)} 밖`);
+                if (el.scrollWidth > el.clientWidth + 1) out.push(`${where} 청산 막대: "${el.textContent}" 잘림`);
+              }
+              // 평단 눈금 이름은 눈금 아래, 현재가 꼬리표는 점 위에 걸침.
+              const tick = g.box(bar.querySelector(".exit-tick")!);
+              const entry = g.box(bar.querySelector(".exit-entry")!);
+              const tickX = (tick.l + tick.r) / 2;
+              if (entry.t < tick.b - 1 || tickX < entry.l - 1 || tickX > entry.r + 1)
+                out.push(`${where} 청산 막대: 평단 이름 ${g.fmt(entry)}가 눈금 ${g.fmt(tick)} 아래에 없음`);
+              const dot = g.box(bar.querySelector(".exit-dot")!);
+              const tag = g.box(bar.querySelector(".exit-tag")!);
+              const dotX = (dot.l + dot.r) / 2;
+              if (tag.b > dot.t + 1 || dotX < tag.l - 1 || dotX > tag.r + 1)
+                out.push(`${where} 청산 막대: 현재가 꼬리표 ${g.fmt(tag)}가 점 ${g.fmt(dot)} 위에 걸치지 않음`);
             }
             const chart = card.querySelector(".price-chart");
             if (chart) {
@@ -359,9 +418,54 @@ for (const vp of VIEWPORTS) {
           headerTop: document.querySelector(".app-header")!.getBoundingClientRect().top,
         }));
         expect(after, "목차를 눌러도 문서·머리줄은 그대로").toEqual({ docTop: 0, winY: 0, headerTop: 0 });
+        // 목차는 보이는 묶음을 밝힘 — 누른 곳, 그리고 맨 위로 굴리면 다시 거래소 연결.
+        const nav = page.getByRole("navigation", { name: "설정 목차" });
+        await expect(nav.getByRole("button", { name: "앱 기록" })).toHaveAttribute("aria-current", "true");
+        // 사용자가 직접 굴리면(휠) 다시 보이는 묶음을 따라감.
+        const bodyBox = (await page.locator(".settings-content").boundingBox())!;
+        await page.mouse.move(bodyBox.x + bodyBox.width / 2, 300);
+        for (let k = 0; k < 40; k++) await page.mouse.wheel(0, -600);
+        await expect(nav.getByRole("button", { name: "거래소 연결" })).toHaveAttribute("aria-current", "true");
+        await expect(nav.locator("[aria-current='true']")).toHaveCount(1);
       } else {
         await expect(page.locator(".settings-nav")).toBeHidden();
       }
+      // 쓰지 않는 칸은 한 줄로 접힘 — 쓰는 칸 뒤에 오고, 높이가 낮고, 펼치기 단추가 aria-expanded를 바꿈.
+      const slots = await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => ({
+          id: el.id,
+          collapsed: el.classList.contains("is-collapsed"),
+          h: el.getBoundingClientRect().height,
+          // 머리 칸들의 세로 가운데 차이 — 한 줄이면 몇 px 안쪽.
+          midSpread: (() => {
+            const mids = Array.from(el.querySelectorAll(".slot-head > *")).map((c) => {
+              const r = c.getBoundingClientRect();
+              return (r.top + r.bottom) / 2;
+            });
+            return Math.max(...mids) - Math.min(...mids);
+          })(),
+        })),
+      );
+      const firstCollapsed = slots.findIndex((x) => x.collapsed);
+      expect(firstCollapsed, "접힌 칸이 있음(?demo=settings 테스트넷 · 데모)").toBeGreaterThan(0);
+      expect(
+        slots.slice(firstCollapsed).every((x) => x.collapsed),
+        "쓰는 칸이 앞, 접힌 칸이 뒤",
+      ).toBe(true);
+      for (const x of slots.filter((y) => y.collapsed)) {
+        expect(x.h, `${x.id} 접힌 높이`).toBeLessThanOrEqual(56);
+        expect(x.midSpread, `${x.id} 머리 칸이 한 줄(세로 가운데 차이)`).toBeLessThanOrEqual(4);
+      }
+      // 펼치면 is-collapsed가 빠지므로 칸 id로 붙잡음.
+      const firstId = slots[firstCollapsed].id;
+      const toggle = page.locator(`#${firstId} .slot-toggle`);
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator(`#${await toggle.getAttribute("aria-controls")}`)).toBeVisible();
+      // 연결됨이어도 고쳐야 할 안내(업비트 잔고 부족)는 주의 색 줄.
+      await expect(page.locator("#settings-slot-upbit .note-warn")).toContainText("잔고가 모자라요");
+
       const log = page.locator(".applog-scroll");
       await log.scrollIntoViewIfNeeded();
       const box = await log.evaluate((el) => ({
@@ -436,3 +540,58 @@ for (const vp of VIEWPORTS) {
     });
   });
 }
+
+// 사용자가 실제로 쓰는 창 크기 — 실행 중 상태 카드가 활동 기록을 화면 밖으로 밀지 않는지.
+test.describe("1040x720 — 상태 카드 높이", () => {
+  test.use({ viewport: { width: 1040, height: 720 } });
+
+  test("상태 카드 높이 예산·활동 기록 세 줄·보유 수량 값이 잘리지 않음", async ({ page }, info) => {
+    await open(page, "?demo=pnl&open=1");
+    const problems: string[] = [];
+    let measured = 0;
+    const count = await page.locator(".run-card.is-live").count();
+    for (let i = 0; i < count; i++) {
+      await page.locator(".run-card.is-live .run-card-select").nth(i).click();
+      await page.locator(".status-card .exit-bar").waitFor();
+      await page.locator(".feed .act").first().waitFor();
+      const where = (await page.locator(".detail-title").innerText()).replace(/\s+/g, " ");
+      const r = await page.evaluate(() => {
+        const g = window.__geo;
+        const card = g.box(document.querySelector(".status-card")!);
+        const acts = document.querySelectorAll(".feed .act");
+        const third = acts.length >= 3 ? g.box(acts[2]) : null;
+        const qty = Array.from(document.querySelectorAll<HTMLElement>(".run-table > div")).find(
+          (d) => d.querySelector("dt")?.textContent === "보유 수량",
+        )!;
+        const dd = qty.querySelector<HTMLElement>("dd")!;
+        return {
+          cardH: card.h,
+          thirdBottom: third ? third.b : null,
+          bottom: window.innerHeight,
+          qty: dd.textContent,
+          title: dd.title,
+          cut: dd.scrollWidth > dd.clientWidth + 1,
+        };
+      });
+      // 예전 높이(약 400px)의 70% 남짓.
+      if (r.cardH > 292) problems.push(`${where}: 상태 카드 높이 ${r.cardH}px > 292px`);
+      // 견본 중 활동이 세 줄 이상인 실행(선물 3배 — 증거금 줄까지 있어 가장 높은 카드)으로 잼.
+      if (r.thirdBottom !== null) {
+        measured++;
+        if (r.thirdBottom > r.bottom)
+          problems.push(`${where}: 활동 기록 셋째 줄 아래 ${r.thirdBottom}px가 창 아래 ${r.bottom}px 밖`);
+      }
+      if (r.cut) problems.push(`${where}: 보유 수량 "${r.qty}"이 잘림`);
+      if (r.title !== r.qty) problems.push(`${where}: 보유 수량 풍선 도움말 "${r.title}" ≠ "${r.qty}"`);
+      if (where.includes("KRW-BTC") && r.qty !== "0.00127 BTC") problems.push(`${where}: 보유 수량 "${r.qty}"`);
+      if (where.includes("KRW-ZAMA") && r.qty !== "499.75012494 ZAMA") problems.push(`${where}: 보유 수량 "${r.qty}"`);
+      if (i === 0) await snap(page, info, "status-card-1040");
+    }
+    const symbols = await page.locator(".run-card.is-live .run-card-symbol").allInnerTexts();
+    expect(symbols, "수량 견본(KRW-BTC 0.00127 · KRW-ZAMA 499.75012494)").toEqual(
+      expect.arrayContaining(["KRW-BTC", "KRW-ZAMA"]),
+    );
+    expect(measured, "활동 기록 세 줄 이상인 실행을 잰 수").toBeGreaterThan(0);
+    expect(problems).toEqual([]);
+  });
+});
