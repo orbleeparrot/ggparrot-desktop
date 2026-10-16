@@ -54,7 +54,7 @@ async fn rejects_redirects_bad_status_and_bad_json_without_echo() {
         assert_eq!(detect_public_ipv4_from(&server.uri()).await.unwrap_err(), DETECT_IP_FAILURE);
     }
     // 연결 실패 — 오류 문장(주소)을 그대로 돌려주지 않음.
-    let err = detect_public_ipv4_from("http://user:SECRET@127.0.0.1:9/").await.unwrap_err();
+    let err = detect_public_ipv4_from("https://user:SECRET@127.0.0.1:9/").await.unwrap_err();
     assert_eq!(err, DETECT_IP_FAILURE);
     assert!(!err.contains("SECRET"));
 }
@@ -124,6 +124,22 @@ fn other_exchange_keys_are_not_part_of_the_selected_check() {
     let original = preflight_fingerprint(&m, RunMode::Live, &c);
     c.exchanges.insert("bithumb".into(), KeyPair { api_key: "another".into(), api_secret: "other".into() });
     assert_eq!(original, preflight_fingerprint(&m, RunMode::Live, &c));
+}
+
+#[test]
+fn fingerprint_reads_the_exchange_name_like_the_session_payload() {
+    // 앞뒤 공백·대문자가 섞인 거래소 이름도 세션 시작 payload와 같은 이름(upbit)의 키로 지문을 만듦.
+    let m = json!({"exchange": " Upbit ", "symbol": "KRW-BTC"});
+    assert_eq!(crate::types::session_payload(&m, false, RunMode::Live)["exchange"], "upbit");
+    let original = preflight_fingerprint(&m, RunMode::Live, &creds(&[("upbit", "k", "s")], ""));
+    assert_ne!(original, preflight_fingerprint(&m, RunMode::Live, &creds(&[("upbit", "other", "s")], "")));
+    // 문자열이 아니거나 빈 이름은 payload처럼 binance로 읽음.
+    for odd in [json!(5), json!(true), json!("  "), json!(["upbit"])] {
+        let m = json!({"exchange": odd, "symbol": "BTCUSDT"});
+        assert_eq!(crate::types::session_payload(&m, false, RunMode::Live)["exchange"], "binance");
+        let with = |key: &str| preflight_fingerprint(&m, RunMode::Live, &creds(&[("binance", key, "s")], ""));
+        assert_ne!(with("k"), with("other"), "{odd}");
+    }
 }
 
 #[test]
@@ -319,10 +335,41 @@ fn cached_expiry_and_routing_caveats_are_truthful() {
 
 #[test]
 fn official_api_management_pages_are_a_static_domestic_allowlist() {
-    assert_eq!(api_management_url("upbit").unwrap(), "https://www.upbit.com/mypage/open_api_management");
-    assert_eq!(api_management_url("bithumb").unwrap(), "https://www.bithumb.com/react/api-support/management-api");
-    for ex in ["binance", "https://evil.test", "upbit?key=secret", "Upbit"] {
-        assert_eq!(api_management_url(ex).unwrap_err(), "이 거래소의 공식 API 관리 페이지를 확인하지 못했어요.");
+    assert_eq!(api_management_url("upbit", "").unwrap(), "https://www.upbit.com/mypage/open_api_management");
+    assert_eq!(
+        api_management_url("bithumb", "live").unwrap(),
+        "https://www.bithumb.com/react/api-support/management-api",
+        "국내는 env를 보지 않음"
+    );
+    for ex in ["binance", "https://evil.test", "upbit?key=secret", "Upbit", "binance:live"] {
+        assert_eq!(api_management_url(ex, "").unwrap_err(), "이 거래소의 공식 API 관리 페이지를 확인하지 못했어요.");
+    }
+}
+
+#[test]
+fn binance_env_follows_mode_and_market() {
+    assert_eq!(binance_env(RunMode::Testnet, Market::Spot), "testnet");
+    assert_eq!(binance_env(RunMode::Mock, Market::Spot), "testnet", "모의도 연습 환경");
+    assert_eq!(binance_env(RunMode::Testnet, Market::Futures), "demo");
+    assert_eq!(binance_env(RunMode::Mock, Market::Futures), "demo");
+    assert_eq!(binance_env(RunMode::Live, Market::Futures), "live");
+    assert_eq!(binance_env(RunMode::Live, Market::Spot), "live");
+}
+
+#[test]
+fn each_binance_env_opens_its_own_official_page() {
+    assert_eq!(api_management_url("binance", "testnet").unwrap(), "https://testnet.binance.vision/");
+    assert_eq!(
+        api_management_url("binance", "demo").unwrap(),
+        "https://demo.binance.com/en/my/settings/api-management"
+    );
+    assert_eq!(api_management_url("binance", "live").unwrap(), "https://www.binance.com/en/my/settings/api-management");
+    assert_eq!(exchange_home_url("binance", "testnet").unwrap(), "https://testnet.binance.vision/");
+    assert_eq!(exchange_home_url("binance", "demo").unwrap(), "https://demo.binance.com/en/futures/BTCUSDT");
+    assert_eq!(exchange_home_url("binance", "live").unwrap(), "https://www.binance.com/en");
+    for env in ["", "mainnet", "LIVE", "live/../x"] {
+        assert!(api_management_url("binance", env).is_err(), "{env}");
+        assert!(exchange_home_url("binance", env).is_err(), "{env}");
     }
 }
 
@@ -402,6 +449,16 @@ fn success_adds_only_an_observation_preserving_all_saved_keys_and_other_history(
 }
 
 #[test]
+fn padded_exchange_name_records_history_under_the_exchange() {
+    let mut h = History::new();
+    h.m = json!({"exchange": " UPBIT", "symbol": "KRW-BTC"});
+    h.check = PreflightResult::new(true, "검사", preflight_fingerprint(&h.m, RunMode::Live, &h.saved));
+    h.check.checked_at = at(h.base, 100.0);
+    let updated = h.updated(None, None, None, None, RunMode::Live).unwrap();
+    assert_eq!(updated.connection_history["upbit"].public_ipv4, "8.8.8.8");
+}
+
+#[test]
 fn unsaved_edited_mock_failed_or_stale_checks_cannot_create_history() {
     let h = History::new();
     assert!(h.updated(Some(Credentials::default()), None, None, None, RunMode::Live).is_none());
@@ -461,6 +518,42 @@ fn each_exchange_error_points_at_the_row_that_blocked() {
 }
 
 #[test]
+fn binance_views_split_key_ip_and_permission() {
+    use Check::*;
+    // (검사 통과, 키 인증, 허용 IP, 주문 권한, problem, 제목) — 통과한 것만 connected.
+    type Row = (bool, Check, Check, Check, &'static str, &'static str);
+    let cases: [(&str, Row); 12] = [
+        ("binance_verified", (true, Ok, Ok, Ok, "", "연결 완료")),
+        ("binance_verified_open", (true, Ok, Na, Ok, "", "연결 완료")),
+        ("binance_test_ok", (true, Ok, Na, Na, "", "연결 완료")),
+        ("binance_key", (false, Bad, Wait, Wait, "auth", "키 확인 필요")),
+        ("binance_access_test", (false, Bad, Na, Wait, "auth", "키 확인 필요")),
+        ("binance_access", (false, Wait, Bad, Wait, "ip", "허용 IP 확인 필요")),
+        ("binance_ip_unrestricted", (false, Ok, Bad, Bad, "ip", "허용 IP 등록 필요")),
+        ("binance_no_trade", (false, Ok, Ok, Bad, "order", "주문 권한 확인 필요")),
+        ("binance_no_futures", (false, Ok, Ok, Bad, "order", "주문 권한 확인 필요")),
+        // 잔고(증거금) 부족 — 연결은 됐고 국내 잔고 부족과 같은 'order_size'.
+        ("binance_funds", (false, Ok, Ok, Ok, "order_size", "연결 완료")),
+        ("binance_funds_open", (false, Ok, Na, Ok, "order_size", "연결 완료")),
+        ("binance_funds_test", (false, Ok, Na, Na, "order_size", "연결 완료")),
+    ];
+    for (name, (ok, auth, ip, order, problem, headline)) in cases {
+        let connected = ok || problem == "order_size";
+        let v = check_view("binance", ok, name);
+        assert_eq!((v.auth, v.ip, v.order, v.connected), (auth, ip, order, connected), "{name}");
+        assert_eq!((v.problem.as_str(), v.headline.as_str()), (problem, headline), "{name}");
+        assert!(crate::setup_progress::PROBLEMS.contains(&v.problem.as_str()), "{name}");
+    }
+    assert_eq!(check_view("binance", true, "binance_test_ok").notes.ip, "필요 없음");
+    assert_eq!(check_view("binance", false, "binance_access").notes.ip, "IP 또는 키 불일치");
+    assert!(check_view("binance", false, "binance_no_futures").notes.order.contains("Enable Futures"));
+    // 국내 이름은 바이낸스 판정을 타지 않고, 국내에서 바이낸스 이름은 모르는 오류임.
+    assert_eq!(check_view("binance", false, "under_min_total").problem, "order_size");
+    assert_eq!(check_view("upbit", false, "binance_key").problem, "other");
+    assert_eq!(check_view("upbit", false, "out_of_scope").notes, CheckNotes::default());
+}
+
+#[test]
 fn order_size_failures_still_mean_the_keys_are_connected() {
     for name in ["insufficient_funds_bid", "under_min_total", "under_min_total_market_bid", "over_krw_funds_bid"] {
         let v = check_view("upbit", false, name);
@@ -486,6 +579,21 @@ fn exchange_keys_are_accepted_as_copied() {
     assert_eq!(clipboard_key_is_secret("bithumb", &access), Some(false));
     assert_eq!(clipboard_key_is_secret("bithumb", &secret), Some(true));
     assert_eq!(clipboard_key_is_secret("upbit", &access), None, "업비트는 복사 순서");
+}
+
+#[test]
+fn binance_keys_are_taken_in_copy_order() {
+    let api = "0lOHb8TL".repeat(8);
+    let secret = "Zq9x".repeat(16);
+    assert_eq!((api.len(), secret.len()), (64, 64));
+    assert_eq!(clipboard_key("binance", &format!(" {api}\n")), api);
+    assert_eq!(clipboard_key("binance", &secret), secret);
+    assert_eq!(clipboard_key_is_secret("binance", &api), None, "두 칸이 같은 모양이라 복사 순서");
+    for value in
+        ["Passw0rdManagerGen3rated".to_string(), "a1".repeat(23), format!("{}+/", "a1".repeat(31)), "K".repeat(64)]
+    {
+        assert_eq!(clipboard_key("binance", &value), "", "{value}");
+    }
 }
 
 #[test]
@@ -527,9 +635,9 @@ fn addresses_urls_sentences_and_short_values_are_ignored() {
 
 #[test]
 fn shortcuts_are_a_static_official_allowlist() {
-    assert_eq!(exchange_home_url("upbit").unwrap(), "https://upbit.com/");
-    assert_eq!(exchange_home_url("bithumb").unwrap(), "https://www.bithumb.com/");
+    assert_eq!(exchange_home_url("upbit", "").unwrap(), "https://upbit.com/");
+    assert_eq!(exchange_home_url("bithumb", "").unwrap(), "https://www.bithumb.com/");
     for bad in ["binance", "https://evil.example", ""] {
-        assert_eq!(exchange_home_url(bad).unwrap_err(), "이 거래소의 공식 홈페이지를 확인하지 못했어요.");
+        assert_eq!(exchange_home_url(bad, "").unwrap_err(), "이 거래소의 공식 홈페이지를 확인하지 못했어요.");
     }
 }

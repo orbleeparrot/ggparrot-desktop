@@ -7,20 +7,15 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use super::{exc_text, positive_number, Broker, BrokerError, LogFn, Order, OrderRules, OrderSide, SubmitRequest};
+use super::{exc_text, positive_f64, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest};
 use crate::types::{Market, Side};
 
-const MOCK_DEFAULT_FEE: f64 = 0.0005;
 const MOCK_FALLBACK_RULES: OrderRules = OrderRules { step: 0.0, min_notional: 0.0 };
 
 pub struct MockBroker {
     inner: Arc<dyn Broker>,
     log: Mutex<LogFn>,
     noted: Mutex<HashSet<&'static str>>,
-}
-
-fn number(x: f64) -> f64 {
-    serde_json::Number::from_f64(x).map(|n| positive_number(&serde_json::Value::Number(n))).unwrap_or(0.0)
 }
 
 impl MockBroker {
@@ -41,12 +36,13 @@ impl MockBroker {
     }
 
     fn fee_rate(&self) -> f64 {
-        // 바이낸스 어댑터에는 수수료율이 없음. 읽지 못했거나 0이면 기본값으로 대신함.
-        let rate = self.inner.bid_fee().map(number).unwrap_or(0.0);
-        if rate != 0.0 {
+        // 바이낸스 어댑터에는 수수료율이 없음. 읽지 못했거나 0이면 거래소·시장 기본값
+        // (바이낸스 현물 0.1%·선물 0.05%·업비트 0.05%·빗썸 0.25%)으로 대신함.
+        let rate = self.inner.bid_fee().map(positive_f64).unwrap_or(0.0);
+        if rate != 0.0 && crate::pnl::plausible_rate(rate) {
             rate
         } else {
-            MOCK_DEFAULT_FEE
+            self.inner.default_fee_rate()
         }
     }
 }
@@ -68,8 +64,17 @@ impl Broker for MockBroker {
     fn bid_fee(&self) -> Option<f64> {
         self.inner.bid_fee()
     }
+    fn ask_fee(&self) -> Option<f64> {
+        self.inner.ask_fee()
+    }
+    fn default_fee_rate(&self) -> f64 {
+        self.inner.default_fee_rate()
+    }
     fn last_error_name(&self) -> String {
         self.inner.last_error_name()
+    }
+    fn last_error_code(&self) -> String {
+        self.inner.last_error_code()
     }
     fn set_log(&self, log: LogFn) {
         self.inner.set_log(log.clone());
@@ -124,7 +129,8 @@ impl Broker for MockBroker {
         if ok {
             return (true, reason);
         }
-        self.log(format!("모의 모드: 실전이라면 여기서 막힙니다 — {reason}"));
+        let line = format!("모의 모드: 실전이라면 여기서 막힙니다 — {reason}");
+        self.log(super::with_error_code(&line, &self.inner.last_error_code()));
         (true, format!("모의라서 그대로 진행해요. 실전이라면 막힐 이유: {reason}"))
     }
 
@@ -135,13 +141,13 @@ impl Broker for MockBroker {
     /// 현재가로 즉시 전부 체결된 것으로 돌려줌. 안쪽 submit은 어떤 경우에도 부르지 않음.
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError> {
         let buying = req.side == OrderSide::Buy;
-        let price = number(self.inner.price().await?);
+        let price = positive_f64(self.inner.price().await?);
         if price == 0.0 {
             return Err(BrokerError::Other("모의 체결에 쓸 현재가를 받지 못했어요".into()));
         }
-        let notional = req.notional.map(number).unwrap_or(0.0);
+        let notional = req.notional.map(positive_f64).unwrap_or(0.0);
         let executed =
-            if buying && notional != 0.0 { notional / price } else { req.base_qty.map(number).unwrap_or(0.0) };
+            if buying && notional != 0.0 { notional / price } else { req.base_qty.map(positive_f64).unwrap_or(0.0) };
         if executed == 0.0 {
             return Err(BrokerError::Other("모의 주문에 쓸 금액이나 수량이 없어요".into()));
         }
@@ -151,6 +157,9 @@ impl Broker for MockBroker {
         if buying && !closing && self.inner.fee_from_base_asset() {
             acquired = executed * (1.0 - self.fee_rate());
         }
+        // 모의 수수료(견적 통화) — 현물·선물 모두 알려 줌(화면의 수수료 반영 손익을 연습에서도 보이게).
+        // 실전 선물은 수수료를 읽지 않아 화면이 '수수료 제외 전'으로 보임.
+        let fee = Some(FeePaid { quote: executed * price * self.fee_rate(), other: vec![] });
         Ok(Order {
             status: "FILLED".into(),
             executed_qty: executed,
@@ -159,7 +168,16 @@ impl Broker for MockBroker {
             fees_known: true,
             order_id: Some(format!("mock-{}", req.client_id)),
             raw_status: "MOCK_FILLED".into(),
+            fee,
         })
+    }
+
+    fn balance_note(&self) -> String {
+        self.inner.balance_note()
+    }
+
+    fn day_change(&self) -> Option<f64> {
+        self.inner.day_change()
     }
 }
 

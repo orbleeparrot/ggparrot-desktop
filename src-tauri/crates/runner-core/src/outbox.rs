@@ -9,8 +9,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
 
 pub const MAX_BATCH: usize = 100;
 /// JSON 본문 틀까지 포함해 서버 상한(256 KiB)보다 낮게 잡음. 보낼 때는 비 ASCII 글자를 이스케이프하므로
@@ -286,9 +286,7 @@ pub type Clock = Arc<dyn Fn() -> f64 + Send + Sync>;
 
 /// 기본 시계 — 유닉스 초(소수).
 pub fn system_clock() -> Clock {
-    Arc::new(|| {
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
-    })
+    Arc::new(crate::clock::unix_secs)
 }
 
 /// 테스트·진단용 장애 주입. `Append`는 append만, `All`은 DB를 여는 모든 동작이 실패함.
@@ -326,10 +324,9 @@ pub struct LossStats {
 
 pub struct EventOutbox {
     path: PathBuf,
-    clock: RwLock<Clock>,
-    max_rows: AtomicI64,
-    max_bytes: AtomicI64,
-    ttl_seconds: AtomicI64,
+    clock: Clock,
+    /// 열 때 기본값 안으로 자른 보관 한도.
+    limits: OutboxLimits,
     fault: AtomicU8,
     conn: Mutex<Option<Connection>>,
     /// 밀린 기록 다시 보내기 상태 — 같은 저장함을 쓰는 모든 실행(ServerClient)이 함께 씀.
@@ -363,17 +360,15 @@ impl EventOutbox {
         Self::open_with(path, system_clock(), OutboxLimits::default())
     }
 
-    pub fn open_with_clock(path: Option<PathBuf>, clock: Clock) -> Self {
-        Self::open_with(path, clock, OutboxLimits::default())
-    }
-
     pub fn open_with(path: Option<PathBuf>, clock: Clock, limits: OutboxLimits) -> Self {
         let outbox = EventOutbox {
             path: path.unwrap_or_else(default_path),
-            clock: RwLock::new(clock),
-            max_rows: AtomicI64::new(limits.max_rows.clamp(1, MAX_PENDING_ROWS)),
-            max_bytes: AtomicI64::new(limits.max_bytes.clamp(1, MAX_PENDING_BYTES)),
-            ttl_seconds: AtomicI64::new(limits.ttl_seconds.clamp(1, PENDING_TTL_SECONDS)),
+            clock,
+            limits: OutboxLimits {
+                max_rows: limits.max_rows.clamp(1, MAX_PENDING_ROWS),
+                max_bytes: limits.max_bytes.clamp(1, MAX_PENDING_BYTES),
+                ttl_seconds: limits.ttl_seconds.clamp(1, PENDING_TTL_SECONDS),
+            },
             fault: AtomicU8::new(OutboxFault::None as u8),
             conn: Mutex::new(None),
             recovery: Mutex::new(RecoveryState::default()),
@@ -387,15 +382,7 @@ impl EventOutbox {
         &self.path
     }
 
-    pub fn set_clock(&self, clock: Clock) {
-        *self.clock.write().unwrap_or_else(|e| e.into_inner()) = clock;
-    }
-
-    pub fn set_max_rows(&self, rows: i64) {
-        *self.estimate.lock().unwrap_or_else(|e| e.into_inner()) = None;
-        self.max_rows.store(rows.clamp(1, MAX_PENDING_ROWS), Ordering::SeqCst);
-    }
-
+    #[cfg(test)]
     pub fn set_fault(&self, fault: OutboxFault) {
         self.fault.store(fault as u8, Ordering::SeqCst);
     }
@@ -405,13 +392,13 @@ impl EventOutbox {
     }
 
     /// 지금 DB를 쓸 수 있는지(열려 있지 않으면 한 번 열어 봄).
+    #[cfg(test)]
     pub fn is_available(&self) -> bool {
         self.with_db(|_| Ok(())).is_ok()
     }
 
     pub fn now_ms(&self) -> i64 {
-        let clock = self.clock.read().unwrap_or_else(|e| e.into_inner()).clone();
-        ((clock() * 1000.0) as i64).max(1)
+        (((self.clock)() * 1000.0) as i64).max(1)
     }
 
     fn with_db<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T, String>) -> Result<T, String> {
@@ -488,14 +475,6 @@ impl EventOutbox {
         Ok(conn)
     }
 
-    fn limits(&self) -> (i64, i64, i64) {
-        (
-            self.max_rows.load(Ordering::SeqCst),
-            self.max_bytes.load(Ordering::SeqCst),
-            self.ttl_seconds.load(Ordering::SeqCst),
-        )
-    }
-
     fn count_loss(db: &Connection, reason: &str, count: i64, now: i64) -> Result<(), String> {
         if !LOSS_REASONS.contains(&reason) || count <= 0 {
             return Ok(());
@@ -510,7 +489,7 @@ impl EventOutbox {
 
     fn prune(&self, db: &Connection, now: i64) -> Result<(), String> {
         // 계정·세션 조건을 걸지 않음 — 다른 회원 키의 기록과 session=0 고아 기록도 같은 로컬 보관 한도에 듦.
-        let (max_rows, max_bytes, ttl) = self.limits();
+        let OutboxLimits { max_rows, max_bytes, ttl_seconds: ttl } = self.limits;
         let expired =
             db.execute("DELETE FROM pending_events WHERE created_ms<=?", params![now - ttl * 1000]).map_err(db_err)?;
         Self::count_loss(db, "disk_expired", expired as i64, now)?;
@@ -548,7 +527,7 @@ impl EventOutbox {
     /// 기록 하나를 더하는 쓰기의 정리. 어림값으로도 한도 안이면 기한 지난 것만 지우고(색인을 탐),
     /// 아니면 전체를 세는 [`prune`]으로 — 장애 동안 실행 여럿이 로그를 쓸 때 매번 표 전체를 세지 않게.
     fn prune_for_append(&self, db: &Connection, now: i64, added_bytes: i64) -> Result<(), String> {
-        let (max_rows, max_bytes, ttl) = self.limits();
+        let OutboxLimits { max_rows, max_bytes, ttl_seconds: ttl } = self.limits;
         let fits = {
             let mut est = self.estimate.lock().unwrap_or_else(|e| e.into_inner());
             match *est {
@@ -590,11 +569,7 @@ impl EventOutbox {
         })
     }
 
-    /// 오류를 삼키는 판 — 오류가 필요하면 try_maintain.
-    pub fn maintain(&self, force: bool) {
-        let _ = self.try_maintain(force);
-    }
-
+    #[cfg(test)]
     pub fn loss_stats(&self) -> Result<LossStats, String> {
         self.with_db(|db| {
             let mut stats = db
@@ -634,10 +609,6 @@ impl EventOutbox {
         })
     }
 
-    pub fn record_memory_loss(&self, counts: &BTreeMap<String, u64>) {
-        let _ = self.try_record_memory_loss(counts);
-    }
-
     /// 이 파일을 쓰는 모든 클라이언트를 통틀어 1분에 한 번만, 그동안 늘어난 손실 수를 가져감.
     /// 키는 LOSS_REASONS 넷 모두, 알릴 것이 없으면 빈 맵.
     pub fn try_take_loss_notice(&self) -> Result<BTreeMap<String, u64>, String> {
@@ -674,6 +645,7 @@ impl EventOutbox {
     }
 
     /// 오류면 빈 맵 — 오류를 구분해야 하면 try_take_loss_notice.
+    #[cfg(test)]
     pub fn take_loss_notice(&self) -> BTreeMap<String, u64> {
         self.try_take_loss_notice().unwrap_or_default()
     }

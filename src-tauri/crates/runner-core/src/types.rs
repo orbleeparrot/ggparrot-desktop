@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-use crate::RUNNER_VERSION;
+use crate::SERVER_LINK_LEVEL;
 
 pub const DEFAULT_SERVER_BASE: &str = "https://gg-parrot.onrender.com";
 pub const LOCAL_SERVER_BASE: &str = "http://127.0.0.1:8000";
@@ -112,23 +112,26 @@ impl Exchange {
     }
 }
 
-/// 설정의 키 칸. 바이낸스는 실거래와 테스트넷 키가 다르므로 칸이 둘임.
+/// 설정의 키 칸. 바이낸스는 사이트마다 키가 달라 칸이 셋임 — 실거래·현물 테스트넷·선물 데모.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeySlot {
     Binance,
     BinanceTestnet,
+    BinanceDemo,
     Upbit,
     Bithumb,
 }
 
 impl KeySlot {
-    pub const ALL: [KeySlot; 4] = [KeySlot::Binance, KeySlot::BinanceTestnet, KeySlot::Upbit, KeySlot::Bithumb];
+    pub const ALL: [KeySlot; 5] =
+        [KeySlot::Binance, KeySlot::BinanceTestnet, KeySlot::BinanceDemo, KeySlot::Upbit, KeySlot::Bithumb];
 
     pub fn parse(s: &str) -> Option<KeySlot> {
         match s.trim().to_lowercase().as_str() {
             "binance" => Some(KeySlot::Binance),
             "binance_testnet" => Some(KeySlot::BinanceTestnet),
+            "binance_demo" => Some(KeySlot::BinanceDemo),
             "upbit" => Some(KeySlot::Upbit),
             "bithumb" => Some(KeySlot::Bithumb),
             _ => None,
@@ -139,13 +142,14 @@ impl KeySlot {
         match self {
             KeySlot::Binance => "binance",
             KeySlot::BinanceTestnet => "binance_testnet",
+            KeySlot::BinanceDemo => "binance_demo",
             KeySlot::Upbit => "upbit",
             KeySlot::Bithumb => "bithumb",
         }
     }
     pub fn exchange(self) -> Exchange {
         match self {
-            KeySlot::Binance | KeySlot::BinanceTestnet => Exchange::Binance,
+            KeySlot::Binance | KeySlot::BinanceTestnet | KeySlot::BinanceDemo => Exchange::Binance,
             KeySlot::Upbit => Exchange::Upbit,
             KeySlot::Bithumb => Exchange::Bithumb,
         }
@@ -153,51 +157,102 @@ impl KeySlot {
     pub fn label(self) -> &'static str {
         match self {
             KeySlot::BinanceTestnet => "바이낸스 테스트넷",
+            KeySlot::BinanceDemo => "바이낸스 데모",
             other => other.exchange().label(),
         }
     }
-    /// 이 칸으로 하는 연결 확인의 모드 — 테스트넷 칸은 테스트넷 주소, 나머지는 실거래.
+    /// 연습 사이트 칸(현물 테스트넷·선물 데모) 여부 — 허용 IP 없이 연습 주소로 확인함.
+    pub fn is_practice(self) -> bool {
+        matches!(self, KeySlot::BinanceTestnet | KeySlot::BinanceDemo)
+    }
+    /// 이 칸으로 하는 연결 확인의 모드 — 연습 칸은 테스트넷 모드(연습 주소), 나머지는 실거래.
     pub fn check_mode(self) -> RunMode {
-        if self == KeySlot::BinanceTestnet {
+        if self.is_practice() {
             RunMode::Testnet
         } else {
             RunMode::Live
         }
     }
-    /// 이 거래소·모드로 도는 매크로가 쓰는 칸. 모의는 키가 없어도 돌지만 있으면 실거래 칸을 씀.
-    pub fn for_run(ex: Exchange, mode: RunMode) -> KeySlot {
-        match (ex, mode) {
-            (Exchange::Binance, RunMode::Testnet) => KeySlot::BinanceTestnet,
-            (Exchange::Binance, _) => KeySlot::Binance,
-            (Exchange::Upbit, _) => KeySlot::Upbit,
-            (Exchange::Bithumb, _) => KeySlot::Bithumb,
+    /// 연결 도우미가 안내하는 바이낸스 사이트(`connection::binance_env`). 국내는 "".
+    pub fn binance_env(self) -> &'static str {
+        match self {
+            KeySlot::Binance => "live",
+            KeySlot::BinanceTestnet => "testnet",
+            KeySlot::BinanceDemo => "demo",
+            KeySlot::Upbit | KeySlot::Bithumb => "",
+        }
+    }
+    /// 칸이 정하는 확인 시장 — 연습 칸은 사이트가 곧 시장(테스트넷 현물·데모 선물), 국내는 현물.
+    /// 바이낸스 실거래 칸만 None — 한 키로 현물·선물을 모두 쓰므로 쓰는 실행에 따라 고름.
+    pub fn fixed_market(self) -> Option<Market> {
+        match self {
+            KeySlot::Binance => None,
+            KeySlot::BinanceDemo => Some(Market::Futures),
+            KeySlot::BinanceTestnet | KeySlot::Upbit | KeySlot::Bithumb => Some(Market::Spot),
+        }
+    }
+    /// 이 거래소·모드·시장으로 도는 매크로가 쓰는 칸. 바이낸스 연습은 현물이면 테스트넷 칸, 선물이면 데모 칸.
+    /// 모의는 키가 없어도 돌지만 있으면 실거래 칸을 씀(실거래 주소로 주문 전 확인만 함).
+    pub fn for_run(ex: Exchange, mode: RunMode, market: Market) -> KeySlot {
+        match (ex, mode, market) {
+            (Exchange::Binance, RunMode::Testnet, Market::Spot) => KeySlot::BinanceTestnet,
+            (Exchange::Binance, RunMode::Testnet, Market::Futures) => KeySlot::BinanceDemo,
+            (Exchange::Binance, ..) => KeySlot::Binance,
+            (Exchange::Upbit, ..) => KeySlot::Upbit,
+            (Exchange::Bithumb, ..) => KeySlot::Bithumb,
         }
     }
     /// 설정 화면의 연결 확인에 쓰는 기본 매크로(주문 없이 키·허용 IP·권한만 봄).
     pub fn probe_macro(self) -> Value {
-        match self.exchange() {
-            Exchange::Binance => json!({"symbol": "BTCUSDT", "exchange": "binance", "position_side": "long",
-                                        "leverage": 1, "params": {"initial_capital": 10}}),
-            ex => json!({"symbol": "KRW-BTC", "exchange": ex.as_str(), "position_side": "long",
-                         "leverage": 1, "params": {"initial_capital": 10000}}),
+        self.probe_macro_in(Market::Spot)
+    }
+    /// 시장을 고른 확인 매크로 — 바이낸스 선물 키(데모·실거래)는 선물 주소로 확인해야 함. 국내는 늘 현물.
+    /// 선물은 레버리지 2배·100 USDT로 둠 — 선물 최소 주문 금액(100 USDT)에 걸려 키 확인 전에 멈추지 않게.
+    pub fn probe_macro_in(self, market: Market) -> Value {
+        match (self.exchange(), market) {
+            (Exchange::Binance, Market::Futures) => json!({"symbol": "BTCUSDT", "exchange": "binance",
+                "position_side": "long", "leverage": 2, "params": {"initial_capital": 100}}),
+            (Exchange::Binance, Market::Spot) => json!({"symbol": "BTCUSDT", "exchange": "binance",
+                "position_side": "long", "leverage": 1, "params": {"initial_capital": 10}}),
+            (ex, _) => json!({"symbol": "KRW-BTC", "exchange": ex.as_str(), "position_side": "long",
+                              "leverage": 1, "params": {"initial_capital": 10000}}),
+        }
+    }
+    /// 바이낸스 연결 도우미가 안내하는 사이트(`connection::binance_env`)의 키 칸 — testnet·demo·live 그대로.
+    #[cfg(test)]
+    pub fn for_binance_env(env: &str) -> KeySlot {
+        match env {
+            "testnet" => KeySlot::BinanceTestnet,
+            "demo" => KeySlot::BinanceDemo,
+            _ => KeySlot::Binance,
         }
     }
 }
 
-/// 기초 자산 이름 — `BTCUSDT` → BTC, `KRW-BTC` → BTC.
-pub fn base_asset(symbol: &str) -> String {
+/// 바이낸스 심볼 끝에서 찾는 견적 통화. 앞에서부터 처음 맞는 것을 씀.
+const BINANCE_QUOTES: [&str; 6] = ["FDUSD", "USDT", "USDC", "BUSD", "BTC", "ETH"];
+
+/// 심볼을 (기초 자산, 견적 통화)로 나눔. 앞뒤 공백을 빼고 대문자로 맞춤.
+/// - 국내 `KRW-BTC` → (BTC, KRW)
+/// - 바이낸스 `BTCUSDT` → (BTC, USDT). 견적 통화는 끝에서 [`BINANCE_QUOTES`] 순서로 찾고, 기초 자산이 비는
+///   경우(`USDT` 하나뿐)는 건너뜀. USDT·USDC 밖의 견적도 같은 규칙(`ETHBTC` → (ETH, BTC))
+/// - 견적 통화를 모르는 심볼(`BTCKRW` 등) → (심볼 전체, "")
+pub fn split_symbol(symbol: &str) -> (String, &'static str) {
     let s = symbol.trim().to_uppercase();
     if let Some(rest) = s.strip_prefix("KRW-") {
-        return rest.to_string();
+        return (rest.to_string(), "KRW");
     }
-    for q in ["USDT", "BUSD", "USDC", "FDUSD"] {
-        if let Some(b) = s.strip_suffix(q) {
-            if !b.is_empty() {
-                return b.to_string();
-            }
+    for q in BINANCE_QUOTES {
+        if let Some(b) = s.strip_suffix(q).filter(|b| !b.is_empty()) {
+            return (b.to_string(), q);
         }
     }
-    s
+    (s, "")
+}
+
+/// 기초 자산 이름 — `BTCUSDT` → BTC, `KRW-BTC` → BTC. 견적 통화를 모르면 심볼 전체([`split_symbol`]).
+pub fn base_asset(symbol: &str) -> String {
+    split_symbol(symbol).0
 }
 
 /// 이름으로 라벨. 모르는 이름은 그대로 돌려줌.
@@ -238,9 +293,10 @@ impl RunMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Market {
+    #[default]
     Spot,
     Futures,
 }
@@ -380,7 +436,6 @@ pub fn macro_leverage(m: &Value) -> Result<u32, String> {
     Ok(if lev < 1.0 { 1 } else { lev.min(1000.0) as u32 })
 }
 
-/// 호가 통화 — 국내는 `KRW-BTC`, 바이낸스는 `BTCUSDT`.
 /// 지원하지 않는 거래소의 매크로 — 어디서 막히든 같은 문장으로 알림.
 pub fn unsupported_exchange_message(name: &str) -> String {
     let name = if name.trim().is_empty() { "알 수 없음" } else { name.trim() };
@@ -392,6 +447,7 @@ pub fn exchange_key_needed_message(label: &str) -> String {
     format!("{label} 거래소 키가 필요해요. 설정 › 거래소 연결에서 넣어 주세요.")
 }
 
+/// 호가 통화 — 국내는 `KRW-BTC`, 바이낸스는 `BTCUSDT`.
 pub fn quote_of(symbol: &str) -> &'static str {
     if symbol.trim().to_uppercase().starts_with("KRW-") {
         "KRW"
@@ -435,7 +491,7 @@ pub fn session_payload(m: &Value, testnet: bool, mode: RunMode) -> Value {
         "testnet": testnet,
         "mode": mode.as_str(),
         "human_summary": m.get("human_summary").cloned().unwrap_or(Value::String(String::new())),
-        "runner_version": RUNNER_VERSION,
+        "runner_version": SERVER_LINK_LEVEL,
         "macro": m,
     })
 }

@@ -2,7 +2,42 @@
 
 use super::*;
 
+/// 실행 목록에 넣을 수 있는 매크로인지 — 아니면 사람이 읽을 이유.
+/// 서버가 시작을 거절할 매크로(적립식·SAR·여러 종목)는 목록에 넣기 전에 알림.
+pub(crate) fn check_runnable(macro_: &Value) -> Result<(), String> {
+    if !macro_.is_object() || runner_core::types::macro_symbol(macro_).is_empty() {
+        return Err(library::NOT_A_MACRO.into());
+    }
+    if let Some(why) = runner_core::macro_info::unsupported_reason(macro_) {
+        return Err(why.into());
+    }
+    runner_core::types::macro_leverage(macro_).map_err(|_| library::NOT_A_MACRO.to_string())?;
+    Ok(())
+}
+
 impl Shared {
+    /// 실행 목록 바꾸기의 공통 길 — 잠금 → `f` → runs.json 저장 → 잠금 풀기 → (저장 실패 알림) → 화면 보내기.
+    /// `f`가 Err면 바꾼 것이 없다는 뜻 — 저장·화면 보내기 없이 그 값을 그대로 돌려줌.
+    pub(crate) fn edit_runs<T, E>(&self, f: impl FnOnce(&mut Core) -> Result<T, E>) -> Result<T, E> {
+        let (out, saved) = {
+            let mut c = self.lock();
+            let out = f(&mut c)?;
+            (out, self.save_runs(&c))
+        };
+        self.warn_save_failed(saved);
+        self.emit();
+        Ok(out)
+    }
+
+    /// [`Shared::edit_runs`]에 더해, 실거래 칸의 확인 시장이 바뀌었으면 그 시장으로 다시 확인함
+    /// (실행 추가·빼기·모드 변경).
+    pub(crate) fn edit_runs_rechecking<T, E>(self: &S, f: impl FnOnce(&mut Core) -> Result<T, E>) -> Result<T, E> {
+        let before = self.live_probe_fingerprint();
+        let out = self.edit_runs(f)?;
+        self.recheck_live_slot_if_moved(&before);
+        Ok(out)
+    }
+
     /// 매크로 하나로 새 슬롯을 만듦. 만든 id.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn add_run(
@@ -13,17 +48,9 @@ impl Shared {
         library_file: Option<String>,
         base: Option<String>,
     ) -> Result<String, String> {
-        if !macro_.is_object() || runner_core::types::macro_symbol(&macro_).is_empty() {
-            return Err(library::NOT_A_MACRO.into());
-        }
-        // 서버가 시작을 거절할 매크로(적립식·SAR·여러 종목)는 목록에 넣기 전에 알림.
-        if let Some(why) = runner_core::macro_info::unsupported_reason(&macro_) {
-            return Err(why.into());
-        }
-        runner_core::types::macro_leverage(&macro_).map_err(|_| library::NOT_A_MACRO.to_string())?;
+        check_runnable(&macro_)?;
         let id = format!("run-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
-        {
-            let mut c = self.lock();
+        self.edit_runs_rechecking(|c| {
             let mut clean = macro_.clone();
             let sig = clean.as_object_mut().and_then(|o| o.remove("_sig")).filter(Value::is_object);
             let base = base.unwrap_or_else(|| c.server_base.clone());
@@ -44,9 +71,8 @@ impl Shared {
                     "warn",
                 );
             }
-            self.save_runs(&c);
-        }
-        self.emit();
+            Ok::<_, String>(())
+        })?;
         Ok(id)
     }
 
@@ -57,67 +83,72 @@ impl Shared {
         self.add_run(m, &title, "file", Some(file_name.to_string()), None)
     }
 
+    /// 목록 순서 바꾸기(끌어서 옮기기·Alt+↑↓) — 실행 중이어도 됨. 저장해서 다시 켜도 유지.
+    pub fn move_run(self: &S, id: &str, to: usize) {
+        let _ = self.edit_runs(|c| {
+            let from = c.runs.iter().position(|r| r.id == id).ok_or(())?;
+            let to = to.min(c.runs.len() - 1);
+            if from == to {
+                return Err(());
+            }
+            let r = c.runs.remove(from);
+            c.runs.insert(to, r);
+            Ok(())
+        });
+    }
+
     pub fn remove_run(self: &S, id: &str) -> Result<(), String> {
-        {
-            let mut c = self.lock();
-            let Some(r) = c.run(id) else { return Ok(()) };
+        // Err(Ok(())): 이미 없음 — 바꾼 것 없이 성공. Err(Err(_)): 뺄 수 없음.
+        let closing = self.edit_runs_rechecking(|c| {
+            let r = c.run(id).ok_or(Ok(()))?;
             if r.running() || r.start_pending {
-                return Err("실행 중인 매크로는 목록에서 뺄 수 없어요. 먼저 종료하세요.".into());
+                return Err(Err("실행 중인 매크로는 목록에서 뺄 수 없어요. 먼저 종료하세요.".to_string()));
             }
-            if let Some(rep) = c.run_mut(id).and_then(|r| r.reporter.take()) {
-                rep.close();
-            }
+            // 앱을 닫을 때처럼 웹 가이드에 '닫힘'을 알림 — 빼고 나면 가이드가 '진행 중'에 멈춰 있지 않게.
+            let closing = c.run_mut(id).and_then(Run::take_closing_report);
             c.runs.retain(|r| r.id != id);
             c.library_rev += 1;
-            self.save_runs(&c);
+            Ok(closing)
+        });
+        match closing {
+            Ok(Some((rep, payload))) => {
+                tauri::async_runtime::spawn(lifecycle::finish_report(rep, payload));
+                Ok(())
+            }
+            Ok(None) => Ok(()),
+            Err(unchanged) => unchanged,
         }
-        self.emit();
-        Ok(())
     }
 
     pub fn set_run_mode(self: &S, id: &str, mode: RunMode) {
-        {
-            let mut c = self.lock();
-            let Some(r) = c.run_mut(id) else { return };
-            if r.running() || r.start_pending || r.checking {
-                return;
-            }
+        let _ = self.edit_runs_rechecking(|c| {
+            let r = c.run_mut(id).filter(|r| !r.busy()).ok_or(())?;
             let allowed = r.exchange().is_none_or(Exchange::has_testnet);
             r.mode = if mode == RunMode::Testnet && !allowed { RunMode::Mock } else { mode };
-            r.generation += 1;
-            r.preflight = None;
-            self.save_runs(&c);
-        }
-        self.emit();
+            r.invalidate_preflight();
+            Ok::<_, ()>(())
+        });
     }
 
     pub fn activity_of(&self, id: &str) -> Vec<crate::state::ActivityDto> {
         self.lock().run(id).map(|r| r.activity.clone()).unwrap_or_default()
     }
 
-    pub fn copy_activity(&self, id: &str) -> bool {
+    pub fn copy_activity(&self, id: &str) -> Result<(), String> {
+        const FAILED: &str = "활동 기록을 복사하지 못했어요.";
         let text = {
             let c = self.lock();
-            let Some(r) = c.run(id) else { return false };
-            r.activity
-                .iter()
-                .map(|a| {
-                    let t = chrono::DateTime::from_timestamp_millis(a.at)
-                        .map(|d| d.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
-                        .unwrap_or_default();
-                    let mut line = format!("{t}  {}", a.title);
-                    if !a.detail.is_empty() {
-                        line.push_str(&format!(" — {}", a.detail));
-                    }
-                    if !a.raw.is_empty() && a.raw != a.title {
-                        line.push_str(&format!("\n          {}", a.raw.trim()));
-                    }
-                    line
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
+            let r = c.run(id).ok_or(FAILED)?;
+            let head = format!(
+                "[껄무새 활동 기록] {} {} · {} · v{}",
+                runner_core::types::exchange_label(&r.exchange_name()),
+                r.symbol(),
+                r.mode.label(),
+                self.version
+            );
+            crate::state::activity_copy_text(&head, &r.activity, crate::state::ACTIVITY_COPY_CHARS)
         };
-        self.write_clipboard(&text)
+        self.copy_text(&text, FAILED)
     }
 
     pub fn stop_run(self: &S, id: &str, mode: StopMode) {
@@ -167,34 +198,26 @@ impl Shared {
     /// 파일에서 연 매크로만 — 웹에서 연결한 매크로는 서버가 웹 저장본과 다르면 시작을 거절함(409).
     /// 바꾸면 서명과 달라져 웹의 내 에이전트에는 '수정된 파일'로 남음. 시작 전 확인은 새로 함.
     pub fn set_run_capital(self: &S, id: &str, amount: Option<f64>) -> Result<(), String> {
-        {
-            let mut c = self.lock();
-            let r = c.run_mut(id).ok_or("매크로를 찾지 못했어요.")?;
-            if r.running() || r.start_pending || r.checking {
-                return Err("실행 중에는 투자 금액을 바꿀 수 없어요. 종료한 뒤 바꾸세요.".into());
+        // Err(Ok(())): 되돌릴 원본이 없음 — 바꾼 것 없이 성공. Err(Err(_)): 바꿀 수 없음.
+        let fail = |m: &str| Err(Err(m.to_string()));
+        let edited = self.edit_runs(|c| {
+            let Some(r) = c.run_mut(id) else { return fail("매크로를 찾지 못했어요.") };
+            if r.busy() {
+                return fail("실행 중에는 투자 금액을 바꿀 수 없어요. 종료한 뒤 바꾸세요.");
             }
-            if r.source == "web" || r.user_macro_id.is_some() {
-                return Err(
-                    "웹에서 연결한 매크로는 여기서 투자 금액을 바꿀 수 없어요. 웹에서 고친 뒤 다시 연결하세요.".into(),
-                );
+            if r.capital_locked() {
+                return fail(CAPITAL_LOCKED);
             }
             let current = runner_core::macro_info::initial_capital(&r.macro_);
-            let target = match amount {
-                Some(a) => a,
-                None => match r.original_capital {
-                    Some(o) => o,
-                    None => return Ok(()),
-                },
-            };
+            let target = amount.or(r.original_capital).ok_or(Ok(()))?;
             if r.original_capital.is_none() {
                 r.original_capital = current;
             }
-            runner_core::macro_info::set_initial_capital(&mut r.macro_, target)?;
+            runner_core::macro_info::set_initial_capital(&mut r.macro_, target).map_err(Err)?;
             if r.original_capital.is_some_and(|o| (o - target).abs() < 1e-9) {
                 r.original_capital = None; // 원본과 같아짐
             }
-            r.generation += 1;
-            r.preflight = None;
+            r.invalidate_preflight();
             let quote = runner_core::types::quote_of(&r.symbol());
             let money = |v: f64| runner_core::money::price_text(v, quote);
             let detail = match current {
@@ -202,9 +225,11 @@ impl Shared {
                 None => format!("{} · 시작하면 연결을 새로 확인해요.", money(target)),
             };
             c.push_activity(id, "info", "투자 금액을 바꿨어요", &detail, "", false, "muted");
-            self.save_runs(&c);
+            Ok(())
+        });
+        match edited {
+            Ok(()) => Ok(()),
+            Err(unchanged) => unchanged,
         }
-        self.emit();
-        Ok(())
     }
 }

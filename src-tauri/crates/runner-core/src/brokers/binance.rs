@@ -3,26 +3,25 @@
 //! python-binance를 쓰지 않음. 서명이 필요한 호출은 쿼리 스트링에 `timestamp`·`recvWindow=5000`을 붙이고
 //! 그 글자 그대로의 HMAC-SHA256(hex) 값을 `signature`로 붙임. POST도 같은 쿼리 스트링으로 보냄(본문 없음).
 use async_trait::async_trait;
-use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Map, Value};
-use sha2::Sha256;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::AtomicI64;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::{
-    cool, cooling, exc_text, is_close, lookup_delay, network_error, positive_number, py_float_repr, py_str, py_truthy,
-    retry_after_secs, Broker, BrokerError, LogFn, Order, OrderRules, SubmitRequest, LOOKUP_ATTEMPTS, TERMINAL_STATUSES,
+    exc_text, lookup_delay, positive_f64, py_float_repr, py_str, Broker, BrokerError, LogFn, Order, OrderRules,
+    SubmitRequest, LOOKUP_ATTEMPTS,
 };
-use crate::types::{Market, Side};
+use crate::money::{plain_number, price_text, py_g, qty_text};
+use crate::types::{split_symbol, Market, Side};
 
 pub const SPOT_BASE: &str = "https://api.binance.com";
 pub const FUTURES_BASE: &str = "https://fapi.binance.com";
 pub const SPOT_TESTNET_BASE: &str = "https://testnet.binance.vision";
-pub const FUTURES_TESTNET_BASE: &str = "https://testnet.binancefuture.com";
+/// 선물 연습 주소 — 선물 연습 키는 demo.binance.com에서만 만들므로 공식 데모 주소로 보냄.
+pub const FUTURES_DEMO_BASE: &str = "https://demo-fapi.binance.com";
 
-/// 바이낸스가 주문 조회에 돌려주는 '더 조회해도 같은' 상태. TERMINAL_STATUSES보다 넓음.
 /// 선물 거래소 정보(심볼별)를 함께 쓰는 시간.
 const FUTURES_INFO_TTL: Duration = Duration::from_secs(300);
 
@@ -33,104 +32,18 @@ fn futures_info_cache() -> &'static Mutex<HashMap<String, (Instant, FuturesInfo)
     CACHE.get_or_init(Default::default)
 }
 
-/// 바이낸스 요청 하나의 제한 — 멈춘 연결이 손절·하트비트·정지를 붙잡지 않게.
-const BINANCE_TIMEOUT: Duration = Duration::from_secs(10);
-const BINANCE_SETTLED: [&str; 5] = ["FILLED", "CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"];
-
 #[derive(Clone, Debug)]
 pub struct BinanceUrls {
     pub spot: String,
     pub futures: String,
 }
 
-// --- 응답 읽기 도우미 ----------------------------------------------------------
+mod http;
+mod parse;
+mod rehearsal;
 
-/// 파이썬 `float(value)` — 문자열·숫자만. 읽지 못하면 None.
-fn py_float(value: &Value) -> Option<f64> {
-    match value {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.trim().parse::<f64>().ok(),
-        Value::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
-        _ => None,
-    }
-}
-
-/// 심볼 필터에서 (수량 단위, 최소 주문 금액)을 읽음.
-pub fn parse_filters(info: &Value) -> (f64, f64) {
-    let (mut step, mut min_notional) = (0.0, 0.0);
-    let Some(filters) = info.get("filters").and_then(Value::as_array) else {
-        return (step, min_notional);
-    };
-    for f in filters {
-        let kind = f.get("filterType").and_then(Value::as_str).unwrap_or("");
-        if (kind == "LOT_SIZE" || kind == "MARKET_LOT_SIZE") && step == 0.0 {
-            step = f.get("stepSize").and_then(py_float).unwrap_or(0.0);
-        } else if kind == "MIN_NOTIONAL" || kind == "NOTIONAL" {
-            // f.get("minNotional", f.get("notional", 0)) or 0
-            let raw = match f.get("minNotional") {
-                Some(v) => v.clone(),
-                None => f.get("notional").cloned().unwrap_or(Value::Null),
-            };
-            min_notional = if py_truthy(&raw) { py_float(&raw).unwrap_or(0.0) } else { 0.0 };
-        }
-    }
-    (step, min_notional)
-}
-
-/// 거래소 상태를 봇이 아는 네 가지로 접음.
-pub fn fold_status(raw: Option<&Value>) -> &'static str {
-    let status = match raw {
-        Some(v) if py_truthy(v) => py_str(v),
-        _ => return "UNKNOWN",
-    };
-    if status == "EXPIRED" || status == "EXPIRED_IN_MATCH" {
-        return "CANCELED";
-    }
-    TERMINAL_STATUSES.iter().find(|s| **s == status).copied().unwrap_or("OPEN")
-}
-
-/// 파이썬 `f"{x:g}"`.
-pub fn py_g(x: f64) -> String {
-    if x == 0.0 {
-        return "0".into();
-    }
-    if !x.is_finite() {
-        return py_float_repr(x);
-    }
-    let sci = format!("{x:.5e}");
-    let (mantissa, exp) = sci.split_once('e').unwrap_or((&sci, "0"));
-    let exp: i32 = exp.parse().unwrap_or(0);
-    let strip = |s: &str| -> String {
-        if s.contains('.') {
-            s.trim_end_matches('0').trim_end_matches('.').to_string()
-        } else {
-            s.to_string()
-        }
-    };
-    if !(-4..6).contains(&exp) {
-        let sign = if exp < 0 { '-' } else { '+' };
-        format!("{}e{sign}{:02}", strip(mantissa), exp.abs())
-    } else {
-        strip(&format!("{:.*}", (5 - exp) as usize, x))
-    }
-}
-
-/// 주문 수량 글자 — 지수 없이, 끝의 0 없이.
-fn fmt_qty(q: f64) -> String {
-    format!("{q}")
-}
-
-fn settled(order: &Value) -> bool {
-    order.get("status").and_then(Value::as_str).map(|s| BINANCE_SETTLED.contains(&s)).unwrap_or(false)
-}
-
-fn get_pos(obj: &Map<String, Value>, key: &str) -> f64 {
-    obj.get(key).map(positive_number).unwrap_or(0.0)
-}
-
-fn now_ms() -> u128 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
-}
+use parse::{asset_row, futures_available, num_of, settled, spot_free};
+pub use parse::{fold_status, parse_filters, spot_fills_fee};
 
 // --- 어댑터 ------------------------------------------------------------------
 
@@ -148,9 +61,19 @@ pub struct BinanceBroker {
     base_asset: Mutex<String>,
     rules: Mutex<OrderRules>,
     last_error_name: Mutex<String>,
+    /// 마지막 리허설에서 거래소가 돌려준 오류 코드("-2015" 등, 지원용 — 문장에는 넣지 않음). 없으면 "".
+    last_error_code: Mutex<String>,
     /// 거래소 시계 - 이 기기 시계(ms). 서명 요청의 timestamp에 더함(-1021 방지).
     time_offset: AtomicI64,
+    /// 연습 환경(현물 테스트넷·선물 데모) 키인지. 연습 환경에는 IP 제한·키 권한 조회가 없음.
+    testnet: bool,
+    /// 마지막으로 읽은 잔고 목록(현물 balances·선물 잔고). 시작 전 잔고 확인과 잔고 한 줄에 씀.
+    balances: Mutex<Option<Value>>,
 }
+
+/// 키 권한 조회(실거래 전용) — IP 제한·주문 권한을 읽음.
+const API_RESTRICTIONS_PATH: &str = "/sapi/v1/account/apiRestrictions";
+const REHEARSE_OK: &str = "바이낸스 계정과 주문 규격을 확인했어요. 주문 권한은 첫 주문 때 알 수 있어요.";
 
 /// 주문이 거래소에 닿았는지 알 수 없는 오류 코드 — 거절의 증거가 아님.
 /// -1000 알 수 없음·-1001 연결 끊김·-1006 예상 못 한 응답·-1007 처리 시간 초과·-1008 서버 과부하.
@@ -160,10 +83,7 @@ const BINANCE_AMBIGUOUS: [&str; 5] = ["-1000", "-1001", "-1006", "-1007", "-1008
 fn definite_rejection(e: &BrokerError) -> Option<String> {
     match e {
         BrokerError::Api { status, name, message }
-            if (400..500).contains(status)
-                && name.starts_with('-')
-                && name[1..].chars().all(|c| c.is_ascii_digit())
-                && !BINANCE_AMBIGUOUS.contains(&name.as_str()) =>
+            if (400..500).contains(status) && is_code(name) && !BINANCE_AMBIGUOUS.contains(&name.as_str()) =>
         {
             Some(if message.is_empty() { name.clone() } else { format!("{name} {message}") })
         }
@@ -171,13 +91,43 @@ fn definite_rejection(e: &BrokerError) -> Option<String> {
     }
 }
 
+/// 숫자 오류 코드("-2015")인지 여부.
+fn is_code(name: &str) -> bool {
+    name.len() > 1 && name.starts_with('-') && name[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+/// 바이낸스 오류를 (문장에 넣을 거래소 설명, 오류 코드)로 나눔. 코드는 문장에 넣지 않고 자세히 보기·원문 로그로 보냄.
+/// 숫자 코드가 없는 오류(네트워크 등)는 (오류 글 그대로, "").
+pub(crate) fn binance_error_parts(e: &BrokerError) -> (String, String) {
+    match e {
+        BrokerError::Api { status, name, message } if is_code(name) => {
+            let text = if message.is_empty() { format!("HTTP {status}") } else { message.clone() };
+            (text, name.clone())
+        }
+        other => (other.to_string(), String::new()),
+    }
+}
+
+/// 거절된 주문의 거래소 상태 글([`definite_rejection`]의 "-2010 Account has …")을 (오류 코드, 설명)으로 나눔.
+/// 코드 모양이 아니면 코드 없이 글 전체가 설명임.
+pub fn binance_rejection_parts(raw: &str) -> (&str, &str) {
+    let (head, rest) = raw.split_once(' ').unwrap_or((raw, ""));
+    if is_code(head) {
+        (head, rest.trim())
+    } else {
+        ("", raw.trim())
+    }
+}
+
+/// 잔고(증거금)가 모자라 거절된 주문인지 여부 — 선물 -2019(Margin is insufficient), 현물 -2010 중 잔고 부족 설명.
+pub fn is_binance_no_funds(code: &str, message: &str) -> bool {
+    code == "-2019" || (code == "-2010" && message.to_ascii_lowercase().contains("insufficient balance"))
+}
+
 impl BinanceBroker {
     /// 심볼 끝의 견적 통화(USDT·USDC 등). 모르면 빈 문자열 — 금액 뒤에 붙여 단위를 보임.
-    fn quote_asset(&self) -> &str {
-        ["FDUSD", "USDT", "USDC", "BUSD", "BTC", "ETH"]
-            .into_iter()
-            .find(|q| self.symbol.len() > q.len() && self.symbol.to_uppercase().ends_with(q))
-            .unwrap_or("")
+    fn quote_asset(&self) -> &'static str {
+        split_symbol(&self.symbol).1
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -195,7 +145,7 @@ impl BinanceBroker {
     ) -> Self {
         let urls = urls.unwrap_or_else(|| {
             if testnet {
-                BinanceUrls { spot: SPOT_TESTNET_BASE.into(), futures: FUTURES_TESTNET_BASE.into() }
+                BinanceUrls { spot: SPOT_TESTNET_BASE.into(), futures: FUTURES_DEMO_BASE.into() }
             } else {
                 BinanceUrls { spot: SPOT_BASE.into(), futures: FUTURES_BASE.into() }
             }
@@ -214,20 +164,19 @@ impl BinanceBroker {
             base_asset: Mutex::new(String::new()),
             rules: Mutex::new(OrderRules::default()),
             last_error_name: Mutex::new(String::new()),
+            last_error_code: Mutex::new(String::new()),
             time_offset: AtomicI64::new(0),
+            testnet,
+            balances: Mutex::new(None),
         }
     }
 
-    /// 거래소 시계와의 차이를 맞춤. 실패하면 그대로 둠(다음 -1021에서 다시 시도).
-    async fn sync_time(&self) {
-        let path = if self.futures() { "/fapi/v1/time" } else { "/api/v3/time" };
-        let before = now_ms() as i64;
-        if let Ok(v) = self.call_once(reqwest::Method::GET, self.futures(), path, &[], false).await {
-            if let Some(server) = v.get("serverTime").and_then(Value::as_i64) {
-                let local = (before + now_ms() as i64) / 2;
-                self.time_offset.store(server - local, Ordering::Relaxed);
-            }
-        }
+    fn set_error_name(&self, name: &str) {
+        *self.last_error_name.lock().unwrap() = name.into();
+    }
+
+    fn set_error_code(&self, code: &str) {
+        *self.last_error_code.lock().unwrap() = code.into();
     }
 
     pub fn base_asset(&self) -> String {
@@ -241,121 +190,6 @@ impl BinanceBroker {
     fn log(&self, msg: String) {
         let log = self.log.lock().unwrap().clone();
         log(msg);
-    }
-
-    fn sign(&self, payload: &str) -> String {
-        let mut mac = Hmac::<Sha256>::new_from_slice(self.api_secret.as_bytes()).expect("hmac accepts any key");
-        mac.update(payload.as_bytes());
-        hex::encode(mac.finalize().into_bytes())
-    }
-
-    /// REST 호출. 서명 요청이 시계 차이(-1021)로 거절되면 시계를 맞추고 한 번만 다시 보냄
-    /// (-1021은 거래소가 요청을 처리하지 않았다는 뜻이라 같은 client id로 다시 보내도 안전함).
-    async fn call(
-        &self,
-        method: reqwest::Method,
-        futures: bool,
-        path: &str,
-        params: &[(&str, String)],
-        signed: bool,
-    ) -> Result<Value, BrokerError> {
-        match self.call_once(method.clone(), futures, path, params, signed).await {
-            Err(BrokerError::Api { name, .. }) if signed && name == "-1021" => {
-                self.log("바이낸스와 PC 시계가 맞지 않아 시계를 맞춘 뒤 다시 보냈어요.".into());
-                self.sync_time().await;
-                self.call_once(method, futures, path, params, signed).await
-            }
-            other => other,
-        }
-    }
-
-    /// REST 호출 하나. 2xx가 아니면 `{"code","msg"}`를 Api 오류로(name = 코드 글자).
-    async fn call_once(
-        &self,
-        method: reqwest::Method,
-        futures: bool,
-        path: &str,
-        params: &[(&str, String)],
-        signed: bool,
-    ) -> Result<Value, BrokerError> {
-        let base = if futures { &self.futures_base } else { &self.spot_base };
-        // 요청 한도로 쉬는 중이면 보내지 않음(보내지 않았으니 주문은 분명히 '받지 않음').
-        // 같은 주소로 나가는 다른 실행이 걸린 한도도 함께 지킴.
-        if cooling(base).is_some() {
-            return Err(BrokerError::Api {
-                status: 429,
-                name: "-1003".into(),
-                message: "바이낸스 요청 한도로 잠시 쉬는 중이에요".into(),
-            });
-        }
-        let mut query = {
-            let mut ser = url::form_urlencoded::Serializer::new(String::new());
-            for (k, v) in params {
-                ser.append_pair(k, v);
-            }
-            if signed {
-                let ts = now_ms() as i64 + self.time_offset.load(Ordering::Relaxed);
-                ser.append_pair("timestamp", &ts.to_string());
-                ser.append_pair("recvWindow", "5000");
-            }
-            ser.finish()
-        };
-        if signed {
-            let signature = self.sign(&query);
-            query.push_str("&signature=");
-            query.push_str(&signature);
-        }
-        let url = if query.is_empty() { format!("{base}{path}") } else { format!("{base}{path}?{query}") };
-        let resp = self
-            .http
-            .request(method, url)
-            .header("X-MBX-APIKEY", &self.api_key)
-            .timeout(BINANCE_TIMEOUT)
-            .send()
-            .await
-            .map_err(network_error)?;
-        let status = resp.status().as_u16();
-        let retry_after = retry_after_secs(resp.headers());
-        let text = resp.text().await.map_err(network_error)?;
-        if status == 429 || status == 418 {
-            // 주문 개수 한도(-1015)는 계정 단위임 — 이 주소로 나가는 모든 실행의 시세 조회까지 쉬게 하지 않음.
-            let order_rate = serde_json::from_str::<Value>(&text)
-                .ok()
-                .and_then(|b| b.get("code").and_then(Value::as_i64))
-                .is_some_and(|c| c == -1015);
-            if !order_rate {
-                // Retry-After(초)만큼 쉼. 없으면 429는 30초, 418(IP 차단)은 2분.
-                let wait = retry_after.unwrap_or(if status == 418 { 120 } else { 30 }).clamp(1, 3600);
-                cool(base, wait);
-                self.log(format!("바이낸스 요청 한도에 걸려 {wait}초 동안 요청을 쉬어요(HTTP {status})."));
-            }
-        }
-        if !(200..300).contains(&status) {
-            let (code, message) = match serde_json::from_str::<Value>(&text) {
-                Ok(Value::Object(body)) => (
-                    body.get("code").map(py_str).unwrap_or_else(|| "0".into()),
-                    body.get("msg").map(py_str).unwrap_or_default(),
-                ),
-                _ => ("0".into(), format!("Invalid JSON error message from Binance: {text}")),
-            };
-            return Err(BrokerError::Api { status, name: code, message });
-        }
-        serde_json::from_str(&text)
-            .map_err(|_| BrokerError::Other(format!("BinanceRequestException: Invalid Response: {text}")))
-    }
-
-    async fn get(
-        &self,
-        futures: bool,
-        path: &str,
-        params: &[(&str, String)],
-        signed: bool,
-    ) -> Result<Value, BrokerError> {
-        self.call(reqwest::Method::GET, futures, path, params, signed).await
-    }
-
-    async fn post(&self, futures: bool, path: &str, params: &[(&str, String)]) -> Result<Value, BrokerError> {
-        self.call(reqwest::Method::POST, futures, path, params, true).await
     }
 
     /// python-binance `get_symbol_info` — 없는 심볼(-1121)은 None.
@@ -397,21 +231,26 @@ impl BinanceBroker {
     }
 
     async fn futures_balance_rows(&self) -> Result<Value, BrokerError> {
-        self.get(true, "/fapi/v2/balance", &[], true).await
+        let rows = self.get(true, "/fapi/v2/balance", &[], true).await?;
+        *self.balances.lock().unwrap() = Some(rows.clone());
+        Ok(rows)
     }
 
-    /// 선물 USDT 증거금. 조회 실패는 None, USDT 줄이 없으면 0.
+    /// 선물 USDT 사용 가능 증거금(주문에 쓸 수 있는 몫). 조회 실패는 None, USDT 줄이 없으면 0.
     async fn futures_usdt_balance(&self) -> Option<f64> {
         let rows = self.futures_balance_rows().await.ok()?;
-        for b in rows.as_array().map(Vec::as_slice).unwrap_or(&[]) {
-            if b.get("asset").and_then(Value::as_str) == Some("USDT") {
-                return match b.get("balance") {
-                    None => Some(0.0),
-                    Some(v) => py_float(v),
-                };
-            }
+        match asset_row(&rows, "USDT") {
+            Some(row) if row.contains_key("availableBalance") || row.contains_key("balance") => futures_available(row),
+            _ => Some(0.0),
         }
-        Some(0.0)
+    }
+
+    /// 견적 통화 이름 — 모르면 USDT.
+    fn quote_or_usdt(&self) -> &str {
+        match self.quote_asset() {
+            "" => "USDT",
+            q => q,
+        }
     }
 
     /// 격리 마진·레버리지를 맞춤. 맞추지 못하면 시작하지 않음 —
@@ -425,8 +264,8 @@ impl BinanceBroker {
             // -4046: 이미 격리 마진 — 원하는 상태임.
             Err(BrokerError::Api { name, .. }) if name == "-4046" => {}
             Err(e) => {
-                let why = exc_text(&e);
-                self.log(format!("⚠ 격리 마진 설정 실패({why})."));
+                self.log(format!("⚠ 격리 마진 설정 실패({}).", exc_text(&e)));
+                let (why, _) = binance_error_parts(&e);
                 return Err(BrokerError::Access {
                     explanation: format!(
                         "바이낸스 선물을 격리 마진으로 바꾸지 못했어요({why}). 이 심볼에 열린 포지션이나 주문이 있으면 정리한 뒤 다시 시작하세요."
@@ -443,8 +282,8 @@ impl BinanceBroker {
             )
             .await
         {
-            let why = exc_text(&e);
-            self.log(format!("⚠ 레버리지 {}배 설정 실패({why}).", self.leverage));
+            self.log(format!("⚠ 레버리지 {}배 설정 실패({}).", self.leverage, exc_text(&e)));
+            let (why, _) = binance_error_parts(&e);
             return Err(BrokerError::Access {
                 explanation: format!(
                     "레버리지를 {}배로 바꾸지 못했어요({why}). 계정 기본 레버리지로 주문하지 않도록 시작을 멈췄어요.",
@@ -454,108 +293,6 @@ impl BinanceBroker {
             });
         }
         Ok(())
-    }
-
-    /// 선물 리허설: 서명이 필요한 잔고 조회를 직접 불러 실패하면 그대로 나가게 함. 최소 주문 금액을 돌려줌.
-    async fn rehearse_futures_reads(&self) -> Result<f64, BrokerError> {
-        self.futures_balance_rows().await?;
-        match self.futures_exchange_symbol().await? {
-            Some(info) => Ok(parse_filters(&info).1),
-            None => Err(BrokerError::Other(format!(
-                "{} 심볼을 바이낸스에서 찾지 못했어요. 심볼 이름을 확인하세요.",
-                self.symbol
-            ))),
-        }
-    }
-
-    async fn rehearse_reads(&self) -> Result<Result<f64, String>, BrokerError> {
-        if self.futures() {
-            return Ok(Ok(self.rehearse_futures_reads().await?));
-        }
-        self.check_account().await?;
-        if !self.ensure_ready().await? {
-            return Ok(Err(format!("{} 심볼을 바이낸스에서 찾지 못했어요. 심볼 이름을 확인하세요.", self.symbol)));
-        }
-        Ok(Ok(self.rules.lock().unwrap().min_notional))
-    }
-
-    /// 거래소 응답에서 체결 수량·평균가·실제 보유 수량을 뽑음. 보정 순서를 바꾸지 않음.
-    pub async fn normalize(&self, order: &Value, closing: bool) -> Order {
-        let empty = Map::new();
-        let obj = order.as_object().unwrap_or(&empty);
-        let executed = get_pos(obj, "executedQty");
-        let mut average = get_pos(obj, "avgPrice");
-        if average == 0.0 && executed != 0.0 {
-            let quote = match obj.get("cummulativeQuoteQty") {
-                Some(v) if py_truthy(v) => v.clone(),
-                _ => obj.get("cumQuote").cloned().unwrap_or(Value::Null),
-            };
-            average = positive_number(&quote) / executed;
-        }
-        let response_fills: Vec<Value> = match obj.get("fills") {
-            Some(Value::Array(rows)) => rows.clone(),
-            _ => Vec::new(),
-        };
-        if average == 0.0 && executed != 0.0 {
-            let quote: f64 = response_fills
-                .iter()
-                .filter_map(Value::as_object)
-                .map(|f| get_pos(f, "price") * get_pos(f, "qty"))
-                .sum();
-            average = quote / executed;
-        }
-
-        let mut acquired = executed;
-        let mut fees_known = true;
-        if self.market == Market::Spot && !closing && executed != 0.0 {
-            // ensure_ready() 전이라도 심볼에서 기초자산을 끌어냄 — 이게 없으면 수수료가 조용히 안 빠짐.
-            let mut base_asset = self.base_asset();
-            if base_asset.is_empty() && (self.symbol.ends_with("USDT") || self.symbol.ends_with("USDC")) {
-                base_asset = self.symbol[..self.symbol.len() - 4].to_string();
-            }
-            let mut fills = response_fills;
-            let order_id = obj.get("orderId").filter(|v| !v.is_null());
-            if fills.is_empty() {
-                if let Some(order_id) = order_id {
-                    let id = py_str(order_id);
-                    let params = [("symbol", self.symbol.clone()), ("orderId", id.clone()), ("limit", "1000".into())];
-                    fills = match self.get(false, "/api/v3/myTrades", &params, true).await {
-                        Ok(Value::Array(trades)) => trades
-                            .into_iter()
-                            .filter(|t| py_str(t.get("orderId").unwrap_or(&Value::Null)) == id)
-                            .collect(),
-                        _ => Vec::new(),
-                    };
-                }
-            }
-            fees_known = !base_asset.is_empty()
-                && !fills.is_empty()
-                && fills.iter().all(|f| {
-                    f.as_object()
-                        .map(|o| o.contains_key("commissionAsset") && o.contains_key("commission"))
-                        .unwrap_or(false)
-                });
-            let filled: f64 = fills.iter().filter_map(Value::as_object).map(|f| get_pos(f, "qty")).sum();
-            fees_known = fees_known && is_close(filled, executed);
-            if fees_known {
-                let base_fee: f64 = fills
-                    .iter()
-                    .filter_map(Value::as_object)
-                    .filter(|f| f.get("commissionAsset").and_then(Value::as_str) == Some(base_asset.as_str()))
-                    .map(|f| get_pos(f, "commission"))
-                    .sum();
-                acquired = (executed - base_fee).max(0.0);
-            }
-        }
-        Order {
-            status: fold_status(obj.get("status")).to_string(),
-            executed_qty: executed,
-            avg_price: average,
-            acquired_qty: acquired,
-            fees_known,
-            order_id: obj.get("orderId").filter(|v| !v.is_null()).map(py_str),
-            raw_status: obj.get("status").map(py_str).unwrap_or_else(|| "unknown".into()),
-        }
     }
 }
 
@@ -580,6 +317,9 @@ impl Broker for BinanceBroker {
     fn last_error_name(&self) -> String {
         self.last_error_name.lock().unwrap().clone()
     }
+    fn last_error_code(&self) -> String {
+        self.last_error_code.lock().unwrap().clone()
+    }
     fn set_log(&self, log: LogFn) {
         *self.log.lock().unwrap() = log;
     }
@@ -595,10 +335,8 @@ impl Broker for BinanceBroker {
             let Some(balances) = acc.get("balances") else {
                 return Err(BrokerError::Other("'balances'".into()));
             };
-            let usdt = balances
-                .as_array()
-                .and_then(|rows| rows.iter().find(|b| b.get("asset").and_then(Value::as_str) == Some("USDT")));
-            let text = match usdt {
+            *self.balances.lock().unwrap() = Some(balances.clone());
+            let text = match asset_row(balances, "USDT") {
                 Some(row) => match row.get("free") {
                     Some(v) => py_str(v),
                     None => return Err(BrokerError::Other("'free'".into())),
@@ -634,7 +372,7 @@ impl Broker for BinanceBroker {
                     return Err(BrokerError::Access {
                         explanation: format!(
                             "바이낸스 선물 심볼 정보를 받지 못했어요({}). 인터넷 연결을 확인한 뒤 다시 시작하세요.",
-                            exc_text(&e)
+                            binance_error_parts(&e).0
                         ),
                         name: "symbol_info".into(),
                     });
@@ -657,32 +395,44 @@ impl Broker for BinanceBroker {
     }
 
     /// 주문 없이 검증하는 호출이 없어 계정 확인과 주문 규격 읽기로 갈음함.
+    /// 실거래는 그 뒤 키 권한 조회로 허용 IP·주문 권한까지 봄(`check_live_restrictions`).
     async fn rehearse(&self, notional: f64, _spend: Option<f64>) -> (bool, String) {
-        *self.last_error_name.lock().unwrap() = String::new();
+        self.set_error_name("");
+        self.set_error_code("");
+        *self.balances.lock().unwrap() = None;
         let minimum = match self.rehearse_reads().await {
             Ok(Ok(minimum)) => minimum,
             Ok(Err(reason)) => return (false, reason),
             Err(e) => {
-                // -2015는 '키·허용 IP·권한' 중 무엇인지 거래소가 가르지 않고 한 코드로 돌려줌.
+                let (why, code) = binance_error_parts(&e);
+                self.set_error_code(&code);
                 if let BrokerError::Api { name, .. } = &e {
-                    if name == "-2014" || name == "-2015" {
-                        *self.last_error_name.lock().unwrap() = "binance_access".into();
+                    // 키 형식(-2014)·서명 = 시크릿 짝(-1022)·없는 키(-2008) — 키를 다시 복사하면 됨.
+                    if ["-2014", "-1022", "-2008"].contains(&name.as_str()) {
+                        self.set_error_name("binance_key");
                         return (
                             false,
-                            format!(
-                                "바이낸스에서 키를 거절했어요({}). 키 · 허용 IP · 권한 설정을 확인하세요.",
-                                exc_text(&e)
-                            ),
+                            "바이낸스에서 키를 받지 않았어요. API Key · Secret Key를 다시 복사해 넣으세요.".into(),
                         );
                     }
+                    // -2015는 '키·허용 IP·권한' 중 무엇인지 거래소가 가르지 않고 한 코드로 돌려줌.
+                    // 테스트넷·데모에는 IP 제한이 없으니 키(또는 다른 환경에서 만든 키)임.
+                    if name == "-2015" {
+                        self.set_error_name(if self.testnet { "binance_access_test" } else { "binance_access" });
+                        let hint = if self.testnet {
+                            "이 사이트(테스트넷 · 데모)에서 만든 키인지 확인하세요."
+                        } else {
+                            "키 · 허용 IP · 권한 설정을 확인하세요."
+                        };
+                        return (false, format!("바이낸스에서 키를 거절했어요. {hint}"));
+                    }
                 }
-                return (false, format!("바이낸스 확인에 실패했어요: {}", exc_text(&e)));
+                return (false, format!("바이낸스 확인에 실패했어요: {why}"));
             }
         };
-        let amount =
-            serde_json::Number::from_f64(notional).map(Value::Number).map(|v| positive_number(&v)).unwrap_or(0.0);
+        let amount = positive_f64(notional);
         if minimum != 0.0 && amount < minimum {
-            *self.last_error_name.lock().unwrap() = "under_min_total".into();
+            self.set_error_name("under_min_total");
             return (
                 false,
                 format!(
@@ -696,7 +446,28 @@ impl Broker for BinanceBroker {
                 ),
             );
         }
-        (true, "바이낸스 계정과 주문 규격을 확인했어요. 주문 권한은 첫 주문 때 알 수 있어요.".into())
+        if self.testnet {
+            if let Some(short) = self.funds_shortfall(amount) {
+                self.set_error_name("binance_funds_test");
+                return (false, short);
+            }
+            self.set_error_name("binance_test_ok");
+            return (true, REHEARSE_OK.into());
+        }
+        // 잔고는 키 권한을 확인한 뒤에 봄 — 모자라도 허용 IP·주문 권한 결과는 남기려고.
+        let (ok, reason) = self.check_live_restrictions().await;
+        if ok {
+            if let Some(short) = self.funds_shortfall(amount) {
+                let name = match self.last_error_name().as_str() {
+                    "binance_verified" => "binance_funds",
+                    "binance_verified_open" => "binance_funds_open",
+                    _ => "insufficient_funds",
+                };
+                self.set_error_name(name);
+                return (false, short);
+            }
+        }
+        (ok, reason)
     }
 
     async fn price(&self) -> Result<f64, BrokerError> {
@@ -708,7 +479,7 @@ impl Broker for BinanceBroker {
         let Some(raw) = res.get("price") else {
             return Err(BrokerError::Other("'price'".into()));
         };
-        py_float(raw).ok_or_else(|| BrokerError::Other(format!("could not convert string to float: '{}'", py_str(raw))))
+        num_of(raw).ok_or_else(|| BrokerError::Other(format!("could not convert string to float: '{}'", py_str(raw))))
     }
 
     /// 시장가 주문 하나를 넣고 끝난 상태까지 확인해서 돌려줌. 타임아웃은 거절의 증거가 아님.
@@ -720,7 +491,7 @@ impl Broker for BinanceBroker {
         let mut params: Vec<(&str, String)> =
             vec![("symbol", self.symbol.clone()), ("side", req.side.as_str().into()), ("type", "MARKET".into())];
         if let Some(qty) = req.base_qty {
-            params.push(("quantity", fmt_qty(qty)));
+            params.push(("quantity", plain_number(qty)));
         }
         params.push(("newClientOrderId", req.client_id.clone()));
         params.push(("newOrderRespType", if futures { "RESULT" } else { "FULL" }.into()));
@@ -747,15 +518,7 @@ impl Broker for BinanceBroker {
                 }
             }
             self.log(format!("바이낸스에서 주문을 거절했어요({reason})."));
-            return Ok(Order {
-                status: "REJECTED".into(),
-                executed_qty: 0.0,
-                avg_price: 0.0,
-                acquired_qty: 0.0,
-                fees_known: true,
-                order_id: None,
-                raw_status: reason,
-            });
+            return Ok(Order::rejected(reason));
         }
         for attempt in 0..LOOKUP_ATTEMPTS {
             if settled(&order) {
@@ -769,6 +532,27 @@ impl Broker for BinanceBroker {
             }
         }
         Ok(self.normalize(&order, closing).await)
+    }
+
+    /// 현물: 견적 통화 잔고와 보유 기초자산. 선물: 사용 가능 증거금.
+    fn balance_note(&self) -> String {
+        let Some((rows, available)) = self.quote_funds() else {
+            return String::new();
+        };
+        let quote = self.quote_or_usdt();
+        if self.futures() {
+            return format!("사용 가능 증거금 {}", price_text(available, quote));
+        }
+        let mut text = format!("사용 가능 잔고 {}", price_text(available, quote));
+        let base = match self.base_asset() {
+            b if b.is_empty() => split_symbol(&self.symbol).0,
+            b => b,
+        };
+        let held = asset_row(&rows, &base).and_then(spot_free).unwrap_or(0.0);
+        if held > 0.0 {
+            text.push_str(&format!(" · 보유 {base} {}", qty_text(held)));
+        }
+        text
     }
 }
 

@@ -3,6 +3,22 @@
 use super::*;
 
 impl Shared {
+    /// 바이낸스 실거래 칸의 지금 확인 지문 — 실행 목록이 바뀌기 전에 떠 두고 `recheck_live_slot_if_moved`에 넘김.
+    pub(crate) fn live_probe_fingerprint(&self) -> String {
+        self.lock().slot_fingerprint(KeySlot::Binance)
+    }
+
+    /// 실행 추가·빼기·모드 변경으로 실거래 칸의 확인 시장(`Core::probe_market`)이 바뀌었으면 그 시장으로 다시 확인.
+    pub(crate) fn recheck_live_slot_if_moved(self: &S, before: &str) {
+        let moved = {
+            let c = self.lock();
+            c.slot_pair(KeySlot::Binance).is_some() && c.slot_fingerprint(KeySlot::Binance) != before
+        };
+        if moved {
+            self.schedule_slot_check(KeySlot::Binance, 700);
+        }
+    }
+
     pub fn schedule_slot_check(self: &S, slot: KeySlot, delay_ms: u64) {
         let timer = {
             let mut c = self.lock();
@@ -14,9 +30,9 @@ impl Shared {
                 self.emit();
                 return;
             }
-            let fp = c.slot_check_snapshot(slot).3;
-            let st = c.slot(slot);
-            if st.check.as_ref().is_some_and(|k| k.fingerprint == fp) || st.busy_fp.as_deref() == Some(fp.as_str()) {
+            // 이미 확인했거나 확인 중인 지문이면 예약하지 않음.
+            let fp = c.slot_fingerprint(slot);
+            if !matches!(c.slot_status_at(slot, &fp), SlotStatus::Unchecked) {
                 return;
             }
             let st = c.slot_mut(slot);
@@ -55,10 +71,8 @@ impl Shared {
                 None
             } else {
                 let (m, mode, creds, fp) = c.slot_check_snapshot(slot);
-                let st = c.slot(slot);
-                let same = st.check.as_ref().is_some_and(|k| k.fingerprint == fp)
-                    || st.busy_fp.as_deref() == Some(fp.as_str());
-                if !force && same {
+                // 이미 확인했거나 확인 중인 지문이면 다시 묻지 않음(force면 새로 확인).
+                if !force && !matches!(c.slot_status_at(slot, &fp), SlotStatus::Unchecked) {
                     return true;
                 }
                 let st = c.slot_mut(slot);
@@ -81,41 +95,24 @@ impl Shared {
     }
 
     pub(crate) fn accept_slot_check(self: &S, slot: KeySlot, generation: u64, fp: String, result: PreflightResult) {
-        let reschedule = {
+        let (reschedule, connected) = {
             let mut c = self.lock();
             if c.closed || generation != c.slot(slot).generation {
                 return;
             }
             c.slot_mut(slot).busy_fp = None;
-            if fp != c.slot_check_snapshot(slot).3 {
-                true
+            if fp != c.slot_fingerprint(slot) {
+                (true, None)
             } else {
-                self.store_slot_check(&mut c, slot, fp, &result);
-                false
+                (false, c.store_slot_check(slot, fp, &result))
             }
         };
+        self.after_connected(connected);
         if reschedule {
             self.schedule_slot_check(slot, 700);
         }
         self.emit();
         self.refresh_wizard();
-    }
-
-    pub(crate) fn store_slot_check(&self, c: &mut Core, slot: KeySlot, fp: String, result: &PreflightResult) {
-        let view = check_view(slot.exchange().as_str(), result.ok, &result.error_name);
-        let connected = view.connected;
-        c.slot_mut(slot).check =
-            Some(KeyCheckRecord { fingerprint: fp, reason: result.reason.clone(), view, checked_at: now_ms() });
-        if connected && c.remember_supported {
-            let st = c.slot(slot);
-            if st.remember && st.dirty {
-                self.persist_slot(c, slot);
-            }
-            let fp_live =
-                connection::preflight_fingerprint(&slot.probe_macro(), RunMode::Live, &c.slot_credentials(slot));
-            let checked = PreflightResult::new(true, result.reason.clone(), fp_live);
-            self.record_ip_history(c, slot, &checked);
-        }
     }
 
     // --- 공인 IP -------------------------------------------------------------------
@@ -134,7 +131,7 @@ impl Shared {
         let Some(token) = token else { return };
         let me = self.clone();
         tauri::async_runtime::spawn(async move {
-            let value = connection::detect_public_ipv4(&me.http).await;
+            let value = connection::detect_public_ipv4().await;
             let expiry = {
                 let mut c = me.lock();
                 if c.closed {
@@ -158,7 +155,7 @@ impl Shared {
         });
     }
 
-    /// 조회 당시 주소(120초 안)만 복사함. 복사했으면 참.
+    /// 조회 당시 주소(120초 안)만 복사함. 복사했으면 참. 복사할 주소가 없으면 화면만 다시 그림.
     pub fn copy_public_ip(&self) -> bool {
         let address = {
             let c = self.lock();
@@ -174,5 +171,27 @@ impl Shared {
                 false
             }
         }
+    }
+}
+
+impl Core {
+    /// 칸 확인 결과를 남김. 연결됨이고 키를 기억할 수 있으면 키체인에 남길 일을 돌려줌 —
+    /// 부르는 쪽이 Core 잠금을 푼 뒤 [`Shared::after_connected`]로 넘김.
+    pub(crate) fn store_slot_check(
+        &mut self,
+        slot: KeySlot,
+        fp: String,
+        result: &PreflightResult,
+    ) -> Option<ConnectedSlot> {
+        let view = check_view(slot.exchange().as_str(), result.ok, &result.error_name);
+        let connected = view.connected;
+        self.slot_mut(slot).check =
+            Some(KeyCheckRecord { fingerprint: fp, reason: result.reason.clone(), view, checked_at: now_ms() });
+        if !connected || !self.remember_supported {
+            return None;
+        }
+        let fp_live =
+            connection::preflight_fingerprint(&slot.probe_macro(), RunMode::Live, &self.slot_credentials(slot));
+        Some(ConnectedSlot { slot, checked: PreflightResult::new(true, result.reason.clone(), fp_live) })
     }
 }

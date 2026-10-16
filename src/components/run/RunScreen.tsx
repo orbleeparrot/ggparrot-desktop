@@ -22,6 +22,7 @@ export function RunScreen({ runner, selectedId, wide, detailOpen, onBack }: Prop
       slot={slot}
       activity={runner.activity[slot.id] ?? []}
       prices={runner.prices[slot.id]?.points ?? []}
+      priceTimes={runner.prices[slot.id]?.times ?? []}
       loadActivity={runner.loadActivity}
       activityFailed={!!runner.activityFailed[slot.id]}
       onBack={wide ? undefined : onBack}

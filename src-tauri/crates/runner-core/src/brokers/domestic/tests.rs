@@ -1,4 +1,5 @@
 use super::*;
+use crate::brokers::test_keys::KEYS;
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::matchers::{method, path};
@@ -14,8 +15,16 @@ fn recorder() -> (LogFn, Logs) {
 
 fn make(ex: Exchange, base: &str) -> (DomesticBroker, Logs) {
     let (log, logs) = recorder();
-    let b =
-        DomesticBroker::new("acc", "sec", ex, "KRW-BTC", log, reqwest::Client::new(), Some(base.to_string())).unwrap();
+    let b = DomesticBroker::new(
+        &KEYS.access,
+        &KEYS.secret,
+        ex,
+        "KRW-BTC",
+        log,
+        reqwest::Client::new(),
+        Some(base.to_string()),
+    )
+    .unwrap();
     (b, logs)
 }
 
@@ -100,28 +109,29 @@ fn ordered_pairs(body: &[u8]) -> Vec<(String, String)> {
 
 #[test]
 fn jwt_has_three_parts_and_a_fresh_nonce() {
-    let first = jwt_token("acc", "sec", None, "HS512", false);
-    let second = jwt_token("acc", "sec", None, "HS512", false);
+    let first = jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false);
+    let second = jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false);
     assert_eq!(first.split('.').count(), 3);
     assert_ne!(first, second);
 }
 
 #[test]
 fn query_hash_is_present_only_with_a_query() {
-    let (_h, p) = decode_jwt(&jwt_token("acc", "sec", None, "HS512", false));
+    let (_h, p) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false));
     assert!(p.get("query_hash").is_none());
-    let (_h, p) = decode_jwt(&jwt_token("acc", "sec", Some(&[]), "HS512", false));
+    let (_h, p) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, Some(&[]), "HS512", false));
     assert!(p.get("query_hash").is_none());
-    let (_h, p) = decode_jwt(&jwt_token("acc", "sec", Some(&q(&[("market", "KRW-BTC")])), "HS512", false));
+    let (_h, p) =
+        decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, Some(&q(&[("market", "KRW-BTC")])), "HS512", false));
     assert!(p.get("query_hash").is_some());
     assert_eq!(p["query_hash_alg"], "SHA512");
-    assert_eq!(p["access_key"], "acc");
+    assert_eq!(p["access_key"], KEYS.access.as_str());
     assert_eq!(p["nonce"].as_str().unwrap().len(), 36);
 }
 
 #[test]
 fn payload_keys_are_in_the_original_order() {
-    let token = jwt_token("acc", "sec", Some(&q(&[("market", "KRW-BTC")])), "HS256", true);
+    let token = jwt_token(&KEYS.access, &KEYS.secret, Some(&q(&[("market", "KRW-BTC")])), "HS256", true);
     let raw = token.split('.').nth(1).unwrap();
     let text = String::from_utf8(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(raw).unwrap()).unwrap();
     let idx = |k: &str| text.find(&format!("\"{k}\"")).unwrap();
@@ -140,15 +150,15 @@ fn payload_keys_are_in_the_original_order() {
 #[test]
 fn signature_is_plain_hmac_over_header_and_payload() {
     for alg in ["HS512", "HS256"] {
-        let token = jwt_token("acc", "sec", Some(&q(&[("market", "KRW-BTC")])), alg, false);
+        let token = jwt_token(&KEYS.access, &KEYS.secret, Some(&q(&[("market", "KRW-BTC")])), alg, false);
         let parts: Vec<&str> = token.split('.').collect();
         let input = format!("{}.{}", parts[0], parts[1]);
         let expected = if alg == "HS512" {
-            let mut mac = Hmac::<Sha512>::new_from_slice(b"sec").unwrap();
+            let mut mac = Hmac::<Sha512>::new_from_slice(KEYS.secret.as_bytes()).unwrap();
             mac.update(input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         } else {
-            let mut mac = Hmac::<Sha256>::new_from_slice(b"sec").unwrap();
+            let mut mac = Hmac::<Sha256>::new_from_slice(KEYS.secret.as_bytes()).unwrap();
             mac.update(input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         };
@@ -160,8 +170,8 @@ fn signature_is_plain_hmac_over_header_and_payload() {
 #[test]
 fn query_hash_is_sha512_of_the_unencoded_query_string() {
     let (_h, p) = decode_jwt(&jwt_token(
-        "acc",
-        "sec",
+        &KEYS.access,
+        &KEYS.secret,
         Some(&q(&[("market", "KRW-BTC"), ("identifier", "ggp-1")])),
         "HS512",
         false,
@@ -171,10 +181,10 @@ fn query_hash_is_sha512_of_the_unencoded_query_string() {
 
 #[test]
 fn bithumb_token_is_hs256_with_a_millisecond_timestamp() {
-    let (header, payload) = decode_jwt(&jwt_token("acc", "sec", None, "HS256", true));
+    let (header, payload) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, None, "HS256", true));
     assert_eq!(header["alg"], "HS256");
     assert!(payload["timestamp"].as_u64().unwrap() > 1_700_000_000_000);
-    let (_h, upbit) = decode_jwt(&jwt_token("acc", "sec", None, "HS512", false));
+    let (_h, upbit) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false));
     assert!(upbit.get("timestamp").is_none());
 }
 
@@ -214,61 +224,95 @@ fn ip_class_errors_name_the_allowed_ip_before_the_key() {
         (Exchange::Bithumb, "NotAllowIP"),
         (Exchange::Upbit, "no_authorization_token"),
     ] {
-        let text = explain_domestic_error(ex, 401, name, "허용되지 않은 IP");
+        let text = explain_domestic_error(ex, name, "허용되지 않은 IP");
         assert!(text.find("허용 IP").unwrap() < text.find("API 키").unwrap(), "{text}");
     }
     assert_eq!(
-        explain_domestic_error(Exchange::Upbit, 401, "no_authorization_ip", ""),
-        "업비트에서 요청을 거절했어요(no_authorization_ip). 먼저 이 기기의 현재 IP가 업비트의 \
+        explain_domestic_error(Exchange::Upbit, "no_authorization_ip", ""),
+        "업비트에서 요청을 거절했어요. 먼저 이 기기의 현재 IP가 업비트의 \
          허용 IP에 등록돼 있는지 확인하세요. 집 인터넷 IP는 바뀔 수 있어요. IP가 맞다면 \
          API 키(Access Key · Secret Key)를 다시 복사해 넣으세요."
     );
 }
 
+/// 사람이 읽는 문장에는 오류 이름(코드)을 넣지 않음 — 코드는 `domestic_error_code`로 따로 감.
+const ALL_NAMES: [&str; 20] = [
+    "no_authorization_ip",
+    "NotAllowIP",
+    "invalid_access_key",
+    "no_authorization_token",
+    "invalid_query_payload",
+    "jwt_verification",
+    "out_of_scope",
+    "expired_jwt",
+    "expired_access_key",
+    "under_min_total_bid",
+    "under_min_total_market_bid",
+    "insufficient_funds_bid",
+    "insufficient_funds_ask",
+    "insufficient_funds",
+    "over_krw_funds_bid",
+    "notfoundmarket",
+    "invalid_market",
+    "market_offline",
+    "brand_new_error",
+    "x",
+];
+
+#[test]
+fn sentences_never_carry_the_error_code() {
+    for ex in [Exchange::Upbit, Exchange::Bithumb] {
+        for name in ALL_NAMES {
+            let text = explain_domestic_error(ex, name, "");
+            assert!(!text.contains(name), "{name}: {text}");
+            assert!(!text.contains('(') || text.contains("(JWT)") || text.contains("(Access Key"), "{name}: {text}");
+            assert_eq!(domestic_error_code(400, name), name, "코드는 오류 이름 그대로");
+        }
+    }
+    assert_eq!(domestic_error_code(403, ""), "HTTP 403", "이름이 없으면 HTTP 상태가 코드");
+}
+
 #[test]
 fn each_error_class_has_its_own_text() {
-    let e = |name: &str| explain_domestic_error(Exchange::Upbit, 400, name, "fixture");
+    let e = |name: &str| explain_domestic_error(Exchange::Upbit, name, "fixture");
     let sig = e("invalid_query_payload");
     assert!(sig.contains("서명") && !sig.contains("집 IP 는 바뀝니다") && !sig.contains("다시 복사"));
-    let jwt = explain_domestic_error(Exchange::Bithumb, 400, "jwt_verification", "");
+    let jwt = explain_domestic_error(Exchange::Bithumb, "jwt_verification", "");
     assert_eq!(
         jwt,
-        "빗썸에서 인증 토큰(JWT) 서명을 검증하지 못했어요(jwt_verification). Access Key와 Secret Key가 같은 발급 건인지, \
+        "빗썸에서 인증 토큰(JWT) 서명을 검증하지 못했어요. Access Key와 Secret Key가 같은 발급 건인지, \
          Secret Key를 빠짐없이 붙여 넣었는지 확인한 뒤 다시 연결을 확인하세요. 계속 실패하면 개발팀에 알려 주세요."
     );
     assert!(!jwt.contains("허용 IP") && !jwt.contains("만료"));
     assert_eq!(
         e("out_of_scope"),
-        "이 API 키에 주문 권한이 없어요(out_of_scope). 업비트 API 관리에서 주문하기 권한을 켠 키를 쓰세요."
+        "이 API 키에 주문 권한이 없어요. 업비트 API 관리에서 주문하기 권한을 켠 키를 쓰세요."
     );
     let expired_jwt = e("expired_jwt");
     assert!(expired_jwt.contains("JWT") && expired_jwt.contains("시계"));
     assert!(!expired_jwt.contains("API 키가 만료") && !expired_jwt.contains("재발급") && !expired_jwt.contains("연장"));
     for ex in [Exchange::Upbit, Exchange::Bithumb] {
-        let t = explain_domestic_error(ex, 401, "expired_access_key", "fixture");
+        let t = explain_domestic_error(ex, "expired_access_key", "fixture");
         assert!(t.contains("API 키가 만료") && t.contains("삭제") && t.contains("발급") && !t.contains("연장"));
     }
     assert_eq!(
         e("under_min_total_market_bid"),
-        "최소 주문 금액보다 적어요(under_min_total_market_bid). 매크로 투자 금액을 업비트 최소 주문 금액 이상으로 올리세요."
+        "최소 주문 금액보다 적어요. 매크로 투자 금액을 업비트 최소 주문 금액 이상으로 올리세요."
     );
     for name in ["insufficient_funds_bid", "insufficient_funds_ask", "insufficient_funds"] {
-        assert_eq!(
-            e(name),
-            format!("주문할 원화 잔고가 모자라요({name}). 잔고를 채우거나 매크로 투자 금액을 줄이세요.")
-        );
+        assert_eq!(e(name), "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.");
+        assert!(is_no_funds_error(name), "{name}");
     }
-    assert_eq!(
-        e("over_krw_funds_bid"),
-        "거래소의 1회 최대 주문 금액을 넘었어요(over_krw_funds_bid). 매크로 투자 금액을 줄이세요."
-    );
+    assert!(!is_no_funds_error("under_min_total_bid") && !is_no_funds_error("over_krw_funds_bid"));
+    assert_eq!(e("over_krw_funds_bid"), "거래소의 1회 최대 주문 금액을 넘었어요. 매크로 투자 금액을 줄이세요.");
     for name in ["notfoundmarket", "invalid_market", "market_offline"] {
         assert!(e(name).starts_with("이 마켓은 지금 주문할 수 없어요"));
     }
-    assert_eq!(e("brand_new_error"), "업비트에서 거절했어요(brand_new_error: fixture)");
-    assert_eq!(explain_domestic_error(Exchange::Upbit, 400, "x", ""), "업비트에서 거절했어요(x)");
-    assert_eq!(explain_domestic_error(Exchange::Upbit, 400, "", "말"), "업비트에서 거절했어요(말)");
-    assert_eq!(explain_domestic_error(Exchange::Bithumb, 403, "", ""), "빗썸에서 거절했어요(HTTP 403)");
+    // 모르는 오류는 거래소 설명을 그대로 두고, 이름(코드)은 문장에 넣지 않음.
+    assert_eq!(e("brand_new_error"), "업비트에서 주문을 거절했어요: fixture");
+    assert_eq!(explain_domestic_error(Exchange::Upbit, "x", ""), "업비트에서 주문을 거절했어요.");
+    assert_eq!(explain_domestic_error(Exchange::Upbit, "", "말"), "업비트에서 주문을 거절했어요: 말");
+    assert_eq!(explain_domestic_error(Exchange::Bithumb, "", ""), "빗썸에서 주문을 거절했어요.");
 }
 
 #[test]
@@ -830,8 +874,10 @@ async fn rehearsal_errors_are_explained_and_named() {
         let (ok, reason) = b.rehearse(10_000.0, None).await;
         assert!(!ok);
         assert!(reason.contains(needle), "{name}: {reason}");
-        assert_eq!(reason, explain_domestic_error(ex, status, name, "fixture"));
+        assert_eq!(reason, explain_domestic_error(ex, name, "fixture"));
+        assert!(!reason.contains(name), "문장에는 코드가 없음: {reason}");
         assert_eq!(b.last_error_name(), name);
+        assert_eq!(b.last_error_code(), name, "코드는 따로 들고 있음(자세히 보기용)");
         if ex == Exchange::Bithumb {
             assert!(requests(&server, "POST", "/v1/orders/test").await.is_empty());
         }
@@ -844,15 +890,17 @@ async fn unrecognised_and_unnamed_errors_keep_the_exchanges_words_or_status() {
     mount(&server, "POST", "/v1/orders/test", err("brand_new_error", "거래소가 한 말", 400)).await;
     let (b, _) = make(Exchange::Upbit, &server.uri());
     let (ok, reason) = b.rehearse(10_000.0, None).await;
-    assert!(!ok && reason.contains("brand_new_error") && reason.contains("거래소가 한 말"));
+    assert_eq!((ok, reason.as_str()), (false, "업비트에서 주문을 거절했어요: 거래소가 한 말"));
+    assert_eq!(b.last_error_code(), "brand_new_error", "코드는 문장 밖에서 따로 들고 있음");
 
     let server = MockServer::start().await;
     mount(&server, "POST", "/v1/orders/test", ResponseTemplate::new(403).set_body_string("<html>blocked</html>")).await;
     let (b, _) = make(Exchange::Upbit, &server.uri());
     let (ok, reason) = b.rehearse(10_000.0, None).await;
     assert!(!ok);
-    assert_eq!(reason, "업비트에서 거절했어요(HTTP 403)");
+    assert_eq!(reason, "업비트에서 주문을 거절했어요.");
     assert_eq!(b.last_error_name(), "");
+    assert_eq!(b.last_error_code(), "HTTP 403");
 }
 
 #[tokio::test]
@@ -965,12 +1013,12 @@ async fn bithumb_missing_market_is_reported() {
 
 #[test]
 fn thousands_and_plain() {
-    assert_eq!(thousands(10005.0), "10,005");
-    assert_eq!(thousands(999.0), "999");
-    assert_eq!(thousands(1234567.0), "1,234,567");
-    assert_eq!(plain_f64(5000.0), "5000");
-    assert_eq!(plain_f64(19992.0), "19992");
-    assert_eq!(plain_f64(0.00001), "0.00001");
+    assert_eq!(grouped(10005.0, 0), "10,005");
+    assert_eq!(grouped(999.0, 0), "999");
+    assert_eq!(grouped(1234567.0, 0), "1,234,567");
+    assert_eq!(plain_number(5000.0), "5000");
+    assert_eq!(plain_number(19992.0), "19992");
+    assert_eq!(plain_number(0.00001), "0.00001");
 }
 
 #[tokio::test]
@@ -983,4 +1031,65 @@ async fn a_rate_limit_pauses_public_requests_but_not_order_lookups() {
     let before = server.received_requests().await.unwrap().len();
     assert!(b.price().await.is_err());
     assert_eq!(server.received_requests().await.unwrap().len(), before, "다른 실행의 시세 요청도 쉰다");
+}
+
+// --- 화면 정보: 수수료·잔고·전일 대비 -----------------------------------------
+
+#[test]
+fn the_paid_fee_of_an_order_is_kept_in_krw_or_left_unknown() {
+    let o = normalize_domestic(&json!({"state": "done", "executed_volume": "0.01", "paid_fee": "500.25",
+        "trades": [{"price": "100000000", "volume": "0.01", "funds": "1000000"}]}));
+    assert_eq!(o.fee, Some(FeePaid { quote: 500.25, other: vec![] }));
+    // 칸이 없는 응답이면 모름(0원으로 보이지 않게).
+    assert_eq!(normalize_domestic(&filled()).fee, None);
+    assert_eq!(normalize_domestic(&json!({"state": "done", "paid_fee": null})).fee, None);
+}
+
+#[tokio::test]
+async fn chance_balances_become_the_balance_line() {
+    let server = MockServer::start().await;
+    let mut body = chance();
+    body["bid_account"] = json!({"currency": "KRW", "balance": "1234567.8", "locked": "0"});
+    body["ask_account"] = json!({"currency": "BTC", "balance": "0.01", "locked": "0"});
+    mount(&server, "GET", "/v1/orders/chance", ResponseTemplate::new(200).set_body_json(body)).await;
+    let (b, _) = make(Exchange::Upbit, &server.uri());
+    assert_eq!(b.balance_note(), "", "읽기 전에는 비어 있음");
+    assert!(b.ensure_ready().await.unwrap());
+    assert_eq!(b.balance_note(), "사용 가능 잔고 1,234,567 KRW · 보유 BTC 0.01");
+    assert_eq!(requests(&server, "GET", "/v1/orders/chance").await.len(), 1, "잔고 때문에 더 묻지 않음");
+
+    // 코인이 없으면 원화만.
+    let server = MockServer::start().await;
+    let mut body = chance();
+    body["bid_account"] = json!({"currency": "KRW", "balance": "5000"});
+    body["ask_account"] = json!({"currency": "BTC", "balance": "0"});
+    mount(&server, "GET", "/v1/orders/chance", ResponseTemplate::new(200).set_body_json(body)).await;
+    let (b, _) = make(Exchange::Upbit, &server.uri());
+    b.ensure_ready().await.unwrap();
+    assert_eq!(b.balance_note(), "사용 가능 잔고 5,000 KRW");
+}
+
+#[tokio::test]
+async fn bithumb_falls_back_to_the_accounts_it_already_read() {
+    let (_s, b) = bithumb(json!([{"currency": "KRW", "balance": "250000"}]), chance()).await;
+    assert!(b.rehearse(10_000.0, None).await.0);
+    assert_eq!(b.balance_note(), "사용 가능 잔고 250,000 KRW");
+}
+
+#[tokio::test]
+async fn the_ticker_change_rate_rides_along_with_the_price() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "GET",
+        "/v1/ticker",
+        ResponseTemplate::new(200)
+            .set_body_json(json!([{"market": "KRW-BTC", "trade_price": 101500000.0, "signed_change_rate": -0.0123}])),
+    )
+    .await;
+    let (b, _) = make(Exchange::Bithumb, &server.uri());
+    assert_eq!(b.day_change(), None);
+    b.price().await.unwrap();
+    assert_eq!(b.day_change(), Some(-0.0123));
+    assert_eq!(requests(&server, "GET", "/v1/ticker").await.len(), 1);
 }

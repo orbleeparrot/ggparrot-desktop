@@ -9,7 +9,7 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub fn user_agent() -> String {
-    format!("GGParrotDesktop/{} (runner {})", crate::APP_VERSION, crate::RUNNER_VERSION)
+    format!("GGParrotDesktop/{} (runner {})", crate::APP_VERSION, crate::SERVER_LINK_LEVEL)
 }
 
 /// 모든 클라이언트에 거는 보안 설정.

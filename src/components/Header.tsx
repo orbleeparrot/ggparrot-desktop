@@ -1,4 +1,5 @@
-// 머리줄: 심볼·앱 이름·버전(+ 바로 옆 업데이트 알림)·요약 상태·껄무새 웹·⚙ 설정.
+// 머리줄: 심볼·앱 이름(+ 새 버전이 있을 때만 업데이트 알림)·요약 상태·껄무새 웹·⚙ 설정.
+// 지금 버전은 설정 › 정보에서 봄.
 import { Globe, Settings } from "lucide-react";
 import { useRunnerContext } from "../state/context";
 import { detectPlatform } from "../platform";
@@ -6,7 +7,7 @@ import { isTauri } from "../ipc";
 import { UpdateChip } from "./UpdateChip";
 import { WindowControls } from "./WindowControls";
 
-export const APP_NAME = "껄무새";
+const APP_NAME = "껄무새";
 
 /** ⚙은 설정을 여닫는 토글임(설정에서 누르면 실행 화면으로). */
 export function Header({ view, onGear }: { view: "run" | "settings"; onGear(): void }) {
@@ -21,10 +22,7 @@ export function Header({ view, onGear }: { view: "run" | "settings"; onGear(): v
         <h1 className="app-name" data-tauri-drag-region>
           {APP_NAME}
         </h1>
-        <span className="version-group">
-          <span className="badge-version num">v{state.version}</span>
-          <UpdateChip update={state.update} onOpen={() => openSettings({ kind: "section", section: "about" })} />
-        </span>
+        <UpdateChip update={state.update} onOpen={() => openSettings({ kind: "section", section: "about" })} />
       </div>
       <div className={`status tone-${status.tone}`} role="status" aria-live="polite">
         <span className={`status-dot ${live ? "is-live" : ""}`} aria-hidden="true" />

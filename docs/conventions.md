@@ -6,15 +6,20 @@
 ## 1. 공통
 
 - **포맷:** Prettier(TS·CSS·JSON·YAML, 마크다운 제외)·rustfmt, 줄 폭 120. `npm run format`으로 맞추고 CI가 `format:check`로 확인. 편집기 설정은 `.editorconfig`.
+- **린트:** TS·React는 oxlint(`npm run lint`, 설정 `.oxlintrc.json`, 경고도 실패), Rust는 clippy(`npm run lint:rust`, `-D warnings`). CI가 둘 다 확인.
+  - oxlint를 쓰는 까닭: 앱은 TypeScript 7(네이티브)이라 typescript-eslint가 쓰는 TypeScript JS API가 없음. oxlint는 자체 해석기라 TypeScript 버전과 무관하고 ESLint와 규칙 이름이 같음.
+  - 잡는 규칙: 정확성(correctness) 전체 + `any` 금지, 버튼 `type` 빠짐, 훅 규칙·의존성 배열, React 컴파일러 규칙(렌더 중 ref 읽기·시계 읽기·effect 안 동기 setState 등), 안 쓰는 변수(`_`로 시작하면 예외), 잡은 오류를 다시 던질 때 `cause`.
+  - 렌더 중에 바꿔야 하는 값은 ref가 아니라 상태로 두고 조건부로 갱신함(`if (prev !== x) setPrev(x)`). 최신 콜백을 담는 ref는 effect에서 갱신함.
 - **인코딩·줄 끝:** UTF-8, LF(Windows 스크립트만 CRLF). `.gitattributes`가 강제.
-- **이름:** 화면 이름은 `껄무새`/`GG Parrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`와 서버 계약 `runner_version = "18"`은 바꾸지 않음.
+- **이름:** 화면 이름은 `껄무새`/`GGParrot`(띄어쓰기 없음, Windows 화면은 '껄무새'). 설치 폴더·레지스트리 영문 이름은 `GGParrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`는 바꾸지 않음. 서버 연동 레벨(server link level, `SERVER_LINK_LEVEL`, 서버 필드 `runner_version`, 앱 버전 가운데 숫자 — 지금 "20")은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림(서버가 기능별 최소 레벨로 기능을 열고 닫음). '버전'·'계약'·'프로토콜'이라 부르지 않음.
 - **버전:** `src-tauri/Cargo.toml`의 `[workspace.package] version` 한 곳에만 적음. 두 크레이트는 물려받고, `tauri.conf.json`·`package.json`에는 적지 않음(`npm run check:versions`가 확인). 태그는 `v{버전}`.
-- **버전 올리기:** 0.18.x 동안은 커밋마다 패치 번호를 하나 올림(`0.18.3` → `0.18.4`). `CHANGELOG.md`에 그 버전 칸(`## [0.18.4] - 미배포`)을 만들어 그 커밋의 변경을 적음.
-- **변경 기록(`CHANGELOG.md`):** 버전 칸에서 릴리스 본문과 앱의 '바뀐 점'을 만듦. 지난 배포 뒤 배포하지 않은 칸은 분류별로 합쳐지고, `### 개발`은 빠짐.
+- **버전 올리기:** 앱 버전은 `0.<서버 연동 레벨>.<패치>`(지금 `0.20.x`). PR 하나에 패치를 하나 올림(`0.20.0` → `0.20.1`) — 브랜치에서 작업하는 동안은 올리지 않고 PR 마지막 커밋에서 올림. 서버 연동 레벨을 올리면 마이너를 그 숫자로 바꾸고 패치는 0부터(`0.20.5` → `0.21.0`). 서버 연동 레벨은 따로 적지 않고 빌드 때 마이너를 그대로 씀(`env!("CARGO_PKG_VERSION_MINOR")`) — 버전 한 곳만 바꾸면 됨. `CHANGELOG.md`에 그 버전 칸(`## [0.20.2]`)을 만들어 그 PR의 변경을 적음.
+- **변경 기록(`CHANGELOG.md`):** 버전 칸에서 릴리스 본문과 앱의 '바뀐 점'을 만듦. 지난 배포 뒤의 칸은 분류별로 합쳐지고, `### 개발`은 빠짐.
+  - 배포 여부·날짜는 적지 않음(칸 머리는 `## [버전]`만). 지난 배포는 공개한 릴리스의 태그 `v<버전>`으로 앎 — 태그는 [Publish release] 때만 생기고 `release-tags` 규칙으로 바꿀 수 없음.
   - 사용자용 분류(`추가`·`변경`·`수정`·`삭제`·`보안`)에는 사용자가 알 말로, 화면·동작이 바뀐 것만 적음. 파일 이름·함수 이름·테스트 이야기는 쓰지 않음.
   - 빌드·CI·테스트·코드 정리·문서는 `### 개발`에 적음. 릴리스 본문과 앱에는 나가지 않음(`scripts/release-notes-lib.mjs`).
   - 분류 앞 소개 글(예: '첫 배포.')은 합쳐지는 칸 모두에서 모음.
-  - 배포 전 확인: `npm run release:notes -- v<버전> --preview`. 배포 표시는 초안을 공개하면 자동(release-published). 손으로 할 때는 `npm run release:mark -- v<버전>`.
+  - 배포 전 확인: `git fetch --tags` 뒤 `npm run release:notes -- v<버전>`.
 - **주석·문서:** 한국어. "무엇"보다 "왜"를 적음. 문체는 아래 1.1의 개조식.
 
 ### 1.1 주석·문서 문체: 개조식
@@ -79,6 +84,8 @@
 - **접근성:** 버튼은 `<button type="button">`, 아이콘만 있는 버튼은 `aria-label`. 대화상자는 `Dialog`를 씀(포커스 가두기·Esc).
 - **타입:** `any` 금지. 좁힐 수 없으면 `unknown` 후 확인.
 - **테스트:** vitest + Testing Library. 문구가 아니라 동작(역할·상태)을 확인.
+  - 화면 배치는 Playwright(`npm run test:e2e`, `e2e/`)로 webkit(macOS WKWebView)·chromium(Windows WebView2) 두 엔진에서 확인. 가짜 백엔드 견본(`?demo=…`)을 창 크기별로 띄워 겹침·넘침·높이를 잼.
+  - 픽셀 비교 금지(OS마다 글꼴이 다름). 요소 사각형(getBoundingClientRect)으로 확인. 스크린샷은 사람이 보도록 결과에 붙이기만 함.
 
 ## 5. 보안·민감 정보
 
@@ -93,6 +100,10 @@
 
 - **커밋 제목:** `종류(범위): 한국어 요약`. 종류는 `feat`·`fix`·`refactor`·`perf`·`docs`·`test`·`chore`·`ci`·`style`. 범위는 `core`·`app`·`ui`·`update`·`keys`·`bot`·`api`·`bundle` 등.
 - **본문:** 무엇이 문제였고 왜 이렇게 고쳤는지. 동작이 바뀌지 않는 리팩토링은 "(동작 변경 없음)"을 적음. 문체는 개조식.
-- **브랜치:** `main`은 항상 배포 가능. 작업은 `feat/…`·`fix/…` 브랜치에서 PR로.
-- **PR 전에:** `npm run format:check`·`npm run typecheck`·`npm test`·`cargo test --workspace`·`cargo clippy` 통과. 화면이 바뀌면 스크린샷을 붙임.
-- **변경 기록:** `CHANGELOG.md`의 이번 버전 칸에. 사용자에게 보이는 변경은 사용자용 분류, 나머지는 `### 개발`(1. 공통 참고).
+- **브랜치:** `main`은 항상 배포 가능 — 직접 푸시하지 않음. 작업은 `main`에서 딴 `feat/…`·`fix/…`·`refactor/…`·`docs/…`·`ci/…` 브랜치에서 하고 PR로 올림.
+  - 브랜치 안 커밋은 작게 나눠도 됨(버전·CHANGELOG는 PR 마지막에 한 번).
+  - `main`이 앞서 나가면 브랜치를 `main` 위로 리베이스하거나 `main`을 머지해 맞춤. 충돌은 브랜치에서 풂.
+- **머지:** 스쿼시 머지만 씀 — PR 하나가 `main` 커밋 하나·버전 하나가 됨. 스쿼시 커밋 제목은 PR 제목(`종류(범위): 0.20.2 — 요약`), 본문은 PR 설명의 요약. 머지한 브랜치는 지움.
+  - 머지하면 `main` CI 뒤 그 버전의 릴리스 초안이 자동으로 만들어짐(배포는 초안의 [Publish release]).
+- **PR 전에:** `npm run format:check`·`npm run typecheck`·`npm test`·`npm run test:e2e`·`cargo test --workspace`·`cargo clippy` 통과. 화면이 바뀌면 스크린샷을 붙임.
+- **변경 기록:** `CHANGELOG.md`의 이번 PR 버전 칸에. 사용자에게 보이는 변경은 사용자용 분류, 나머지는 `### 개발`(1. 공통 참고).

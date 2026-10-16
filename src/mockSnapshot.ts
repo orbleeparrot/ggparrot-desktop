@@ -15,7 +15,7 @@ import {
 import type { AppState, Check, KeySlot, RunSlot, SlotCard, WizardState } from "./types";
 
 const DOMESTIC = ["upbit", "bithumb"];
-export const ACTIVE_PHASES: RunSlot["phase"][] = ["checking", "starting", "running", "stopping"];
+const ACTIVE_PHASES: RunSlot["phase"][] = ["checking", "starting", "running", "stopping"];
 
 export function isActive(r: MockRun): boolean {
   return ACTIVE_PHASES.includes(r.phase);
@@ -24,8 +24,33 @@ export function isActive(r: MockRun): boolean {
 export function keySlotOf(r: Pick<MockRun, "macro" | "mode">): KeySlot | null {
   const ex = r.macro.exchange;
   if (!ex) return null;
-  if (ex === "binance") return r.mode === "testnet" ? "binance_testnet" : "binance";
+  if (ex === "binance") {
+    if (r.mode !== "testnet") return "binance";
+    return r.macro.market === "futures" ? "binance_demo" : "binance_testnet";
+  }
   return ex;
+}
+
+/** 거래소 종목 화면 — runner-core `market_page`와 같은 규칙(미리보기용). */
+export function marketPageOf(r: Pick<MockRun, "macro" | "mode">): { label: string; url: string } | null {
+  const { exchange, symbol, baseAsset, market } = r.macro;
+  const s = symbol.toUpperCase();
+  const base = baseAsset.toUpperCase();
+  if (!/^[A-Z0-9]{1,20}$/.test(base)) return null;
+  if (exchange === "upbit" || exchange === "bithumb") {
+    if (s !== `KRW-${base}`) return null;
+    return exchange === "upbit"
+      ? { label: "업비트에서 보기", url: `https://upbit.com/exchange?code=CRIX.UPBIT.KRW-${base}` }
+      : { label: "빗썸에서 보기", url: `https://www.bithumb.com/react/trade/order/${base}-KRW` };
+  }
+  if (exchange !== "binance") return null;
+  const quote = s.startsWith(base) ? s.slice(base.length) : "";
+  if (!/^[A-Z0-9]{1,20}$/.test(quote)) return null;
+  if (market === "futures" && r.mode === "testnet")
+    return { label: "바이낸스 데모에서 보기", url: `https://demo.binance.com/futures/${base}${quote}` };
+  if (market === "futures")
+    return { label: "바이낸스에서 보기", url: `https://www.binance.com/futures/${base}${quote}` };
+  return { label: "바이낸스에서 보기", url: `https://www.binance.com/trade/${base}_${quote}?type=spot` };
 }
 
 export function filled(m: Model, slot: KeySlot): boolean {
@@ -41,7 +66,7 @@ export function conflictMessage(m: Model, r: MockRun): string {
   return `같은 거래소 · 종목(${EXCHANGE_LABELS[r.macro.exchange]} ${r.macro.symbol})은 한 번에 하나만 실행해요. 지금 다른 매크로가 실행 중이에요.`;
 }
 
-export function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
+function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
   const idle = r.phase === "idle" || r.phase === "finished";
   const no = (blocker: string, needs: RunSlot["readiness"]["needs"] = null) => ({ canStart: false, blocker, needs });
   if (!r.macro.exchange)
@@ -52,7 +77,7 @@ export function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
   const slot = keySlotOf(r)!;
   if (r.mode !== "mock" && !filled(m, slot))
     return no(`${SLOT_LABELS[slot]} API 키가 필요해요. 설정에서 입력하세요.`, { kind: "key", slot });
-  if (!m.member) return no("회원 키가 필요해요. 설정에서 입력하세요.", { kind: "member" });
+  if (!m.member) return no("회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요.", { kind: "member" });
   const conflict = conflictMessage(m, r);
   if (conflict) return no(conflict);
   return { canStart: true, blocker: "", needs: null };
@@ -67,8 +92,10 @@ function statusOf(m: Model, r: MockRun): RunSlot["status"] {
     case "stopping":
       return { text: "종료 처리 중", tone: "warn" };
     case "running":
-      if (r.run && !r.run.online) return { text: "실행 중 · 서버 재시도 중", tone: "warn" };
+      // Rust degraded()와 같은 차례 — 결과 모름 → 잔고 부족 → 서버 재시도.
       if (r.run?.uncertain) return { text: "포지션 확인 필요", tone: "danger" };
+      if (r.run?.fundsShort) return { text: "실행 중 · 잔고 부족 · 주문 못 함", tone: "warn" };
+      if (r.run && !r.run.online) return { text: "실행 중 · 서버 재시도 중", tone: "warn" };
       return { text: "실행 중", tone: "ok" };
     default: {
       if (r.run?.finished)
@@ -111,6 +138,8 @@ function headlineOf(m: Model, slot: KeySlot): string {
 
 function noteOf(m: Model, slot: KeySlot): string {
   const k = m.keys[slot];
+  if (k.status === "connected" && k.problem === "funds")
+    return "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.";
   if (k.status !== "blocked") return "";
   if (k.problem === "ip")
     return "이 기기 주소가 거래소에 등록된 허용 IP와 달라요. 거래소 API 관리에서 허용 IP를 고치세요.";
@@ -134,19 +163,21 @@ export function slotCard(m: Model, slot: KeySlot): SlotCard {
     status: k.status,
     headline: headlineOf(m, slot),
     note: noteOf(m, slot),
+    noteTone: k.status === "blocked" || k.problem === "funds" ? "warn" : "muted",
     checks: checksOf(m, slot),
-    wizardAvailable: DOMESTIC.includes(slot),
+    wizardAvailable: true,
     inUseBy: m.runs.filter((r) => isActive(r) && r.mode !== "mock" && keySlotOf(r) === slot).length,
   };
 }
 
-export function syncWizard(m: Model): WizardState | null {
+function syncWizard(m: Model): WizardState | null {
   const w = m.wizard;
   if (!w) return null;
-  const k = m.keys[w.exchange];
+  const k = m.keys[w.slot];
   return {
     ...w,
     slots: { access: k.access !== "", secret: k.secret !== "" },
+    keysReady: k.access !== "" && k.secret !== "",
     remembered: k.remembered,
     rememberSupported: m.storage.status !== "unsupported",
   };
@@ -155,11 +186,15 @@ export function syncWizard(m: Model): WizardState | null {
 export function snapshot(m: Model): AppState {
   const active = m.runs.filter(isActive);
   const offline = active.some((r) => r.run && !r.run.online);
+  // 잔고 부족은 기다려도 풀리지 않음 — Rust처럼 '확인 필요'로 셈(모의는 빼고).
+  const attention = active.filter((r) => r.run?.fundsShort && r.mode !== "mock").length;
   const status: AppState["status"] = active.length
-    ? {
-        text: offline ? `실행 중 ${active.length}개 · 연결 다시 시도하는 중` : `실행 중 ${active.length}개`,
-        tone: offline ? "warn" : "ok",
-      }
+    ? attention
+      ? { text: `실행 중 ${active.length}개 · 확인 필요 ${attention}개`, tone: "danger" }
+      : {
+          text: offline ? `실행 중 ${active.length}개 · 연결 다시 시도하는 중` : `실행 중 ${active.length}개`,
+          tone: offline ? "warn" : "ok",
+        }
     : m.runs.length
       ? { text: "대기 중", tone: "muted" }
       : { text: "매크로를 추가하세요", tone: "muted" };
@@ -175,6 +210,8 @@ export function snapshot(m: Model): AppState {
       readiness: readinessOf(m, r),
       run: r.run ? { ...r.run, finished: r.run.finished ? { ...r.run.finished } : null } : null,
       webLinked: r.webLinked,
+      marketPage: marketPageOf(r)?.label ?? "",
+      webRunPage: Boolean(r.run?.sessionId),
       status: statusOf(m, r),
     })),
     settings: {
@@ -185,8 +222,11 @@ export function snapshot(m: Model): AppState {
       storage: m.storage,
       showDevLog: m.showDevLog,
       closeToTray: m.closeToTray,
-      serverBase: "https://api.ggparrot.com",
-      protocolVersion: "18",
+      serverBase: "https://gg-parrot.onrender.com",
+      serverCustom: false,
+      os: "macOS 15.6.1 (arm64)",
+      publicIp: m.publicIp,
+      serverLinkLevel: "20",
     },
     library: {
       dir: LIBRARY_DIR,

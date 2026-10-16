@@ -8,7 +8,7 @@ impl Shared {
     fn scan_library(&self) -> Result<(), String> {
         let dir = self.lock().library_dir.clone();
         let scan = {
-            let mut cache = self.library_cache.lock().unwrap_or_else(|e| e.into_inner());
+            let mut cache = lock_or_recover(&self.library_cache);
             library::scan_cached(&dir, &mut cache)
         };
         let mut c = self.lock();
@@ -18,10 +18,12 @@ impl Shared {
                 c.library_skipped = s.skipped;
                 c.library_truncated = s.truncated;
                 c.library_rev += 1;
+                c.log_library_problems(None);
                 Ok(())
             }
             Err(e) => {
                 c.library.clear();
+                c.log_library_problems(Some(&e));
                 Err(e)
             }
         }
@@ -61,14 +63,20 @@ impl Shared {
     pub fn import_dropped(self: &S, paths: Vec<PathBuf>) {
         let (ok, errors) = self.import_paths(&paths);
         if !ok.is_empty() {
-            self.notice(
+            self.notice_from(
+                "library",
                 "info",
                 format!("매크로 파일 {}개를 매크로 폴더로 가져왔어요. [매크로 추가]에서 고르세요.", ok.len()),
             );
             self.navigate("library");
         }
+        self.warn_import_failures(&errors);
+    }
+
+    /// 가져오지 못한 파일과 이유를 한 알림으로(없으면 아무것도 하지 않음).
+    pub fn warn_import_failures(&self, errors: &[String]) {
         if !errors.is_empty() {
-            self.notice("warn", format!("가져오지 못한 파일이 있어요.\n\n{}", errors.join("\n")));
+            self.notice_from("library", "warn", format!("가져오지 못한 파일이 있어요.\n\n{}", errors.join("\n")));
         }
     }
 

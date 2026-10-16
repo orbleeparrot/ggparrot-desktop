@@ -10,13 +10,15 @@ pub mod binance;
 pub mod domestic;
 pub mod mock;
 
-pub use binance::{BinanceBroker, BinanceUrls};
-pub use domestic::{explain_domestic_error, jwt_token, DomesticBroker};
+pub use binance::{binance_rejection_parts, is_binance_no_funds, BinanceBroker, BinanceUrls};
+pub use domestic::{domestic_error_code, explain_domestic_error, is_no_funds_error, jwt_token, DomesticBroker};
 pub use mock::MockBroker;
 
 pub type LogFn = Arc<dyn Fn(String) + Send + Sync>;
 
 mod pacing;
+#[cfg(test)]
+pub(crate) mod test_keys;
 pub(crate) use pacing::{cool, cool_key, cooling, retry_after_secs};
 pub use pacing::{lookup_delay, LOOKUP_ATTEMPTS};
 
@@ -26,7 +28,6 @@ pub fn null_log() -> LogFn {
 }
 
 pub const TERMINAL_STATUSES: [&str; 3] = ["FILLED", "CANCELED", "REJECTED"];
-pub const MAX_RETRIES: usize = 3;
 
 /// 업비트·빗썸 매수 수수료를 못 읽었을 때의 보수적인 값.
 pub const DOMESTIC_BID_FEE_FALLBACK: f64 = 0.0025;
@@ -48,16 +49,25 @@ pub fn fee_inclusive(budget: f64, rate: f64) -> f64 {
 
 /// 숫자로 읽히지 않거나 0 이하·NaN·무한이면 0.
 pub fn positive_number(value: &serde_json::Value) -> f64 {
-    let n = match value {
+    positive_f64(match value {
         serde_json::Value::Number(n) => n.as_f64().unwrap_or(0.0),
         serde_json::Value::String(s) => s.trim().parse::<f64>().unwrap_or(0.0),
         _ => 0.0,
-    };
-    if n.is_finite() && n > 0.0 {
-        n
+    })
+}
+
+/// 0보다 큰 유한한 값만 그대로, 나머지(0·음수·-0.0·NaN·무한)는 0.
+pub fn positive_f64(x: f64) -> f64 {
+    if x.is_finite() && x > 0.0 {
+        x
     } else {
         0.0
     }
+}
+
+/// 응답 객체의 한 칸을 [`positive_number`]로 읽음. 칸이 없으면 0.
+pub(crate) fn get_pos(obj: &serde_json::Map<String, serde_json::Value>, key: &str) -> f64 {
+    obj.get(key).map(positive_number).unwrap_or(0.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,6 +91,15 @@ pub struct OrderRules {
     pub min_notional: f64,
 }
 
+/// 주문 하나에서 낸 수수료. 화면 표시용(서버로 보내는 값에는 넣지 않음).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FeePaid {
+    /// 견적 통화(USDT·KRW)로 옮긴 수수료. 기초자산으로 낸 수수료는 체결가로 옮김.
+    pub quote: f64,
+    /// 견적 통화로 옮기지 못한 수수료(BNB 등) — (자산, 수량).
+    pub other: Vec<(String, f64)>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Order {
     /// FILLED | CANCELED | REJECTED | OPEN | UNKNOWN
@@ -91,9 +110,25 @@ pub struct Order {
     pub fees_known: bool,
     pub order_id: Option<String>,
     pub raw_status: String,
+    /// 거래소가 알려 준 수수료. None이면 모름(선물·체결 목록이 없는 응답 등).
+    pub fee: Option<FeePaid>,
 }
 
 impl Order {
+    /// 거래소가 주문을 받지 않았다고 분명히 답한 상태. 체결 0·수수료 0, raw_status에 거절 이유.
+    pub fn rejected(reason: String) -> Order {
+        Order {
+            status: "REJECTED".into(),
+            executed_qty: 0.0,
+            avg_price: 0.0,
+            acquired_qty: 0.0,
+            fees_known: true,
+            order_id: None,
+            raw_status: reason,
+            fee: Some(FeePaid::default()),
+        }
+    }
+
     /// 주문을 보냈는데 그 뒤로 아무것도 확인하지 못한 상태.
     #[cfg(test)]
     pub fn unknown() -> Order {
@@ -105,6 +140,7 @@ impl Order {
             fees_known: false,
             order_id: None,
             raw_status: "unknown".into(),
+            fee: None,
         }
     }
 }
@@ -173,8 +209,21 @@ pub trait Broker: Send + Sync {
     fn fee_from_base_asset(&self) -> bool;
     /// 국내 어댑터가 읽은 매수 수수료율. 바이낸스는 None. 모의는 안쪽 값을 그대로.
     fn bid_fee(&self) -> Option<f64>;
+    /// 국내 어댑터가 읽은 매도 수수료율. 바이낸스는 None. 모의는 안쪽 값을 그대로.
+    fn ask_fee(&self) -> Option<f64> {
+        None
+    }
+    /// 수수료를 모를 때 쓰는 이 거래소·시장의 기본 수수료율([`crate::pnl::default_fee_rate`]).
+    /// 바이낸스 값이 기본 — 국내 어댑터는 자기 거래소 값으로 바꿈.
+    fn default_fee_rate(&self) -> f64 {
+        crate::pnl::default_fee_rate(Some(crate::types::Exchange::Binance), self.market())
+    }
     /// 마지막 리허설에서 거래소가 돌려준 오류 낱말.
     fn last_error_name(&self) -> String;
+    /// 마지막 리허설에서 거래소가 돌려준 오류 코드(지원용 — 문장에는 넣지 않고 자세히 보기에만). 없으면 "".
+    fn last_error_code(&self) -> String {
+        String::new()
+    }
     fn set_log(&self, log: LogFn);
 
     async fn check_account(&self) -> Result<(), BrokerError>;
@@ -184,6 +233,15 @@ pub trait Broker: Send + Sync {
     async fn rehearse(&self, notional: f64, spend: Option<f64>) -> (bool, String);
     async fn price(&self) -> Result<f64, BrokerError>;
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError>;
+
+    /// 마지막 확인에서 읽은 잔고 한 줄("사용 가능 잔고 1,234.5 USDT · 보유 BTC 0.01"). 읽지 않았으면 "".
+    fn balance_note(&self) -> String {
+        String::new()
+    }
+    /// 마지막 시세 조회에 함께 온 전일 대비 등락률(0.012 = +1.2%). 모르면 None.
+    fn day_change(&self) -> Option<f64> {
+        None
+    }
 }
 
 // --- 어댑터들이 함께 쓰는 서버 형식 도우미 ----------------------------------
@@ -197,6 +255,16 @@ pub fn exc_text(e: &BrokerError) -> String {
             format!("APIError(code={name}): {message}")
         }
         other => other.to_string(),
+    }
+}
+
+/// 지원용 오류 코드 줄을 덧붙임 — "…\n오류 코드: insufficient_funds_bid". 코드가 없으면 그대로.
+/// 사람이 읽는 문장에는 코드를 넣지 않고 자세히 보기(활동 원문·앱 기록 설명)·원문 로그·복사 글에만 남김.
+pub fn with_error_code(text: &str, code: &str) -> String {
+    if code.is_empty() {
+        text.to_string()
+    } else {
+        format!("{text}\n오류 코드: {code}")
     }
 }
 
@@ -277,4 +345,33 @@ pub fn network_error(e: reqwest::Error) -> BrokerError {
         source = cause.source();
     }
     BrokerError::Network(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    #[test]
+    fn positive_f64_matches_reading_the_json_number() {
+        // JSON 숫자로 옮겨 positive_number로 읽던 길과 같은 값 — NaN·무한은 JSON 숫자가 못 돼 0이었음.
+        let via_json =
+            |x: f64| positive_number(&serde_json::Number::from_f64(x).map(Value::Number).unwrap_or(Value::Null));
+        for x in
+            [0.0, -0.0, -1.5, 1e-300, 0.5, 2.0, 1e300, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, f64::MIN_POSITIVE]
+        {
+            assert_eq!(positive_f64(x).to_bits(), via_json(x).to_bits(), "{x}");
+        }
+        assert_eq!(positive_f64(-0.0).to_bits(), 0.0f64.to_bits(), "-0.0는 +0으로");
+    }
+
+    #[test]
+    fn rejected_order_has_no_fill_and_keeps_the_reason() {
+        let o = Order::rejected("-2010 Account has insufficient balance".into());
+        assert_eq!(o.status, "REJECTED");
+        assert_eq!((o.executed_qty, o.avg_price, o.acquired_qty), (0.0, 0.0, 0.0));
+        assert!(o.fees_known && o.order_id.is_none());
+        assert_eq!(o.raw_status, "-2010 Account has insufficient balance");
+        assert_eq!(o.fee, Some(FeePaid::default()));
+    }
 }

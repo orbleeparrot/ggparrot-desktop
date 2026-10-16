@@ -18,8 +18,8 @@ use crate::types::{Credentials, IpObservation, KeyPair, KeySlot};
 pub const KEY_STORE_NAME: &str = if cfg!(windows) { "Windows 자격 증명 관리자" } else { "키체인" };
 pub const KEYRING_SERVICE: &str = "ggparrot-desktop";
 pub const KEYRING_USER: &str = "credentials";
-/// 저장 항목의 키 칸 — 세 거래소와 바이낸스 테스트넷 칸(KeySlot과 같은 이름).
-pub const EXCHANGES: [&str; 4] = ["binance", "binance_testnet", "upbit", "bithumb"];
+/// 저장 항목의 키 칸 — 세 거래소와 바이낸스 연습 칸 둘(KeySlot과 같은 이름).
+pub const EXCHANGES: [&str; 5] = ["binance", "binance_testnet", "binance_demo", "upbit", "bithumb"];
 const DECRYPT_ERROR: &str = "decrypt_error";
 
 pub const UNREADABLE_NOT_CHANGED: &str =

@@ -1,30 +1,66 @@
 // 브라우저 미리보기용 mock 백엔드 — `window.__TAURI_INTERNALS__`가 없을 때만 ipc.ts가 불러옴.
 // 계약 v2(types.ts)를 그대로 흉내 냄: 실행 목록·모드·시작/실전 확인·실행 루프와 활동·종료·설정 키 칸·자동 연결 확인·
-// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | settings | wizard | library.
+// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | many | settings | applog | wizard | library
+// | wizard-testnet | wizard-demo | wizard-live(바이낸스 도우미). many: 매크로 24개, 그중 몇 개는 실행 중.
 import type { Backend, ConfirmPayload, Unlisten } from "./ipc";
 import {
+  emptyKey,
+  EXCHANGE_LABELS,
   initialModel,
   IMPORT_SAMPLES,
   MOCK_NEXT_VERSION,
+  MOCK_VERSION,
   newRun,
+  SLOT_EXCHANGE,
+  SLOT_LABELS,
   uniqueName,
   type MockRun,
   type Model,
 } from "./mockData";
-import { activityText, beginRun, stopActivities, tickRun, type Emit } from "./mockActivity";
-import { conflictMessage, filled, isActive, keySlotOf, snapshot } from "./mockSnapshot";
-import { createWizard } from "./mockWizard";
+import { activityText, beginRun, holdAt, stopActivities, tickRun, type Emit } from "./mockActivity";
+import { conflictMessage, filled, isActive, keySlotOf, marketPageOf, snapshot } from "./mockSnapshot";
+import { createWizard, type WizardTarget } from "./mockWizard";
 import { formatClock } from "./state/format";
 import { MAX_ACTIVITY } from "./state/activity";
-import type { Activity, KeyField, KeySlot, Notice, RunMode, StartReply, StopMode } from "./types";
-import { EV_ACTIVITY, EV_CONFIRM, EV_NOTICE, EV_STATE } from "./types";
-import { EXCHANGE_LABELS } from "./mockData";
+import { SIDE_LABELS } from "./state/runs";
+import type {
+  Activity,
+  AppLogEntry,
+  AppLogLevel,
+  AppLogSource,
+  Exchange,
+  KeyField,
+  KeySlot,
+  Market,
+  Notice,
+  RunMode,
+  StartReply,
+  StopMode,
+} from "./types";
+import { EV_ACTIVITY, EV_APP_LOG, EV_CONFIRM, EV_NOTICE, EV_STATE } from "./types";
 import { WEB_URL } from "./platform";
 
 type Handler = (payload: unknown) => void;
 type Args = Record<string, unknown>;
 
 export const TICK_MS = 2000;
+/** 앱 기록 줄 수 한도(Rust APP_LOG_LIMIT과 같음). */
+export const APP_LOG_LIMIT = 500;
+
+const LOG_LEVEL_LABELS: Record<AppLogLevel, string> = { info: "알림", warn: "주의", error: "오류" };
+
+/** 앱 기록 복사 한 줄 — 앱(Rust app_log_line)과 같은 모양. 설명의 줄바꿈은 " / "로 이음. */
+export function appLogLine(e: AppLogEntry): string {
+  const d = new Date(e.at);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const t = `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const detail = e.detail
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join(" / ");
+  return `${t}  ${LOG_LEVEL_LABELS[e.level]} [${e.source}] ${e.title}${detail ? ` — ${detail}` : ""}`;
+}
 
 export function createMockBackend(
   params = new URLSearchParams(globalThis.location?.search ?? ""),
@@ -35,10 +71,30 @@ export function createMockBackend(
   const activity = new Map<string, Activity[]>();
   const keyTimers = new Map<KeySlot, ReturnType<typeof setTimeout>>();
   let nextActivity = 0;
+  const appLog: AppLogEntry[] = [];
 
   const emit = (event: string, payload: unknown) => handlers.get(event)?.forEach((h) => h(payload));
   const push = () => emit(EV_STATE, snapshot(m));
-  const notice = (n: Notice) => emit(EV_NOTICE, n);
+  /** 앱 기록 한 줄 — 앱처럼 최근 500줄만 두고 runner:app-log로 보냄. */
+  const logApp = (
+    level: AppLogLevel,
+    source: AppLogSource,
+    title: string,
+    detail = "",
+    at = Date.now(),
+  ): AppLogEntry => {
+    const entry: AppLogEntry = { id: (appLog.at(-1)?.id ?? 0) + 1, at, level, source, title, detail };
+    appLog.push(entry);
+    if (appLog.length > APP_LOG_LIMIT) appLog.shift();
+    emit(EV_APP_LOG, entry);
+    return entry;
+  };
+  /** 알림 — 앱처럼 앱 기록에 먼저 남기고(첫 줄 = 제목) 그 번호를 logId로 실음. */
+  const notice = (n: Notice, source: AppLogSource = "app") => {
+    const [head = "", ...rest] = n.message.trim().split("\n");
+    const entry = logApp(n.level, source, head.trim(), rest.join("\n").trim());
+    emit(EV_NOTICE, { ...n, logId: entry.id });
+  };
   const info = (message: string, title = "") => notice({ level: "info", title, message });
   const later = (ms: number, fn: () => void) => setTimeout(() => (fn(), push()), ms);
   const findRun = (id: unknown): MockRun => {
@@ -65,6 +121,45 @@ export function createMockBackend(
     activity.set(r.id, list);
     emit(EV_ACTIVITY, item);
   };
+
+  // 앱 기록 견본 — 켤 때 한 줄, 읽지 못한 매크로 파일 경고.
+  {
+    const s = snapshot(m).settings;
+    logApp("info", "app", `앱을 시작했어요 — v${MOCK_VERSION}`, `${s.os} · 서버 연동 레벨 ${s.serverLinkLevel}`);
+    const broken = m.files.filter((f) => !f.macro && f.error);
+    if (broken.length)
+      logApp(
+        "warn",
+        "library",
+        `매크로 폴더에서 읽지 못한 파일이 있어요 (${broken.length}개)`,
+        broken.map((f) => `${f.fileName}: ${f.error}`).join("\n"),
+      );
+  }
+
+  // 웹 연결로 받은 견본 매크로 — 앱처럼 연결 기록과 매크로 폴더 저장 기록을 남김.
+  for (const r of m.runs.filter((x) => x.webLinked && x.fileName)) {
+    const at = Date.now();
+    logApp("info", "library", `웹 매크로를 매크로 폴더에 저장했어요 — ${r.fileName}`);
+    say(
+      r,
+      {
+        kind: "info",
+        title: "웹에서 매크로를 연결했어요",
+        detail: "모드는 모의로 준비했어요. 확인한 뒤 직접 시작하세요.",
+        tone: "ok",
+      },
+      at,
+    );
+    say(
+      r,
+      {
+        kind: "info",
+        title: `매크로 폴더에 저장했어요 — ${r.fileName}`,
+        detail: "실행 목록에서 빼도 파일은 매크로 폴더에 남아요.",
+      },
+      at,
+    );
+  }
 
   // --- 키 칸·자동 연결 확인 --------------------------------------------------
   function scheduleCheck(slot: KeySlot, delay = 700) {
@@ -98,14 +193,17 @@ export function createMockBackend(
       r.startAfterCheck = false;
       r.phase = "idle";
       if (k.status !== "connected") {
-        notice({
-          level: "warn",
-          title: "시작 전 확인",
-          message:
-            k.problem === "ip"
-              ? "허용 IP 확인이 필요해요. 거래소에 이 기기 주소를 등록한 뒤 다시 시작하세요."
-              : "키가 맞지 않아요. 설정에서 키를 확인한 뒤 다시 시작하세요.",
-        });
+        notice(
+          {
+            level: "warn",
+            title: "시작 전 확인",
+            message:
+              k.problem === "ip"
+                ? "허용 IP 확인이 필요해요. 거래소에 이 기기 주소를 등록한 뒤 다시 시작하세요."
+                : "키가 맞지 않아요. 설정에서 키를 확인한 뒤 다시 시작하세요.",
+          },
+          "run",
+        );
       } else if (r.mode === "live") {
         const c = liveConfirm(r);
         emit(EV_CONFIRM, { runId: r.id, title: c.title, message: c.message } satisfies ConfirmPayload);
@@ -125,13 +223,30 @@ export function createMockBackend(
 
   const wizard = createWizard(m, { later, info, checkNow });
 
+  /** 이 실행으로 연 도우미의 대상 — 실행이 쓰는 칸(keySlotOf)과 그 칸의 사이트. 모의는 키가 필요 없어 없음. */
+  function runTarget(r: MockRun): WizardTarget | null {
+    const slot = keySlotOf(r);
+    if (!slot || r.mode === "mock") return null;
+    return slotTarget(SLOT_EXCHANGE[slot], slot, r.macro.market);
+  }
+
+  /** 설정 카드에서 연 도우미의 대상 — 칸이 곧 사이트(Rust `KeySlot::binance_env`).
+   *  연습 칸은 시장도 칸이 정하고, 실거래 칸은 그 칸을 쓰는 맨 앞 실행(실전 · 모의)의 시장. */
+  function slotTarget(exchange: Exchange, slot: KeySlot, market?: Market): WizardTarget {
+    if (exchange !== "binance") return { exchange, slot, env: "", market: "spot" };
+    if (slot === "binance_testnet") return { exchange, slot, env: "testnet", market: "spot" };
+    if (slot === "binance_demo") return { exchange, slot, env: "demo", market: "futures" };
+    const first = m.runs.find((r) => keySlotOf(r) === slot)?.macro.market ?? "spot";
+    return { exchange, slot, env: "live", market: market ?? first };
+  }
+
   // --- 실행 ---------------------------------------------------------------------
   function liveConfirm(r: MockRun): { kind: "confirm_live"; title: string; message: string } {
     const label = r.macro.exchange ? EXCHANGE_LABELS[r.macro.exchange] : r.macro.exchangeName;
     return {
       kind: "confirm_live",
       title: `${label} 실전으로 시작할까요?`,
-      message: `실제 자금으로 주문해요.\n${r.macro.symbol} · ${r.macro.side === "long" ? "롱" : "숏"}`,
+      message: `실제 자금으로 주문해요.\n${r.macro.symbol} · ${SIDE_LABELS[r.macro.side]}`,
     };
   }
 
@@ -196,13 +311,21 @@ export function createMockBackend(
         "설치 파일(디스크 이미지)이나 다운로드 폴더에서 바로 실행 중이라 업데이트를 설치할 수 없어요. 앱을 응용 프로그램 폴더로 옮긴 뒤 다시 실행하세요.";
     later(quiet ? 400 : 900, () => {
       m.update.checkedAt = Date.now();
-      if (updateMode === "error")
+      if (updateMode === "error") {
         Object.assign(m.update, {
           status: "error",
           error: "업데이트 서버에 연결하지 못했어요. 인터넷 연결을 확인한 뒤 다시 확인하세요.",
         });
-      else if (updateMode === "0") m.update.status = "none";
-      else
+        logApp(
+          "warn",
+          "update",
+          "업데이트 정보를 확인하지 못했어요",
+          `${quiet ? "자동" : "직접"} 확인 · (미리보기) 연결 실패`,
+        );
+      } else if (updateMode === "0") m.update.status = "none";
+      else {
+        // 같은 새 버전은 한 번만 남김(앱과 같음).
+        if (m.update.version !== MOCK_NEXT_VERSION) logApp("info", "update", `새 버전 v${MOCK_NEXT_VERSION}이 있어요`);
         Object.assign(m.update, {
           status: "available",
           version: MOCK_NEXT_VERSION,
@@ -210,6 +333,7 @@ export function createMockBackend(
           notes:
             "· 활동 기록 복사에 원문 줄을 함께 넣어요\n· 업비트 허용 IP 안내 문구를 다듬었어요\n· 창을 줄였을 때 목록이 잘리던 문제를 고쳤어요",
         });
+      }
     });
   }
 
@@ -243,6 +367,12 @@ export function createMockBackend(
         signature: next === original ? (r.macro.signature === "modified" ? "signed" : r.macro.signature) : "modified",
       };
     },
+    move_run: ({ runId, index }) => {
+      const from = m.runs.findIndex((r) => r.id === runId);
+      if (from < 0) return;
+      const [r] = m.runs.splice(from, 1);
+      m.runs.splice(Math.max(0, Math.min(Number(index), m.runs.length)), 0, r);
+    },
     remove_run: ({ runId }) => {
       const r = findRun(runId);
       if (isActive(r)) throw "실행 중인 매크로는 목록에서 뺄 수 없어요. 먼저 종료하세요.";
@@ -268,17 +398,18 @@ export function createMockBackend(
       if (conflict) return { kind: "blocked", message: conflict };
       const slot = keySlotOf(r)!;
       if (r.mode !== "mock" && !filled(m, slot)) {
-        if (slot === "upbit" || slot === "bithumb") {
-          wizard.open(slot, "ask");
+        const target = runTarget(r);
+        if (target) {
+          wizard.open(target, "ask");
           return { kind: "wizard" };
         }
-        const label = slot === "binance_testnet" ? "바이낸스 테스트넷" : "바이낸스";
+        const label = SLOT_LABELS[slot];
         return {
           kind: "blocked",
           message: `이 매크로를 시작하려면 ${label} API 키가 필요해요.\n\n설정 › 거래소 연결에서 입력하세요.`,
         };
       }
-      if (!m.member) return { kind: "blocked", message: "회원 키가 필요해요.\n\n설정 › 껄무새 계정에서 입력하세요." };
+      if (!m.member) return { kind: "blocked", message: "회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요." };
       if (r.mode !== "mock" && m.keys[slot].status !== "connected") {
         r.startAfterCheck = true;
         r.phase = "checking";
@@ -299,6 +430,40 @@ export function createMockBackend(
     copy_activity: ({ runId }) => {
       const text = activityText(activity.get(String(runId)) ?? [], formatClock);
       void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);
+    },
+    refresh_public_ip: ({ force }) => {
+      if (m.publicIp.status === "ok" && !force) return;
+      m.publicIp = { status: "loading", address: "" };
+      later(700, () => {
+        m.publicIp = { status: "ok", address: "211.234.101.57" };
+      });
+    },
+    copy_support_info: () => {
+      const s = snapshot(m).settings;
+      const recent = appLog.slice(-20).map((e) => `- ${appLogLine(e)}`);
+      const text = [
+        "[껄무새 문의용 정보] (미리보기)",
+        `앱 버전: v${MOCK_VERSION}`,
+        `서버 연동 레벨: ${s.serverLinkLevel}`,
+        `OS: ${s.os}`,
+        `공인 IP: ${s.publicIp.address || "확인 전"}`,
+        ...(recent.length ? ["최근 앱 기록:", ...recent] : []),
+      ].join("\n");
+      void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);
+    },
+    get_app_log: () => appLog.slice(),
+    copy_app_log: () => {
+      const s = snapshot(m).settings;
+      const text = [`[껄무새 앱 기록] v${MOCK_VERSION} · ${s.os} (미리보기)`, ...appLog.map(appLogLine)].join("\n");
+      void globalThis.navigator?.clipboard?.writeText(text).catch(() => undefined);
+    },
+    open_market_page: ({ runId }) => {
+      const page = marketPageOf(findRun(runId));
+      if (page) window.open(page.url, "_blank", "noopener");
+    },
+    open_run_web_page: ({ runId }) => {
+      const sid = findRun(runId).run?.sessionId;
+      if (sid) window.open(`${WEB_URL}agents?session=${sid}`, "_blank", "noopener");
     },
     set_slot_key: ({ slot, field, value }) => {
       const s = slot as KeySlot;
@@ -371,6 +536,11 @@ export function createMockBackend(
       return 1;
     },
     ...wizard.commands,
+    wizard_open: ({ exchange, slot, stage }) => {
+      const ex = exchange as Exchange;
+      const s = (slot as KeySlot | undefined) ?? (ex === "binance" ? "binance" : ex);
+      wizard.open(slotTarget(ex, s), (stage as Parameters<typeof wizard.open>[1]) || "ask");
+    },
   };
 
   // 창에 끌어다 놓기(브라우저 미리보기에서만) — Rust처럼 폴더로 가져오고 알림을 냄.
@@ -392,7 +562,20 @@ export function createMockBackend(
   // 디자인 검토용 바로가기
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
-  if (demo === "wizard") wizard.open("upbit", "ask");
+  if (demo === "pnl") seedPnl();
+  if (demo === "settings") seedSettings();
+  if (demo === "many") seedMany();
+  if (demo === "wizard") wizard.open(slotTarget("upbit", "upbit"), "ask");
+  if (demo === "applog") seedAppLog();
+  // 바이낸스 도우미: ?demo=wizard-testnet | wizard-demo | wizard-live
+  const site = /^wizard-(testnet|demo|live)$/.exec(demo ?? "")?.[1];
+  if (site) {
+    // 처음 만드는 길을 보이도록 그 칸은 비워 둠(견본은 실거래 칸에 키가 있음).
+    const sites: Record<string, KeySlot> = { testnet: "binance_testnet", demo: "binance_demo", live: "binance" };
+    const slot = sites[site];
+    m.keys[slot] = emptyKey();
+    wizard.open(slotTarget("binance", slot), "ask");
+  }
 
   function seedRunning() {
     const now = Date.now();
@@ -416,6 +599,140 @@ export function createMockBackend(
       goLive(r);
       for (let i = 1; i <= ticks; i += 1) tickRun(say, r, t0 + (i * minutes * 60_000) / (ticks + 1));
       if (r.run) r.run.online = true;
+    }
+  }
+
+  /** ?demo=pnl — 손익·청산 기준 막대 검토용. 정해진 평단·현재가로 보유 중인 매크로 여섯 개(신호 없이 시세만 흔듦).
+   *  업비트 원화 현물(실전·수수료 반영, 수량 0.00127) · 바이낸스 선물 롱 트레일링(실전·수수료 모름) · 선물 숏(모의) ·
+   *  바이낸스 현물 USDT 익절만(+0.15% — 수수료 반영하면 손실) · 빗썸 손절만(익절은 신호) ·
+   *  업비트 싼 코인(KRW-ZAMA, 수량 499.75012494 — 긴 수량이 잘리지 않는지). */
+  function seedPnl() {
+    const now = Date.now();
+    m.keys.upbit = {
+      access: "upAccessDemo0000",
+      secret: "upSecretDemo0000",
+      remembered: true,
+      status: "connected",
+      problem: "",
+    };
+    const byTitle = (title: string) => {
+      const existing = m.runs.find((r) => r.macro.title === title);
+      if (existing) return existing;
+      const f = m.files.find((x) => x.macro?.title === title)!;
+      return newRun(m, f.macro!, f.fileName);
+    };
+    const [futures, upbit] = m.runs;
+    const zama = newRun(
+      m,
+      {
+        ...upbit.macro,
+        title: "ZAMA 단타",
+        symbol: "KRW-ZAMA",
+        baseAsset: "ZAMA",
+        capital: 100_000,
+        capitalOriginal: null,
+      },
+      "ZAMA 단타.ggm.json",
+    );
+    const plan: [MockRun, RunMode, number, number, number?][] = [
+      [upbit, "live", 118_000_000, 118_590_000, 0.00127],
+      [byTitle("BTC 단타 (내 수정)"), "mock", 81_806, 81_928.71],
+      [futures, "live", 81_000, 82_900],
+      [byTitle("ETH 숏 연습"), "mock", 3_150, 3_100.4],
+      [byTitle("빗썸 이더 단타"), "mock", 4_812_000, 4_790_000],
+      [zama, "mock", 200.1, 201.3, 499.75012494],
+    ];
+    for (const [r, mode, entry, price, qty] of plan) {
+      r.mode = mode;
+      beginRun(say, r, now - 9 * 60_000);
+      goLive(r);
+      holdAt(r, entry, price, qty);
+    }
+  }
+
+  /** ?demo=settings — 설정 검토용. 업비트는 연결됐지만 원화 잔고가 모자란 상태(주의 안내),
+   *  바이낸스 테스트넷 · 데모는 비어 있어 한 줄로 접힘. */
+  function seedSettings() {
+    m.keys.upbit = {
+      access: "upAccessDemo0000",
+      secret: "upSecretDemo0000",
+      remembered: true,
+      status: "connected",
+      problem: "funds",
+    };
+  }
+
+  /** ?demo=applog — 설정 › 앱 기록을 열고, 여러 출처·수준의 줄을 채운 뒤 [자세히]가 달린 알림 토스트를 띄움. */
+  function seedAppLog() {
+    const now = Date.now();
+    // 켤 때 남긴 줄을 견본보다 앞선 시각으로 — 번호 순서와 시각 순서를 맞춤.
+    for (const e of appLog) e.at = now - 45 * 60_000;
+    const rows: [AppLogLevel, AppLogSource, string, string, number][] = [
+      ["info", "web", "껄무새 웹과 연결했어요", "", 41],
+      ["info", "keys", "회원 키를 웹 연결에서 받았어요", "", 40],
+      [
+        "warn",
+        "server",
+        "서버 응답이 늦어요 — 다시 시도했어요",
+        "GET /api/runner/session · 8.2초\n두 번째 시도에서 응답을 받았어요.",
+        33,
+      ],
+      ["info", "wizard", "연결 도우미를 열었어요 — 바이낸스 테스트넷", "", 27],
+      ["info", "keys", "바이낸스 테스트넷 키를 확인했어요", "읽기 ✓ · 거래 ✓ · 출금 꺼짐 ✓", 26],
+      [
+        "error",
+        "run",
+        "시작하지 못했어요 — 업비트 KRW-BTC",
+        "업비트가 이 IP(211.234.101.57)를 허용하지 않아요.\n업비트 Open API 관리에서 허용 IP에 추가하세요.",
+        18,
+      ],
+      ["warn", "storage", "기억한 키를 저장하지 못했어요", "키체인이 잠겨 있어요. 이번 실행 동안만 기억해요.", 12],
+      ["info", "web", "껄무새 웹과 연결이 끊겼어요 — 다시 연결하는 중", "", 6],
+      ["info", "web", "껄무새 웹과 다시 연결했어요", "", 5],
+    ];
+    for (const [level, source, title, detail, minutes] of rows)
+      logApp(level, source, title, detail, now - minutes * 60_000 + Math.floor(Math.random() * 50_000));
+    later(1500, () =>
+      notice(
+        {
+          level: "info",
+          title: "매크로 폴더",
+          message: "매크로 파일 2개를 매크로 폴더로 가져왔어요.",
+        },
+        "library",
+      ),
+    );
+  }
+
+  /** 긴 목록 사이사이에 실행 중 매크로를 둠 — 스크롤한 뒤에도 실행 중 카드가 눈에 띄는지 보려고. */
+  /** ?demo=many — 24개 중 몇 개를 실행 중으로. 앞쪽은 카드 검토용: 긴 종목(1000SHIBUSDT 실행 중·테스트넷·보유 중),
+   *  BTCDOMUSDT(대기·테스트넷), KRW-SHIB(대기·실전), 서버 재시도 중인 카드. */
+  function seedMany() {
+    const now = Date.now();
+    const [shib, dom, krwShib] = m.runs.slice(2, 5);
+    if (shib) shib.mode = "testnet";
+    if (dom) dom.mode = "testnet";
+    if (krwShib) krwShib.mode = "live";
+    for (const i of [0, 2, 5, 11, 17, 22]) {
+      const r = m.runs[i];
+      if (!r || isActive(r)) continue;
+      const t0 = now - (i + 3) * 60_000;
+      start(r, t0);
+      goLive(r);
+      for (let k = 1; k <= 6; k += 1) tickRun(say, r, t0 + k * 20_000);
+      if (r.run) r.run.online = true;
+    }
+    if (shib?.run) holdAt(shib, 100, 101.37);
+    const retrying = m.runs[5];
+    if (retrying?.run) {
+      retrying.offline = true;
+      Object.assign(retrying.run, { online: false, offlineSince: now - 90_000 });
+    }
+    // 잔고 부족으로 진입 주문이 거절된 실전 실행('실행 중 · 잔고 부족 · 주문 못 함').
+    const short = m.runs[11];
+    if (short?.run) {
+      short.mode = "live";
+      short.run.fundsShort = true;
     }
   }
 

@@ -1,4 +1,4 @@
-//! 화면으로 보내기 — 상태 스냅샷(모아 보내기·매크로 폴더 목록은 바뀐 판만)·활동·알림·화면 이동.
+//! 화면으로 보내기 — 상태 스냅샷(모아 보내기·매크로 폴더 목록은 바뀐 판만)·활동·앱 기록·알림·화면 이동.
 
 use super::*;
 
@@ -9,15 +9,19 @@ impl Shared {
     // --- 출력 -------------------------------------------------------------------
     pub fn emit(&self) {
         use std::sync::atomic::Ordering;
-        let _order = self.emit_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let (dto, progress, items) = {
+        let _order = lock_or_recover(&self.emit_lock);
+        let (dto, progress, items, logs) = {
             let mut c = self.lock();
             let items = std::mem::take(&mut c.pending_activity);
+            let logs = std::mem::take(&mut c.pending_app_log);
             let library = self.sent_library_rev.swap(c.library_rev, Ordering::Relaxed) != c.library_rev;
-            (c.render_with(&self.version, library), c.progress_payloads(), items)
+            (c.render_with(&self.version, library), c.progress_payloads(), items, logs)
         };
         for item in items {
             let _ = self.app.emit(EV_ACTIVITY, item);
+        }
+        for entry in logs {
+            let _ = self.app.emit(EV_APP_LOG, entry);
         }
         let _ = self.app.emit(EV_STATE, serde_json::to_value(dto).unwrap_or_default());
         for (rep, payload) in progress {
@@ -47,9 +51,36 @@ impl Shared {
         serde_json::to_value(self.lock().render(&self.version)).unwrap_or(Value::Null)
     }
 
+    /// 알림(토스트) — 출처 "app"으로 앱 기록에도 남김. 출처를 아는 곳은 [`Shared::notice_from`].
     pub fn notice(&self, level: &str, message: impl Into<String>) {
-        let _ =
-            self.app.emit(EV_NOTICE, Notice { level: level.into(), title: APP_TITLE.into(), message: message.into() });
+        self.notice_from("app", level, message);
+    }
+
+    /// 알림을 앱 기록에 남긴 뒤(첫 줄 = 제목, 나머지 = 설명) 띄움. 알림에는 그 기록 번호(logId)를 실음 —
+    /// 화면이 [자세히]로 앱 기록을 열 수 있게. 기록 줄을 먼저 보내 알림보다 늦게 도착하지 않게 함.
+    pub fn notice_from(&self, source: &'static str, level: &str, message: impl Into<String>) {
+        self.notice_with_code(source, level, message, "");
+    }
+
+    /// [`Shared::notice_from`]과 같되 거래소 오류 코드를 앱 기록 설명 끝에만 붙임("오류 코드: …") —
+    /// 알림 글에는 넣지 않음(문의할 때 앱 기록 [›]·복사 글에서 찾음).
+    pub fn notice_with_code(&self, source: &'static str, level: &str, message: impl Into<String>, code: &str) {
+        let message = message.into();
+        let logged = runner_core::brokers::with_error_code(&message, code);
+        let log_id = {
+            let _order = lock_or_recover(&self.emit_lock);
+            let (id, logs) = {
+                let mut c = self.lock();
+                let id = c.push_notice_log(level, source, &logged);
+                (id, std::mem::take(&mut c.pending_app_log))
+            };
+            for entry in logs {
+                let _ = self.app.emit(EV_APP_LOG, entry);
+            }
+            id
+        };
+        let notice = Notice { level: level.into(), title: APP_TITLE.into(), message, log_id: Some(log_id) };
+        let _ = self.app.emit(EV_NOTICE, notice);
     }
 
     pub fn navigate(&self, to: &str) {
@@ -59,7 +90,7 @@ impl Shared {
     /// 활동만 보냄(상태 스냅샷은 그대로) — 로그 줄마다 전체 상태를 보내지 않게.
     pub(crate) fn emit_activity_only(&self) {
         // emit과 같은 순서 잠금 — 활동 줄이 두 경로로 나가며 순서가 뒤바뀌지 않게.
-        let _order = self.emit_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let _order = lock_or_recover(&self.emit_lock);
         let items = std::mem::take(&mut self.lock().pending_activity);
         for item in items {
             let _ = self.app.emit(EV_ACTIVITY, item);

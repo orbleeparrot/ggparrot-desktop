@@ -19,7 +19,7 @@ impl Bot {
 
     /// [`report_status`]와 같되 스냅샷을 받음 — 시세를 못 받은 틱도 같은 연결 처리를 거침.
     pub(super) async fn report_snapshot(&mut self, snap: Value) -> crate::server::HeartbeatReply {
-        let _ = self.tx.send(BotEvent::Status(snap.clone()));
+        let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(snap.clone())));
         let reply = self.heartbeat(&snap).await;
         self.apply_connection(&reply);
         reply
@@ -53,7 +53,7 @@ impl Bot {
         }
         if reply.offline {
             if self.offline_since == 0 {
-                self.offline_since = wall_ms();
+                self.offline_since = unix_ms();
             }
             if !self.offline_logged {
                 if !reply.auth_failed && reply.rejected == 0 {
@@ -75,7 +75,7 @@ impl Bot {
                 );
                 self.offline_logged = true;
             }
-            if !self.offline_escalated && wall_ms().saturating_sub(self.offline_since) >= OFFLINE_ALERT_MS {
+            if !self.offline_escalated && unix_ms().saturating_sub(self.offline_since) >= OFFLINE_ALERT_MS {
                 self.offline_escalated = true;
                 self.logger.activity(
                     "connection",
@@ -112,6 +112,7 @@ impl Bot {
             offline_since: self.offline_since,
             price_stale_since: self.price_fail_since,
             close_failures: self.close_failures,
+            funds_short: self.funds_short,
         }
     }
 
@@ -134,7 +135,7 @@ impl Bot {
 
     /// 틱 사이가 크게 벌어졌으면(잠자기·앱 멈춤) 알리고 서버 재시도를 바로 하게 함.
     pub(super) fn check_wall_gap(&mut self) {
-        let now = wall_ms();
+        let now = unix_ms();
         let gap = now.saturating_sub(self.last_tick_ms);
         if self.last_tick_ms > 0 && gap >= WALL_GAP_ALERT_MS {
             let minutes = (gap as f64 / 60_000.0).round().max(1.0);

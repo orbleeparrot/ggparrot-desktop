@@ -63,7 +63,11 @@ export default function App() {
   }, [updatedFrom, currentVersion, toast]);
 
   const openLibrary = useCallback(() => setLibraryOpen(true), []);
-  nav.onLibrary.current = openLibrary;
+  const { setLibraryHandler } = nav;
+  useEffect(() => {
+    setLibraryHandler(openLibrary);
+    return () => setLibraryHandler(null);
+  }, [setLibraryHandler, openLibrary]);
   const flows = useRunDialogs({ state, act, toast, openSettings: nav.openSettings });
 
   const ctx = useMemo<RunnerContextValue | null>(
@@ -134,7 +138,11 @@ export default function App() {
       {state.wizard && <Wizard wizard={state.wizard} />}
       {flows.dialogs}
       <DropOverlay />
-      <Toasts toasts={notices.toasts} onDismiss={notices.dismissToast} />
+      <Toasts
+        toasts={notices.toasts}
+        onDismiss={notices.dismissToast}
+        onDetail={(id) => nav.openSettings({ kind: "log", id })}
+      />
       {dialog && (
         <Dialog
           title={dialog.title}

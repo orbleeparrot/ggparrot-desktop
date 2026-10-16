@@ -136,18 +136,23 @@ async fn fee_rule_follows_the_inner_adapter() {
     let (m, _, _) = wrap(fake);
     assert_eq!(m.submit(req(OrderSide::Buy, Some(3.0), None, "ggp-7")).await.unwrap().acquired_qty, 3.0);
 
+    // 수수료율을 못 읽으면 거래소·시장 기본값 — 바이낸스 현물은 0.1%.
     for bid in [None, Some(0.0)] {
         let mut fake = Fake::new();
         fake.bid_fee = bid;
         let (m, _, _) = wrap(fake);
         let o = m.submit(req(OrderSide::Buy, None, Some(1000.0), "ggp-9")).await.unwrap();
-        assert!((o.acquired_qty - 10.0 * (1.0 - 0.0005)).abs() < 1e-12);
+        assert!((o.acquired_qty - 10.0 * (1.0 - 0.001)).abs() < 1e-12, "{}", o.acquired_qty);
+        assert!((o.fee.unwrap().quote - 1.0).abs() < 1e-9, "1,000 USDT × 0.1%");
     }
     let mut fake = Fake::new();
     fake.bid_fee = Some(0.0025);
     let (m, _, _) = wrap(fake);
     let o = m.submit(req(OrderSide::Buy, None, Some(1000.0), "ggp-11")).await.unwrap();
     assert!((o.acquired_qty - 10.0 * (1.0 - 0.0025)).abs() < 1e-12);
+    // 현물 모의 체결은 같은 수수료율로 낸 수수료(견적 통화)를 함께 돌려줌 — 화면의 수수료 반영 손익에 씀.
+    let fee = o.fee.unwrap();
+    assert!((fee.quote - 1000.0 * 0.0025).abs() < 1e-9 && fee.other.is_empty(), "{fee:?}");
 }
 
 #[tokio::test]
@@ -327,10 +332,14 @@ async fn wrapped_binance_futures_never_changes_margin_or_leverage_or_orders() {
     assert!(m.ensure_ready().await.unwrap());
     assert_eq!(m.order_rules().await.unwrap().step, 0.001);
     let (ok, reason) = m.rehearse(1000.0, None).await;
-    assert!(ok && reason.contains("APIError(code=-2015)"), "{reason}");
+    assert!(ok && reason.contains("키를 거절했어요") && !reason.contains("-2015"), "{reason}");
     assert_eq!(m.last_error_name(), "binance_access");
+    assert_eq!(m.last_error_code(), "-2015", "안쪽 어댑터의 오류 코드를 그대로 넘김");
     let o = m.submit(req(OrderSide::Buy, Some(3.0), None, "ggp-f2")).await.unwrap();
     assert_eq!((o.status.as_str(), o.acquired_qty), ("FILLED", 3.0));
+    // 모의 선물도 시장가(테이커) 기본 수수료 0.05%를 알려 줌 — 3개 × 100 USDT × 0.05% = 0.15 USDT.
+    let fee = o.fee.unwrap();
+    assert!((fee.quote - 0.15).abs() < 1e-9 && fee.other.is_empty(), "{fee:?}");
     let posted = server.received_requests().await.unwrap().into_iter().filter(|r| r.method.as_str() == "POST").count();
     assert_eq!(posted, 0, "모의는 레버리지 · 마진 · 주문 어느 것도 쓰지 않는다");
 }

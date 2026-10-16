@@ -71,7 +71,7 @@ impl Bot {
         let broker = self.broker()?;
         let ready = match broker.ensure_ready().await {
             Ok(r) => r,
-            Err(BrokerError::Access { explanation, .. }) => return Ok(self.rehearsal_failed(&explanation)),
+            Err(BrokerError::Access { explanation, name }) => return Ok(self.rehearsal_failed(&explanation, &name)),
             Err(e) => return Err(e.to_string()),
         };
         if !ready {
@@ -95,45 +95,59 @@ impl Bot {
         if let Some(prepared) = self.preflight.take() {
             if prepared.matches(&preflight_fingerprint(&self.macro_, self.mode, &self.credentials)) {
                 self.log(format!("주문 전 확인: {}", prepared.reason));
+                // 이 실행의 어댑터가 준비하며 읽은 잔고가 있으면 그게 더 새로움(국내는 주문 가능 정보에 잔고가 옴).
+                let fresh = self.broker().map(|b| b.balance_note()).unwrap_or_default();
+                self.balance_activity(if fresh.is_empty() { &prepared.balance } else { &fresh });
                 return true;
             }
         }
         let broker = match self.broker() {
             Ok(b) => b,
-            Err(e) => return self.rehearsal_failed(&e),
+            Err(e) => return self.rehearsal_failed(&e, ""),
         };
         let (notional, spend) = rehearsal_amounts(&self.macro_, &self.exchange_name, Some(&broker));
         let (ok, reason) = broker.rehearse(notional, spend).await;
         let reason = safe_preflight_reason(&reason, &self.credentials);
         if ok {
             self.log(format!("주문 전 확인: {reason}"));
+            self.balance_activity(&broker.balance_note());
             return true;
         }
-        self.rehearsal_failed(&reason)
+        self.rehearsal_failed(&reason, &broker.last_error_code())
     }
 
-    pub(super) fn rehearsal_failed(&self, reason: &str) -> bool {
-        let raw = format!("[오류] 주문 전 확인 실패 — {reason}");
+    /// 시작 전 확인에서 읽은 잔고를 활동 한 줄로 — 모의는 실제 잔고를 쓰지 않아 남기지 않음.
+    pub(super) fn balance_activity(&self, note: &str) {
+        if note.is_empty() || self.mode == RunMode::Mock {
+            return;
+        }
+        self.logger.activity("info", "잔고를 확인했어요", note.to_string(), format!("잔고: {note}"), "muted");
+    }
+
+    /// 주문 전 확인 실패를 남김. `code`는 거래소 오류 코드(지원용) — 문장에는 넣지 않고 원문·자세히 보기에만 붙임.
+    pub(super) fn rehearsal_failed(&self, reason: &str, code: &str) -> bool {
+        let raw = with_error_code(&format!("[오류] 주문 전 확인 실패 — {reason}"), code);
         self.log(&raw);
         if self.mode == RunMode::Mock {
             self.logger.activity("blocked", "실전이라면 주문 전 확인에서 막혀요", reason.to_string(), raw, "warn");
         } else {
             self.logger.activity("error", "주문 전 확인에서 막혀 시작하지 않았어요", reason.to_string(), raw, "danger");
         }
-        if self.exchange_name == "binance"
-            && (reason.contains("-2015") || reason.contains("-2014") || reason.contains('키'))
-        {
+        if self.exchange_name == "binance" && (["-2015", "-2014"].contains(&code) || reason.contains('키')) {
             let market = if self.market == Market::Futures { "선물" } else { "현물" };
+            // 연결 도우미가 안내하는 사이트와 같은 이름(`connection::binance_env`).
             let where_ = if self.testnet() {
                 if self.market == Market::Futures {
-                    "바이낸스 선물 테스트넷(binancefuture.com)"
+                    "바이낸스 선물 데모(demo.binance.com)"
                 } else {
-                    "바이낸스 현물 테스트넷(binance.vision)"
+                    "바이낸스 현물 테스트넷(testnet.binance.vision)"
                 }
             } else {
-                "바이낸스 실전"
+                "바이낸스 실거래(binance.com)"
             };
-            self.log(format!("  이 매크로는 {market} 매크로예요. {where_} 키인지, 허용 IP와 권한을 확인하세요."));
+            // 연습 사이트(테스트넷·데모)에는 허용 IP가 없음.
+            let what = if self.testnet() { "권한" } else { "허용 IP와 권한" };
+            self.log(format!("  이 매크로는 {market} 매크로예요. {where_} 키인지, {what}을 확인하세요."));
         }
         if self.mode == RunMode::Mock {
             self.log("모의라서 주문 없이 계속해요. 실전으로 바꾸기 전에 위 이유를 고쳐 주세요.");

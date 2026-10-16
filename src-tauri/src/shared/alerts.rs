@@ -35,7 +35,7 @@ impl Shared {
             .unwrap_or_default();
         let now = now_ms();
         let flush_in = {
-            let mut alerts = self.os_alerts.lock().unwrap_or_else(|e| e.into_inner());
+            let mut alerts = lock_or_recover(&self.os_alerts);
             let slot = alerts.entry(title.to_string()).or_default();
             if now - slot.at >= ALERT_WINDOW_MS {
                 *slot = AlertSlot { at: now, shown: [run_id.to_string()].into(), pending: vec![] };
@@ -58,7 +58,7 @@ impl Shared {
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(wait.max(0) as u64)).await;
                     let names = {
-                        let mut alerts = me.os_alerts.lock().unwrap_or_else(|e| e.into_inner());
+                        let mut alerts = lock_or_recover(&me.os_alerts);
                         let Some(slot) = alerts.get_mut(&title) else { return };
                         let pending = std::mem::take(&mut slot.pending);
                         slot.at = now_ms();

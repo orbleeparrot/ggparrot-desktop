@@ -1,7 +1,7 @@
 // 투자 금액(params.initial_capital) — 보기·바꾸기·원본으로. 1회 주문 상한과 로컬 안전 설정도 함께 보임.
 // 파일에서 연 매크로만 바꿀 수 있음. 웹에서 연결한 매크로는 서버가 웹 저장본과 다르면 시작을 거절함.
 import { Pencil, RotateCcw } from "lucide-react";
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { useRunnerContext } from "../../state/context";
 import { formatAmount } from "../../state/format";
 import { isIdle } from "../../state/runs";
@@ -23,10 +23,13 @@ export function CapitalRow({ slot }: { slot: RunSlot }) {
   const [busy, setBusy] = useState(false);
   const idle = isIdle(slot.phase);
 
-  useEffect(() => {
+  // 다른 매크로를 고르면 편집을 접음 — effect로 다시 그리지 않고 렌더 중에 바로 맞춤.
+  const [forId, setForId] = useState(slot.id);
+  if (forId !== slot.id) {
+    setForId(slot.id);
     setEditing(false);
     setError("");
-  }, [slot.id]);
+  }
 
   if (m.capital === null) return null;
   const capital = m.capital;

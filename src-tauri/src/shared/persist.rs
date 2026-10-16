@@ -20,34 +20,36 @@ impl Shared {
             && std::fs::rename(&tmp, path).is_ok()
     }
 
-    /// 저장에 실패하면 한 번만 알림(실패가 이어져도 같은 알림을 쏟아내지 않게).
-    fn warn_save_failed(&self, ok: bool) {
+    /// 저장에 실패하면 한 번만 알림(실패가 이어져도 같은 알림을 쏟아내지 않게). Core 잠금을 푼 뒤 부름.
+    pub(crate) fn warn_save_failed(&self, ok: bool) {
         if ok {
             self.save_warned.store(false, std::sync::atomic::Ordering::Relaxed);
         } else if !self.save_warned.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            self.notice(
+            self.notice_from("storage", 
                 "warn",
                 "실행 목록 · 설정을 저장하지 못했어요. 디스크 공간과 폴더 권한을 확인하세요. 이대로 앱을 끄면 최근 변경이 사라질 수 있어요.",
             );
         }
     }
 
-    pub(crate) fn save_runs(&self, c: &Core) {
+    /// runs.json을 씀. 성공하면 참 — 실패 알림은 잠금을 푼 뒤 [`Shared::warn_save_failed`]로.
+    #[must_use = "잠금을 푼 뒤 warn_save_failed로 넘김"]
+    pub(crate) fn save_runs(&self, c: &Core) -> bool {
         let list: Vec<SavedRun> = c.runs.iter().map(Run::saved).collect();
-        let ok = Self::write_json(&self.runs_path(), &serde_json::to_value(list).unwrap_or_default());
-        self.warn_save_failed(ok);
+        Self::write_json(&self.runs_path(), &serde_json::to_value(list).unwrap_or_default())
     }
 
-    pub(crate) fn save_prefs(&self, c: &Core) {
-        let ok = Self::write_json(
+    /// prefs.json을 씀. 성공하면 참 — 실패 알림은 잠금을 푼 뒤 [`Shared::warn_save_failed`]로.
+    #[must_use = "잠금을 푼 뒤 warn_save_failed로 넘김"]
+    pub(crate) fn save_prefs(&self, c: &Core) -> bool {
+        Self::write_json(
             &self.prefs_path(),
             &json!({
                 "show_dev_log": c.show_dev_log,
                 "close_to_tray": c.close_to_tray,
                 "last_version": self.version,
             }),
-        );
-        self.warn_save_failed(ok);
+        )
     }
 
     pub(crate) fn load_saved(&self) {
@@ -77,7 +79,7 @@ impl Shared {
                     // 화면이 준비된 뒤 알림.
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                     if let Some(s) = me.try_state::<S>() {
-                        s.notice("warn", msg);
+                        s.notice_from("storage", "warn", msg);
                     }
                 });
             }
@@ -89,11 +91,14 @@ impl Shared {
                 let last = v.get("last_version").and_then(Value::as_str).unwrap_or("");
                 if is_newer(&self.version, last) {
                     c.update.updated_from = last.to_string();
+                    c.push_app_log("info", "update", &format!("v{last}에서 v{}으로 업데이트했어요", self.version), "");
                 }
             }
         }
         // 이번 버전을 기록해 둠(다음 실행에서 업데이트 여부를 앎).
-        self.save_prefs(&c);
+        let saved = self.save_prefs(&c);
+        drop(c);
+        self.warn_save_failed(saved);
     }
 }
 

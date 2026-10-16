@@ -7,6 +7,9 @@ dist-ssr/
 .vite/
 coverage/
 *.tsbuildinfo
+# Playwright 화면 배치 검사 결과(보고서·스크린샷·추적)
+playwright-report/
+test-results/
 
 # Rust·Tauri(빌드 캐시는 수십 GB까지 커짐)
 target/

@@ -28,9 +28,13 @@ impl Bot {
             &context,
         );
         let uncertain_before = self.position_uncertain;
+        let funds_before = self.funds_short;
+        self.order_error_code.clear();
+        self.order_no_funds = false;
         // 이 명령에서 생긴 체결만 ack에 실음.
         self.last_fill_qty = 0.0;
         self.last_fill_price = 0.0;
+        self.signal_price = num(cmd.get("signal_price"));
         let outcome: Result<(), String> = async {
             if !["buy", "short", "sell", "cover"].contains(&action.as_str()) {
                 return Err(format!("알 수 없는 명령 {action}"));
@@ -45,77 +49,13 @@ impl Bot {
                 );
             }
             if action == "buy" || action == "short" {
-                // 1을 넘는 비율은 투자 금액 전부로 자름(서버 값이 이상해도 상한·투자 금액 안에서).
-                let frac = num(cmd.get("notional_frac")).clamp(0.0, 1.0);
-                let mut notional = (self.capital * frac).min(order_cap(self.quote));
-                if self.domestic() {
-                    notional = fee_inclusive(notional, bid_fee_rate(self.broker.as_ref()));
-                }
-                let (qty, _) = order_qty(price, self.step, notional, self.leverage, self.market, self.quote);
-                if qty <= 0.0 {
-                    return Err("주문 수량이 최소 단위보다 작아요.".into());
-                }
-                let word = if action == "buy" { OrderSide::Buy } else { OrderSide::Sell };
-                let raw =
-                    format!("[신호] {reason} → {} {} {} @ {}", word.as_str(), py_num(qty), self.symbol, py_num(price));
-                self.log(&raw);
-                let title = if action == "buy" { "매수 신호" } else { "공매도 신호" };
-                self.logger.activity("signal", title, reason.clone(), raw, "muted");
-                let (prev_qty, prev_entry) =
-                    if self.in_position { (self.held_qty, self.entry_price) } else { (0.0, 0.0) };
-                let extra = if self.domestic() { notional } else { 0.0 };
-                if !self.place(word, qty, false, extra).await? {
-                    return Err("주문이 체결되지 않았어요.".into());
-                }
-                let (filled_qty, filled_px) = (self.last_fill_qty, self.last_fill_price);
-                if prev_qty > 0.0 && filled_qty > 0.0 {
-                    let mut added = self.held_qty - prev_qty;
-                    if added <= 0.0 {
-                        added = filled_qty;
-                        self.held_qty = prev_qty + added;
-                    }
-                    self.entry_price = (prev_qty * prev_entry + added * filled_px) / self.held_qty;
-                    self.in_position = true;
-                }
-                ack.insert("executed_qty".into(), json!(filled_qty));
-                ack.insert("fill_price".into(), json!(filled_px));
-                ack.insert("outcome".into(), json!("execution_reported"));
+                self.run_entry(cmd, &action, &reason, price, &mut ack).await
             } else {
-                if !self.in_position || self.held_qty <= 0.0 {
-                    return Ok(()); // 보유 없음 — 아래에서 처리
-                }
-                let frac = match num(cmd.get("qty_frac")) {
-                    f if f != 0.0 => f,
-                    _ => 1.0,
-                };
-                let what = if frac >= 0.999 { "전량".to_string() } else { format!("{:.0}%", frac * 100.0) };
-                let raw = format!("[신호] {reason} → {what} 청산 @ {}", py_num(price));
-                self.log(&raw);
-                let title =
-                    if frac >= 0.999 { "정리 신호".to_string() } else { format!("일부 정리 신호 · {what}") };
-                self.logger.activity("signal", title, reason.clone(), raw, "muted");
-                if frac >= 0.999 {
-                    if !self.close_position().await? {
-                        return Err("청산 주문이 체결되지 않았어요.".into());
-                    }
-                } else {
-                    let qty = round_step(self.held_qty * frac, self.step);
-                    if qty <= 0.0 {
-                        return Err("부분 청산 수량이 최소 단위보다 작아요.".into());
-                    }
-                    let word = if self.side == Side::Long { OrderSide::Sell } else { OrderSide::Buy };
-                    let reduce = self.market == Market::Futures;
-                    if !self.place(word, qty, reduce, 0.0).await? {
-                        return Err("부분 청산 주문이 체결되지 않았어요.".into());
-                    }
-                }
-                ack.insert("executed_qty".into(), json!(self.last_fill_qty));
-                ack.insert("fill_price".into(), json!(self.last_fill_price));
-                ack.insert("outcome".into(), json!("execution_reported"));
+                self.run_exit(cmd, &reason, price, &mut ack).await
             }
-            Ok(())
         }
         .await;
+        self.signal_price = 0.0;
 
         let is_exit = action == "sell" || action == "cover";
         if outcome.is_ok() && is_exit && ack["outcome"] == "execution_not_reported" && !uncertain_before {
@@ -178,10 +118,16 @@ impl Bot {
                 ack.insert("fill_price".into(), json!(self.last_fill_price));
                 ack.insert("outcome".into(), json!("partially_executed"));
             }
-            let raw = format!("  ⚠ 명령 실행 실패: {exc}");
+            // 오류 코드는 문장(ack·활동 설명)에 넣지 않고 원문 줄·자세히 보기·실행 기록 세부에만 남김.
+            let raw = with_error_code(&format!("  ⚠ 명령 실행 실패: {exc}"), &self.order_error_code);
             self.log(&raw);
             if self.last_fill_qty > 0.0 {
                 self.logger.activity("error", "주문이 일부만 체결됐어요", exc.clone(), raw, "warn");
+            } else if self.order_no_funds {
+                // 잔고 부족이 이어지는 동안 OS 알림(위험 줄)은 처음 한 번만 — 다음부터는 주의 줄로만 남김.
+                let tone = if funds_before { "warn" } else { "danger" };
+                let detail = format!("{exc} 다음 신호에서 다시 주문해요.");
+                self.logger.activity("error", "잔고가 모자라 주문하지 못했어요", detail, raw, tone);
             } else {
                 self.logger.activity("error", "주문이 처리되지 않았어요", exc.clone(), raw, "danger");
             }
@@ -195,6 +141,9 @@ impl Bot {
         for k in ["executed_qty", "fill_price", "error", "outcome"] {
             d.insert(k.into(), ack[k].clone());
         }
+        if !ok && !self.order_error_code.is_empty() {
+            d.insert("error_code".into(), json!(self.order_error_code));
+        }
         d.insert("verification".into(), json!("runner_reported_not_exchange_verified"));
         self.logger.telemetry(
             if ok { "order" } else { "error" },
@@ -206,6 +155,93 @@ impl Bot {
         );
         self.logger.set_operation("");
         Ok(Value::Object(ack))
+    }
+
+    /// 진입 명령(buy·short) — 투자 금액의 비율만큼 주문하고 체결을 ack에 실음.
+    async fn run_entry(
+        &mut self,
+        cmd: &Value,
+        action: &str,
+        reason: &str,
+        price: f64,
+        ack: &mut Map<String, Value>,
+    ) -> Result<(), String> {
+        // 1을 넘는 비율은 투자 금액 전부로 자름(서버 값이 이상해도 상한·투자 금액 안에서).
+        let frac = num(cmd.get("notional_frac")).clamp(0.0, 1.0);
+        let mut notional = (self.capital * frac).min(order_cap(self.quote));
+        if self.domestic() {
+            notional = fee_inclusive(notional, bid_fee_rate(self.broker.as_ref()));
+        }
+        let (qty, _) = order_qty(price, self.step, notional, self.leverage, self.market, self.quote);
+        if qty <= 0.0 {
+            return Err("주문 수량이 최소 단위보다 작아요.".into());
+        }
+        let word = if action == "buy" { OrderSide::Buy } else { OrderSide::Sell };
+        let raw = format!("[신호] {reason} → {} {} {} @ {}", word.as_str(), py_num(qty), self.symbol, py_num(price));
+        self.log(&raw);
+        let title = if action == "buy" { "매수 신호" } else { "공매도 신호" };
+        self.logger.activity("signal", title, reason.to_string(), raw, "muted");
+        let (prev_qty, prev_entry) = if self.in_position { (self.held_qty, self.entry_price) } else { (0.0, 0.0) };
+        let extra = if self.domestic() { notional } else { 0.0 };
+        if !self.place(word, qty, false, extra).await? {
+            return Err("주문이 체결되지 않았어요.".into());
+        }
+        let (filled_qty, filled_px) = (self.last_fill_qty, self.last_fill_price);
+        if prev_qty > 0.0 && filled_qty > 0.0 {
+            let mut added = self.held_qty - prev_qty;
+            if added <= 0.0 {
+                added = filled_qty;
+                self.held_qty = prev_qty + added;
+            }
+            self.entry_price = (prev_qty * prev_entry + added * filled_px) / self.held_qty;
+            self.in_position = true;
+        }
+        ack.insert("executed_qty".into(), json!(filled_qty));
+        ack.insert("fill_price".into(), json!(filled_px));
+        ack.insert("outcome".into(), json!("execution_reported"));
+        Ok(())
+    }
+
+    /// 정리 명령(sell·cover) — 비율만큼(0.999 이상은 전량) 정리하고 체결을 ack에 실음.
+    /// 보유가 없으면 주문 없이 Ok — ack의 outcome을 그대로 두어 부르는 쪽이 '보유 없음'으로 처리함.
+    async fn run_exit(
+        &mut self,
+        cmd: &Value,
+        reason: &str,
+        price: f64,
+        ack: &mut Map<String, Value>,
+    ) -> Result<(), String> {
+        if !self.in_position || self.held_qty <= 0.0 {
+            return Ok(()); // 보유 없음 — 부르는 쪽에서 처리
+        }
+        let frac = match num(cmd.get("qty_frac")) {
+            f if f != 0.0 => f,
+            _ => 1.0,
+        };
+        let what = if frac >= 0.999 { "전량".to_string() } else { format!("{:.0}%", frac * 100.0) };
+        let raw = format!("[신호] {reason} → {what} 청산 @ {}", py_num(price));
+        self.log(&raw);
+        let title = if frac >= 0.999 { "정리 신호".to_string() } else { format!("일부 정리 신호 · {what}") };
+        self.logger.activity("signal", title, reason.to_string(), raw, "muted");
+        if frac >= 0.999 {
+            if !self.close_position().await? {
+                return Err("청산 주문이 체결되지 않았어요.".into());
+            }
+        } else {
+            let qty = round_step(self.held_qty * frac, self.step);
+            if qty <= 0.0 {
+                return Err("부분 청산 수량이 최소 단위보다 작아요.".into());
+            }
+            let word = if self.side == Side::Long { OrderSide::Sell } else { OrderSide::Buy };
+            let reduce = self.market == Market::Futures;
+            if !self.place(word, qty, reduce, 0.0).await? {
+                return Err("부분 청산 주문이 체결되지 않았어요.".into());
+            }
+        }
+        ack.insert("executed_qty".into(), json!(self.last_fill_qty));
+        ack.insert("fill_price".into(), json!(self.last_fill_price));
+        ack.insert("outcome".into(), json!("execution_reported"));
+        Ok(())
     }
 
     pub(super) fn remember_done(&mut self, cid: Value) {

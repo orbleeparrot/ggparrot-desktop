@@ -10,6 +10,17 @@ body,
 #root {
   height: 100%;
 }
+/* 넓은 창(두 칸 배치)에서는 문서를 스크롤하지 않음 — 목록·상세·설정 본문이 각자 스크롤함.
+   문서가 넘치면 Windows에서 스크롤바가 둘이 되고, 목차 이동(scrollIntoView)이 문서까지 굴려 머리줄이 가려짐.
+   clip은 스크립트 스크롤도 막음(지원하지 않는 옛 WebKit은 hidden).
+   좁은 창(899px 이하)은 한 칸 배치라 문서 하나만 스크롤함(머리줄 sticky) — 여기서 막으면 아래로 못 내려감. */
+@media (min-width: 900px) {
+  html,
+  body {
+    overflow: hidden;
+    overflow: clip;
+  }
+}
 
 body {
   margin: 0;
@@ -149,6 +160,17 @@ input {
 .btn-primary:hover:not(:disabled) {
   background: var(--brand-hover);
 }
+/* 덜 앞세운 주 버튼 — 목록 카드의 [▶ 시작](고른 카드가 아닐 때). 글자는 진한 노랑(--brand-deep, 흰 바탕 4.9:1). */
+.btn-brand-outline {
+  background: var(--card);
+  border-color: color-mix(in srgb, var(--brand-hover) 70%, var(--border));
+  color: var(--brand-deep);
+}
+.btn-brand-outline:hover:not(:disabled) {
+  background: var(--brand-soft);
+  border-color: var(--brand-hover);
+  color: var(--ink);
+}
 .btn-ghost {
   background: var(--card);
   border-color: var(--border);
@@ -173,11 +195,11 @@ input {
 .btn-danger:hover:not(:disabled) {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-live {
   background: var(--live);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-live:hover:not(:disabled) {
   background: var(--live-hover);
@@ -197,6 +219,10 @@ input {
 .icon-btn:hover {
   background: var(--hover);
   color: var(--ink);
+}
+.icon-btn-sm {
+  width: 24px;
+  height: 24px;
 }
 
 .link-btn {
@@ -234,7 +260,7 @@ input {
     box-shadow 120ms var(--ease);
 }
 .input::placeholder {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--font);
   letter-spacing: 0;
 }
@@ -363,7 +389,7 @@ input {
 }
 .btn-danger-solid {
   background: var(--danger);
-  color: #fff;
+  color: var(--on-accent);
 }
 .btn-danger-solid:hover:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 85%, #000);
@@ -416,7 +442,7 @@ input {
 .mode-badge.mode-live {
   border-color: var(--live);
   background: var(--live);
-  color: #fff;
+  color: var(--on-accent);
 }
 .path {
   min-width: 0;
@@ -469,4 +495,34 @@ input {
 }
 .stop-menu {
   position: relative;
+}
+/* 진행 막대 — 기본 굵기, .progress-lg는 굵게. 값을 모르면 .is-indeterminate로 오가는 막대. */
+.progress {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--hover);
+  overflow: hidden;
+}
+.progress.progress-lg {
+  height: 10px;
+}
+.progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--brand-hover);
+  transition: width 300ms var(--ease);
+}
+.progress.is-indeterminate .progress-bar {
+  width: 35%;
+  animation: indeterminate 1.2s var(--ease) infinite;
+}
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
 }

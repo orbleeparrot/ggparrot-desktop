@@ -2,7 +2,7 @@
 //   swift scripts/installer-art.swift
 // 결과(src-tauri/installer/):
 //   dmg-background.png·dmg-background@2x.png → dmg-background.tiff (macOS 디스크 이미지 창 배경, 540×380)
-//   nsis-header.bmp (150×57)·nsis-sidebar.bmp (164×314) — Windows 설치 프로그램, 24비트 BMP
+//   nsis-header.bmp (150×57의 2배)·nsis-sidebar.bmp (164×314의 2배) — Windows 설치 프로그램, 24비트 BMP
 // 디스크 이미지 배경은 1x·2x를 한 TIFF로 묶음:
 //   tiffutil -cathidpicheck src-tauri/installer/dmg-background.png src-tauri/installer/dmg-background@2x.png \
 //     -out src-tauri/installer/dmg-background.tiff
@@ -70,7 +70,7 @@ func dmg(_ r: CGRect) {
 
   drawImage(mark, CGRect(x: 24, y: 22, width: 30, height: 30))
   text("껄무새", 17, .bold, INK, x: 62, y: 20)
-  text("GG Parrot", 11, .semibold, MUTED, x: 63, y: 41)
+  text("GGParrot", 11, .semibold, MUTED, x: 63, y: 41)
   text("왼쪽 앱을 오른쪽 Applications(응용 프로그램) 폴더로 끌어다 놓으면 설치돼요.", 12.5, .medium, MUTED, x: 24, y: 68)
 
   // 두 아이콘 사이 화살표(점선 + 머리)
@@ -102,7 +102,7 @@ func nsisHeader(_ r: CGRect) {
   NSBezierPath(rect: r).fill()
   drawImage(appIcon, CGRect(x: 10, y: 6, width: 45, height: 45))
   text("껄무새", 15, .heavy, INK, x: 62, y: 10)
-  text("GG Parrot", 10.5, .semibold, MUTED, x: 62, y: 31)
+  text("GGParrot", 10.5, .semibold, MUTED, x: 62, y: 31)
 }
 
 // --- Windows 설치 프로그램: 시작·마침 화면 왼쪽 그림(164×314) ---------------------------------------------
@@ -112,7 +112,7 @@ func nsisSidebar(_ r: CGRect) {
   NSBezierPath(rect: CGRect(x: 0, y: 0, width: r.width, height: 5)).fill()
   drawImage(appIcon, CGRect(x: (r.width - 104) / 2, y: 46, width: 104, height: 104))
   text("껄무새", 22, .heavy, INK, x: r.width / 2, y: 164, center: true, width: r.width)
-  text("GG Parrot", 13, .bold, MUTED, x: r.width / 2, y: 196, center: true, width: r.width)
+  text("GGParrot", 13, .bold, MUTED, x: r.width / 2, y: 196, center: true, width: r.width)
   BRAND.setFill()
   NSBezierPath(roundedRect: CGRect(x: r.width / 2 - 14, y: 224, width: 28, height: 3), xRadius: 1.5, yRadius: 1.5).fill()
   text("웹에서 만든 매크로를\n이 PC에서 실행해요", 10.5, .medium, MUTED, x: r.width / 2, y: 240, center: true, width: r.width)
@@ -149,6 +149,8 @@ func saveBMP24(_ rep: NSBitmapImageRep, _ name: String) {
 
 savePNG(render(540, 380, scale: 1, dmg), "dmg-background.png")
 savePNG(render(540, 380, scale: 2, dmg), "dmg-background@2x.png")
-saveBMP24(render(150, 57, nsisHeader), "nsis-header.bmp")
-saveBMP24(render(164, 314, nsisSidebar), "nsis-sidebar.bmp")
+// Windows 설치 프로그램 그림은 2배로 만듦 — 설치 프로그램이 화면 배율(125~200%)에 맞춰 늘리면 1배 그림은 흐려짐.
+// 설치 프로그램이 칸 크기에 맞춰 줄여 그리므로 100%에서도 크기는 같음.
+saveBMP24(render(150, 57, scale: 2, nsisHeader), "nsis-header.bmp")
+saveBMP24(render(164, 314, scale: 2, nsisSidebar), "nsis-sidebar.bmp")
 print("ok")

@@ -10,6 +10,13 @@ describe("mergeActivity", () => {
     const first = mergeActivity([], [a, c]);
     expect(mergeActivity(first, [b, c]).map((x) => x.id)).toEqual([1, 2, 3]);
   });
+  it("시각(at)이 같아도 id(Rust 일련번호) 순서를 지킨다", () => {
+    const at = 1_760_000_000_000;
+    const out = mergeActivity([act({ id: 7, at })], [act({ id: 9, at }), act({ id: 8, at })]);
+    expect(out.map((x) => x.id)).toEqual([7, 8, 9]);
+    const late = mergeActivity(out, [act({ id: 6, at: at + 5_000 })]);
+    expect(late.map((x) => x.id)).toEqual([6, 7, 8, 9]);
+  });
   it("바뀐 게 없으면 같은 배열", () => {
     const list = mergeActivity([], [act({ id: 10 })]);
     expect(mergeActivity(list, [list[0]])).toBe(list);

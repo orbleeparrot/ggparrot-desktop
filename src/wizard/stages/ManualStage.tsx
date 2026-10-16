@@ -18,7 +18,7 @@ export function ManualStage({ wizard }: { wizard: WizardState }) {
           label={wizard.fieldLabels[i]}
           filled={wizard.slots[field]}
           onCommit={(value) => act("wizard_set_key", { field, value })}
-          onReveal={() => act("reveal_slot_key", { slot: wizard.exchange, field })}
+          onReveal={() => act("reveal_slot_key", { slot: wizard.slot, field })}
         />
       ))}
     </div>

@@ -3,20 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Notice } from "../types";
 
-export const TOAST_MS = 4000;
+const TOAST_MS = 4000;
 
 export interface Toast {
   id: number;
   tone: "info" | "error";
   title: string;
   message: string;
+  /** 이 알림을 남긴 앱 기록 번호 — 있으면 [자세히]로 설정 › 앱 기록의 그 줄을 엶. */
+  logId?: number;
 }
 
 export interface Notices {
   dialog: Notice | null;
   toasts: Toast[];
   push(n: Notice): void;
-  toast(message: string, tone?: Toast["tone"], title?: string): void;
+  toast(message: string, tone?: Toast["tone"], title?: string, logId?: number): void;
   closeDialog(): void;
   dismissToast(id: number): void;
 }
@@ -35,9 +37,9 @@ export function useNotices(): Notices {
   }, []);
 
   const toast = useCallback(
-    (message: string, tone: Toast["tone"] = "info", title = "") => {
+    (message: string, tone: Toast["tone"] = "info", title = "", logId?: number) => {
       const id = ++seq.current;
-      setToasts((prev) => [...prev.slice(-3), { id, tone, title, message }]);
+      setToasts((prev) => [...prev.slice(-3), { id, tone, title, message, logId }]);
       if (tone !== "error")
         timers.current.set(
           id,
@@ -49,7 +51,7 @@ export function useNotices(): Notices {
 
   const push = useCallback(
     (n: Notice) => {
-      if (n.level === "info") toast(n.message, "info", n.title);
+      if (n.level === "info") toast(n.message, "info", n.title, n.logId);
       else setQueue((prev) => [...prev, n]);
     },
     [toast],

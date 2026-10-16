@@ -46,7 +46,7 @@ impl Bot {
         self.price_fail_ticks = self.price_fail_ticks.wrapping_add(1);
         if !self.price_failing {
             self.price_failing = true;
-            self.price_fail_since = wall_ms();
+            self.price_fail_since = unix_ms();
             let detail = if self.in_position {
                 format!("그동안 손절 · 안전 규칙을 확인하지 못해요. {POLL_SECONDS:.0}초마다 다시 시도해요")
             } else {
@@ -56,7 +56,7 @@ impl Bot {
         }
         if self.in_position
             && !self.price_escalated
-            && wall_ms().saturating_sub(self.price_fail_since) >= PRICE_STALE_ALERT_MS
+            && unix_ms().saturating_sub(self.price_fail_since) >= PRICE_STALE_ALERT_MS
         {
             self.price_escalated = true;
             self.logger.activity(

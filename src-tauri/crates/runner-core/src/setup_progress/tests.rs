@@ -5,16 +5,24 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 
 #[test]
 fn payload_has_only_the_whitelisted_fields() {
-    let payload =
-        progress_payload("keys", "upbit", "new", (true, true), Some((Check::Ok, Check::Bad, Check::Wait)), "ip", false)
-            .unwrap();
+    let payload = progress_payload(
+        "keys",
+        "upbit",
+        "",
+        "new",
+        (true, true),
+        Some((Check::Ok, Check::Bad, Check::Wait)),
+        "ip",
+        false,
+    )
+    .unwrap();
     let keys: Vec<&String> = payload.as_object().unwrap().keys().collect();
     let mut expected = vec!["checks", "connected", "exchange", "path", "problem", "slots", "stage"];
     expected.sort();
     assert_eq!(keys, expected);
     assert_eq!(payload["slots"], json!({"access": true, "secret": true}));
     assert_eq!(payload["checks"], json!({"auth": "ok", "ip": "bad", "order": "wait"}));
-    let default = progress_payload("ip", "upbit", "", (false, false), None, "", false).unwrap();
+    let default = progress_payload("ip", "upbit", "", "", (false, false), None, "", false).unwrap();
     assert_eq!(default["checks"], json!({"auth": "wait", "ip": "wait", "order": "wait"}));
     assert_eq!(default["slots"], json!({"access": false, "secret": false}));
 }
@@ -22,7 +30,7 @@ fn payload_has_only_the_whitelisted_fields() {
 #[test]
 fn unknown_values_are_refused_not_sent() {
     let ok = |stage: &str, ex: &str, p: &str, problem: &str| {
-        progress_payload(stage, ex, p, (false, false), None, problem, false)
+        progress_payload(stage, ex, "", p, (false, false), None, problem, false)
     };
     for result in [
         ok("typed-key", "upbit", "", ""),
@@ -32,6 +40,26 @@ fn unknown_values_are_refused_not_sent() {
     ] {
         assert_eq!(result.unwrap_err(), "unknown progress field");
     }
+}
+
+#[test]
+fn env_is_sent_only_for_binance_and_only_when_set() {
+    let domestic = progress_payload("keys", "upbit", "", "new", (false, false), None, "", false).unwrap();
+    assert!(domestic.get("env").is_none(), "빈 env는 키도 싣지 않음");
+    let binance = progress_payload("perm", "binance", "", "new", (false, false), None, "", false).unwrap();
+    assert!(binance.get("env").is_none());
+    for env in ["testnet", "demo", "live"] {
+        let p = progress_payload("perm", "binance", env, "new", (false, false), None, "", false).unwrap();
+        assert_eq!(p["env"], env);
+    }
+    assert_eq!(
+        progress_payload("perm", "upbit", "live", "new", (false, false), None, "", false).unwrap_err(),
+        "env is binance-only"
+    );
+    assert_eq!(
+        progress_payload("perm", "binance", "mainnet", "new", (false, false), None, "", false).unwrap_err(),
+        "unknown progress field"
+    );
 }
 
 struct Recorder {
@@ -60,7 +88,7 @@ async fn server(status: u16) -> (MockServer, Arc<Mutex<Vec<String>>>) {
 }
 
 fn payload(stage: &str, ex: &str) -> Value {
-    progress_payload(stage, ex, "new", (false, false), None, "", false).unwrap()
+    progress_payload(stage, ex, "", "new", (false, false), None, "", false).unwrap()
 }
 
 async fn wait_for(stages: &Arc<Mutex<Vec<String>>>, n: usize) {

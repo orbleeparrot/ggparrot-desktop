@@ -1,4 +1,5 @@
-// 활동 한 줄 — 시각·종류 아이콘·굵은 제목·흐린 둘째 줄·[자세히](원문 줄). 원문 줄(dev)은 작고 흐린 고정폭 한 줄.
+// 활동 한 줄 — 시각·종류 아이콘·굵은 제목(끝에 작은 [›] 펼치기)·흐린 둘째 줄·펼친 원문. 원문 줄(dev)은 작고 흐린 고정폭 한 줄.
+// - 펼치기 단추는 제목 끝에 붙여 둠 — 따로 한 줄을 차지하지 않고, 제목이 줄바꿈돼도 마지막 낱말 옆에 따라붙음.
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -14,8 +15,8 @@ import {
   WifiOff,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useId, useState } from "react";
-import { formatClock, formatClockSeconds } from "../../state/format";
+import { createElement, memo, useId, useState } from "react";
+import { formatClockMillis, formatClockSeconds } from "../../state/format";
 import type { Activity, ActivityKind } from "../../types";
 
 const ICONS: Record<Exclude<ActivityKind, "connection">, LucideIcon> = {
@@ -30,7 +31,7 @@ const ICONS: Record<Exclude<ActivityKind, "connection">, LucideIcon> = {
   info: Info,
 };
 
-export const KIND_LABELS: Record<ActivityKind, string> = {
+const KIND_LABELS: Record<ActivityKind, string> = {
   start: "시작",
   signal: "신호",
   buy: "진입",
@@ -52,9 +53,10 @@ function iconOf(a: Activity): LucideIcon {
 export const ActivityItem = memo(function ActivityItem({ item, fresh = false }: { item: Activity; fresh?: boolean }) {
   const [open, setOpen] = useState(false);
   const rawId = useId();
+  // 초까지 늘 보임 — 같은 분의 여러 줄을 구분함. 순서는 시각이 아니라 Rust의 일련번호(id)로 정함(mergeActivity).
   const time = (
-    <time className="act-time num" dateTime={new Date(item.at).toISOString()} title={formatClockSeconds(item.at)}>
-      {formatClock(item.at)}
+    <time className="act-time num" dateTime={new Date(item.at).toISOString()} title={formatClockMillis(item.at)}>
+      {formatClockSeconds(item.at)}
     </time>
   );
 
@@ -68,38 +70,38 @@ export const ActivityItem = memo(function ActivityItem({ item, fresh = false }: 
     );
   }
 
-  const Icon = iconOf(item);
   const fill = item.kind === "start" || item.kind === "stop";
+  // 아이콘은 표에서 고른 컴포넌트 — 렌더마다 새로 만드는 게 아니라 createElement로 그림.
+  const icon = createElement(iconOf(item), { size: 14, strokeWidth: 2.4, fill: fill ? "currentColor" : "none" });
   return (
     <li className={`act kind-${item.kind} ${fresh ? "is-fresh" : ""}`} data-tone={item.tone}>
       {time}
       <span className="act-icon" aria-hidden="true">
-        <Icon size={14} strokeWidth={2.4} fill={fill ? "currentColor" : "none"} />
+        {icon}
       </span>
       <div className="act-body">
         <p className="act-title">
           <span className="sr-only">{KIND_LABELS[item.kind]}: </span>
           {item.title}
-        </p>
-        {item.detail && <p className="act-detail">{item.detail}</p>}
-        {item.raw && (
-          <>
+          {item.raw && (
             <button
               type="button"
-              className="act-more"
+              className="act-toggle"
               aria-expanded={open}
               aria-controls={rawId}
+              aria-label={open ? "접기" : "자세히 보기"}
+              title={open ? "접기" : "자세히 보기"}
               onClick={() => setOpen(!open)}
             >
-              <ChevronRight size={12} className={`chevron ${open ? "is-open" : ""}`} aria-hidden="true" />
-              자세히
+              <ChevronRight size={13} strokeWidth={2.6} className={`chevron ${open ? "is-open" : ""}`} />
             </button>
-            {open && (
-              <pre id={rawId} className="act-raw">
-                {item.raw}
-              </pre>
-            )}
-          </>
+          )}
+        </p>
+        {item.detail && <p className="act-detail">{item.detail}</p>}
+        {item.raw && open && (
+          <pre id={rawId} className="act-raw">
+            {item.raw}
+          </pre>
         )}
       </div>
     </li>

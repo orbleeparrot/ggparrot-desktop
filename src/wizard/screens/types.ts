@@ -8,7 +8,8 @@ export type Step =
   | { t: "show"; layer: string }
   | { t: "hide"; layer: string }
   | { t: "focus"; input: string }
-  | { t: "type"; input: string }
+  /** 입력칸에 글자를 찍음 — text가 없으면 이 기기 주소(IP). */
+  | { t: "type"; input: string; text?: string }
   | { t: "wait"; ms: number };
 
 export interface SceneState {

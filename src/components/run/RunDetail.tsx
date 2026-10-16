@@ -1,28 +1,25 @@
-// 오른쪽 상세 — 머리줄(종목·방향·거래소·모드·시작/종료)·막힌 이유·상태 카드·활동 기록.
-import { ArrowLeft, CircleAlert, LoaderCircle, Play, Settings, TriangleAlert } from "lucide-react";
+// 오른쪽 상세 — 머리줄(종목·방향·거래소)·모드·시작/종료·막힌 이유·상태 카드·활동 기록.
+// - 대기·끝남: 모드 세그먼트 + [시작]. 그 밖(확인·시작·실행·종료 중): 모드를 바꿀 수 없어 세그먼트 대신
+//   "실전으로 실행 중" 배지와 매크로 설명 한 줄을 두고 오른쪽에 종료 단추.
+import { CircleAlert, LoaderCircle, Play, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
-import {
-  canStop,
-  isIdle,
-  MARKET_LABELS,
-  MODE_NOTES,
-  settingsTargetOf,
-  SIDE_LABELS,
-  stopChoices,
-} from "../../state/runs";
+import { isIdle, MODE_LABELS, primaryAction, runningModeText, settingsTargetOf, stopChoices } from "../../state/runs";
 import type { Activity, RunSlot } from "../../types";
 import { ActivityFeed } from "../activity/ActivityFeed";
-import { ExchangeLogo } from "../ExchangeLogo";
 import { CapitalRow } from "./CapitalRow";
+import { DetailHeader } from "./DetailHeader";
 import { IdleCard } from "./IdleCard";
-import { StatusCard } from "./StatusCard";
+import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
+import { StatusCard } from "./StatusCard";
 
 interface Props {
   slot: RunSlot;
   activity: Activity[];
   prices: number[];
+  /** 그래프 점마다 받은 시각(epoch ms). */
+  priceTimes?: number[];
   onBack?: () => void;
   loadActivity(runId: string): void;
   activityFailed?: boolean;
@@ -30,7 +27,8 @@ interface Props {
 
 function Controls({ slot }: { slot: RunSlot }) {
   const { startRun, askStop } = useRunnerContext();
-  if (isIdle(slot.phase)) {
+  const action = primaryAction(slot.phase);
+  if (action.kind === "start") {
     return (
       <button
         type="button"
@@ -42,7 +40,7 @@ function Controls({ slot }: { slot: RunSlot }) {
       </button>
     );
   }
-  if (canStop(slot.phase)) {
+  if (action.kind === "stop") {
     return (
       <div className="detail-stop">
         {stopChoices(slot).map((c) => (
@@ -61,77 +59,62 @@ function Controls({ slot }: { slot: RunSlot }) {
   return (
     <button type="button" className="btn btn-ghost btn-lg" disabled>
       <LoaderCircle size={15} className="spin" aria-hidden="true" />
-      {slot.phase === "checking" ? "연결 확인 중…" : "종료 처리 중…"}
+      {action.label}
     </button>
   );
 }
 
-function MacroNotes({ slot }: { slot: RunSlot }) {
-  const m = slot.macro;
-  if (!m.exchange)
-    return (
-      <p className="note note-danger">
-        이 앱이 지원하지 않는 거래소({m.exchangeName || "알 수 없음"})예요. 바이낸스 · 업비트 · 빗썸 매크로만 실행할 수
-        있어요.
-      </p>
-    );
-  if (m.signature === "modified")
-    return (
-      <p className="note note-warn">
-        <TriangleAlert size={14} aria-hidden="true" />이 매크로는 웹에서 받은 원본과 설정이 달라요(투자 금액 등). 이
-        기기에서 바꾼 설정으로 실행돼요.
-      </p>
-    );
-  if (m.signature === "unsigned")
-    return <p className="note note-muted">서명이 없는 예전 파일이에요. 실행은 되지만 원본인지 확인할 수 없어요.</p>;
-  return null;
+/** 실행 중 조작 줄 왼쪽 — 모드 배지와 매크로 설명 한 줄(전체는 마우스를 올리면). */
+function RunningMode({ slot }: { slot: RunSlot }) {
+  const summary = slot.macro.summary;
+  return (
+    <div className="detail-running">
+      <span
+        className={`detail-mode-badge mode-${slot.mode}`}
+        title={`${MODE_LABELS[slot.mode]} 모드 — 실행 중에는 모드를 바꿀 수 없어요`}
+      >
+        {runningModeText(slot.mode, slot.phase)}
+      </span>
+      {summary && (
+        <p className="detail-running-summary" title={summary}>
+          {summary}
+        </p>
+      )}
+    </div>
+  );
 }
 
-export function RunDetail({ slot, activity, prices, onBack, loadActivity, activityFailed = false }: Props) {
+export function RunDetail({
+  slot,
+  activity,
+  prices,
+  priceTimes = [],
+  onBack,
+  loadActivity,
+  activityFailed = false,
+}: Props) {
   const { openSettings } = useRunnerContext();
   const m = slot.macro;
   const r = slot.readiness;
   const target = settingsTargetOf(r.needs);
-  const showBlocker = isIdle(slot.phase) && !r.canStart && !!r.blocker;
+  const idle = isIdle(slot.phase);
+  const showBlocker = idle && !r.canStart && !!r.blocker;
 
   useEffect(() => loadActivity(slot.id), [slot.id, loadActivity]);
 
-  const facts = [
-    m.source === "web" ? "웹 매크로" : "파일 매크로",
-    m.strategy,
-    MARKET_LABELS[m.market],
-    m.leverage > 1 ? `${m.leverage}배` : "",
-  ].filter(Boolean);
-
   return (
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
-      <div className="detail-head">
-        {onBack && (
-          <button type="button" className="icon-btn detail-back" aria-label="내 매크로 목록으로" onClick={onBack}>
-            <ArrowLeft size={18} />
-          </button>
-        )}
-        <ExchangeLogo exchange={m.exchange} size={30} />
-        <div className="detail-name">
-          <h2 id="detail-title" className="detail-title">
-            <span className="num">{m.symbol}</span>
-            <span className={`side side-${m.side}`}>{SIDE_LABELS[m.side]}</span>
-            <span className="detail-exchange">{m.exchangeLabel || m.exchangeName}</span>
-          </h2>
-          <p className="detail-sub" title={m.title}>
-            <span className="detail-file">{m.title}</span>
-            {facts.map((f) => (
-              <span key={f}> · {f}</span>
-            ))}
-          </p>
-        </div>
-      </div>
+      <DetailHeader slot={slot} onBack={onBack} />
 
-      <div className="detail-controls">
-        <div className="detail-mode">
-          <ModeSegment slot={slot} />
-          <p className={`mode-note ${slot.mode === "live" ? "is-live" : ""}`}>{MODE_NOTES[slot.mode]}</p>
-        </div>
+      {/* 세그먼트(또는 실행 중 배지)와 주 버튼은 한 줄. 모드 설명은 세그먼트 단추의 풍선 도움말(ModeSegment). */}
+      <div className={`detail-controls ${idle ? "" : "is-running"}`}>
+        {idle ? (
+          <div className="detail-mode">
+            <ModeSegment slot={slot} />
+          </div>
+        ) : (
+          <RunningMode slot={slot} />
+        )}
         <Controls slot={slot} />
       </div>
 
@@ -147,12 +130,25 @@ export function RunDetail({ slot, activity, prices, onBack, loadActivity, activi
           )}
         </div>
       )}
-      <MacroNotes slot={slot} />
-      {m.summary && !slot.run && <p className="macro-summary">{m.summary}</p>}
-      {isIdle(slot.phase) && <CapitalRow slot={slot} />}
+      <MacroNotes slot={slot} blockerShown={showBlocker} />
+      {/* 실행 중이면 설명은 조작 줄 안(RunningMode). 끝난 뒤에는 한 줄로 줄여 상태 카드를 밀어내지 않게. */}
+      {m.summary && idle && (
+        <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>
+          {m.summary}
+        </p>
+      )}
+      {idle && <CapitalRow slot={slot} />}
 
       {slot.run ? (
-        <StatusCard run={slot.run} macro={m} mode={slot.mode} phase={slot.phase} status={slot.status} prices={prices} />
+        <StatusCard
+          run={slot.run}
+          macro={m}
+          mode={slot.mode}
+          phase={slot.phase}
+          status={slot.status}
+          prices={prices}
+          priceTimes={priceTimes}
+        />
       ) : (
         <IdleCard />
       )}

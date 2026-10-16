@@ -1,5 +1,5 @@
 // 실행 상태 카드의 문구 — 라벨·서버 연결 칸·저하 상태 띠. 화면과 떼어 순수 함수로 둠(테스트·재사용).
-import type { RunMode, RunSlot, RunStatus } from "../types";
+import type { MacroInfo, RunMode, RunSlot, RunStatus } from "../types";
 import { formatAgo } from "./format";
 
 /** 상태가 이만큼 갱신되지 않으면(평소 5초마다) 멈춘 것일 수 있다고 보임. */
@@ -35,14 +35,38 @@ const WHERE: Record<RunMode, string> = {
   live: "거래소에서 포지션을 확인하세요",
 };
 
-/** 저하 상태 띠 — 손절을 못 보는 중처럼 사용자가 확인해야 하는 것만. */
-export function alertOf(run: RunStatus, mode: RunMode): string | null {
+/** 잔고 부족 띠 — 어느 잔고가 모자란지(업비트 원화·바이낸스 USDT·선물 증거금)와 할 일. 매매는 멈추지 않음. */
+export function fundsAlert(macro: Pick<MacroInfo, "exchangeLabel" | "quote" | "market">): string {
+  const what =
+    macro.market === "futures"
+      ? `${macro.exchangeLabel} 선물 증거금이`
+      : `${macro.exchangeLabel} ${macro.quote === "KRW" ? "원화" : macro.quote} 잔고가`;
+  return `${what} 모자라 주문하지 못했어요. 잔고를 채우거나 투자 금액을 줄이세요. 다음 신호에서 다시 주문해요.`;
+}
+
+type FundsMacro = Pick<MacroInfo, "exchangeLabel" | "quote" | "market">;
+
+/** 저하 상태 띠와 색 — 손절을 못 보는 중처럼 사용자가 확인해야 하는 것만. 잔고 부족은 손절·정리가 그대로라
+ *  주의(warn) 색이고, 더 급한 띠가 있으면 그쪽을 보임. */
+export function statusAlert(
+  run: RunStatus,
+  mode: RunMode,
+  macro?: FundsMacro,
+): { text: string; tone: "danger" | "warn" } | null {
+  const danger = (text: string) => ({ text, tone: "danger" as const });
   if (run.finished) return null;
-  if (run.uncertain) return `주문 결과가 불확실해요 · ${WHERE[mode]}`;
+  if (run.uncertain) return danger(`주문 결과가 불확실해요 · ${WHERE[mode]}`);
   if (run.closeFailures > 0)
-    return `정리 주문이 ${run.closeFailures}번 실패했어요 · 다음 확인 때 다시 시도해요. ${WHERE[mode]}`;
+    return danger(`정리 주문이 ${run.closeFailures}번 실패했어요 · 다음 확인 때 다시 시도해요. ${WHERE[mode]}`);
   if (run.priceStaleSince > 0 && run.inPosition)
-    return `현재가를 받지 못해 손절 · 안전 규칙을 확인하지 못하고 있어요 · ${WHERE[mode]}`;
-  if (run.authFailed) return "서버가 회원 키를 받지 않아요 · 이 매크로를 종료하고 회원 키를 확인한 뒤 다시 시작하세요";
+    return danger(`현재가를 받지 못해 손절 · 안전 규칙을 확인하지 못하고 있어요 · ${WHERE[mode]}`);
+  if (run.authFailed)
+    return danger("서버가 회원 키를 받지 않아요 · 이 매크로를 종료하고 회원 키를 확인한 뒤 다시 시작하세요");
+  if (run.fundsShort && macro) return { text: fundsAlert(macro), tone: "warn" };
   return null;
+}
+
+/** 저하 상태 띠 글만 — [`statusAlert`]의 text. */
+export function alertOf(run: RunStatus, mode: RunMode, macro?: FundsMacro): string | null {
+  return statusAlert(run, mode, macro)?.text ?? null;
 }

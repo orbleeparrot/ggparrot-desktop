@@ -2,11 +2,7 @@
 
 use serde_json::Value;
 
-use crate::money::py_float;
-
-fn now_secs() -> f64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
-}
+use crate::money::py_num;
 
 fn today() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
@@ -44,7 +40,7 @@ pub struct RiskGuard {
 
 impl RiskGuard {
     pub fn new(risk: &Value, base_capital: f64, cap: f64) -> Self {
-        Self::with_clock(risk, base_capital, cap, Box::new(now_secs), Box::new(today))
+        Self::with_clock(risk, base_capital, cap, Box::new(crate::clock::unix_secs), Box::new(today))
     }
 
     pub fn with_clock(
@@ -83,7 +79,7 @@ impl RiskGuard {
             bits.push(format!("최대 보유 {raw}시간"));
         }
         if self.cooldown_minutes != 0.0 {
-            bits.push(format!("손절 뒤 재진입 대기 {}분", py_float(self.cooldown_minutes)));
+            bits.push(format!("손절 뒤 재진입 대기 {}분", py_num(self.cooldown_minutes)));
         }
         if bits.is_empty() {
             "설정 없음".into()
@@ -103,6 +99,8 @@ impl RiskGuard {
         }
     }
 
+    /// 오늘 손익(%) — 실현(수수료 반영)과 지금 포지션의 평가손익(수수료 반영)을 기준 금액으로 나눔.
+    /// 부르는 쪽(봇)이 수수료를 뺀 값을 넘김 — 수수료를 모르면 기본 수수료율로 어림한 값.
     fn daily_loss_pct(&self, unrealized: f64) -> f64 {
         (self.day_pnl + unrealized) / self.base * 100.0
     }
@@ -129,7 +127,7 @@ impl RiskGuard {
         if let Some((limit, raw)) = &self.daily_max_loss {
             let dd = self.daily_loss_pct(unrealized);
             if dd <= -limit {
-                return (true, format!("하루 최대 손실({raw}%)에 닿았어요(오늘 {dd:.2}%)"));
+                return (true, format!("하루 최대 손실({raw}%)에 닿았어요(오늘 수수료 포함 {dd:.2}%)"));
             }
         }
         (false, String::new())
@@ -153,7 +151,7 @@ impl RiskGuard {
         self.halt_if_needed();
     }
 
-    /// 부분 청산: 실현손익만 일일 집계에 더하고 보유 시간은 그대로.
+    /// 부분 청산: 실현손익(수수료 반영)만 일일 집계에 더하고 보유 시간은 그대로.
     pub fn on_partial_exit(&mut self, pnl: f64) {
         self.day_pnl += pnl;
         self.halt_if_needed();
@@ -242,6 +240,6 @@ mod tests {
         g.roll_day();
         let (forced, why) = g.force_close(-2.5);
         assert!(forced);
-        assert_eq!(why, "하루 최대 손실(2%)에 닿았어요(오늘 -2.50%)");
+        assert_eq!(why, "하루 최대 손실(2%)에 닿았어요(오늘 수수료 포함 -2.50%)");
     }
 }

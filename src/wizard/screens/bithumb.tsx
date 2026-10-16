@@ -1,18 +1,6 @@
 // 빗썸 API 2.0 화면(단순화) — 흰 카드·주황 원형 체크·검정 버튼.
-import {
-  BT_DARK,
-  BT_LINE,
-  BtChrome,
-  BtCircle,
-  copyTarget,
-  CopyButton,
-  DIM,
-  FlatButton,
-  InputBox,
-  ModalBox,
-  MUTED,
-  T,
-} from "./kit";
+import { BT_DARK, BT_LINE, BtChrome, BtCircle } from "./bithumbKit";
+import { copyTarget, CopyButton, DIM, FlatButton, InputBox, ModalBox, MUTED, T } from "./kit";
 import { inputTarget, W, type Scene, type SceneState } from "./types";
 
 const URL = "bithumb.com/react/api-support/management-api";

@@ -51,6 +51,7 @@ fn filled(qty: f64, price: f64) -> Order {
         fees_known: true,
         order_id: Some("1".into()),
         raw_status: "FILLED".into(),
+        fee: None,
     }
 }
 
@@ -190,6 +191,7 @@ async fn failed_order_acks_error_and_can_be_retried() {
         fees_known: true,
         order_id: None,
         raw_status: "REJECTED".into(),
+        fee: None,
     });
     let cmd = json!({"id": 9, "action": "buy", "notional_frac": 0.5});
     let ack = bot.execute_command(&cmd, 100.0).await.unwrap();
@@ -415,7 +417,12 @@ async fn activity_reads_like_a_person_wrote_it() {
     assert_eq!(acts[1].detail, "모의 체결 · 실제 주문은 보내지 않았어요");
     assert!(acts[1].raw.contains("BUY 체결"));
     assert!(acts[3].title.ends_with("개를 81,831.58 USDT에 팔았어요"), "{}", acts[3].title);
-    assert!(acts[3].detail.starts_with("손익 +"), "{}", acts[3].detail);
+    // 가짜 거래소는 수수료를 알려 주지 않음 — 수수료 전 값이라고 밝힘.
+    assert!(
+        acts[3].detail.starts_with("실현손익 +0.02 USDT(수수료 제외 전) · 이번 실행 누적 +0.02 USDT(수수료 제외 전)"),
+        "{}",
+        acts[3].detail
+    );
     assert_eq!(acts[3].tone, "ok");
 }
 
@@ -540,6 +547,7 @@ async fn a_partially_filled_then_expired_order_still_reports_the_fill() {
         fees_known: true,
         order_id: Some("1".into()),
         raw_status: "EXPIRED".into(),
+        fee: None,
     });
     let ack = bot.execute_command(&json!({"id": 21, "action": "buy", "notional_frac": 0.5}), 100.0).await.unwrap();
     assert_eq!(ack["ok"], false);
@@ -589,7 +597,7 @@ async fn price_outage_reaches_the_screen_and_escalates_while_holding() {
     assert!(acts[0].detail.contains("손절"), "포지션이 있으면 손절을 못 본다고 말한다: {}", acts[0].detail);
 
     // 1분이 지나도록 못 받으면 한 번 더 크게(danger) 알림 — 한 번만.
-    bot.price_fail_since = wall_ms() - PRICE_STALE_ALERT_MS - 1;
+    bot.price_fail_since = unix_ms() - PRICE_STALE_ALERT_MS - 1;
     bot.fetch_price(fb.as_ref(), &mut guard).await;
     bot.fetch_price(fb.as_ref(), &mut guard).await;
     let danger: Vec<_> = acts_of(&events(&mut rx)).into_iter().filter(|a| a.tone == "danger").collect();
@@ -652,7 +660,7 @@ async fn a_long_gap_between_ticks_is_reported() {
     let (mut bot, mut rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb, RunMode::Mock);
     bot.check_wall_gap();
     assert!(acts_of(&events(&mut rx)).is_empty(), "첫 틱은 비교할 게 없다");
-    bot.last_tick_ms = wall_ms() - 10 * 60_000;
+    bot.last_tick_ms = unix_ms() - 10 * 60_000;
     bot.check_wall_gap();
     let acts = acts_of(&events(&mut rx));
     assert_eq!(acts[0].title, "기기가 10분 동안 멈춰 있었어요");
@@ -691,6 +699,7 @@ async fn a_partial_fill_reads_as_partial_not_as_a_failed_order() {
         fees_known: true,
         order_id: Some("1".into()),
         raw_status: "EXPIRED".into(),
+        fee: None,
     });
     let mut guard = RiskGuard::new(&json!({"max_holding_hours": 1}), 1000.0, 100.0);
     let reply = crate::server::HeartbeatReply {
@@ -747,7 +756,7 @@ async fn suspicious_entries_are_refused_before_any_order() {
     let mut guard = RiskGuard::new(&json!({}), 1000.0, 100.0);
     let cmds = vec![
         entry(1, json!({"notional_frac": "NaN"})),
-        entry(2, json!({"expires_ms": (wall_ms() - 60_000) as f64})),
+        entry(2, json!({"expires_ms": (unix_ms() - 60_000) as f64})),
         entry(3, json!({"signal_price": 90.0})),
     ];
     bot.apply_reply(&reply_with(cmds), &mut guard, 100.0).await.unwrap();
@@ -848,15 +857,705 @@ async fn repeated_stop_loss_failures_keep_retrying_instead_of_ending_the_run() {
         fees_known: true,
         order_id: None,
         raw_status: "-2010".into(),
+        fee: None,
     };
     for _ in 0..MAX_CLOSE_FAILURES {
         fb.push(rejected());
         assert!(bot.enforce_safety_net(&mut guard, 80.0).await.is_ok(), "실행을 끝내지 않는다(손절 감시가 사라지므로)");
     }
     assert_eq!(bot.close_failures, MAX_CLOSE_FAILURES);
-    assert!(bot.close_retry_at > wall_ms(), "간격을 두고 다시 시도한다");
+    assert!(bot.close_retry_at > unix_ms(), "간격을 두고 다시 시도한다");
     let before = fb.submits().len();
     bot.enforce_safety_net(&mut guard, 80.0).await.unwrap();
     assert_eq!(fb.submits().len(), before, "다음 시도 시각 전에는 보내지 않는다");
     assert!(acts_of(&events(&mut rx)).iter().any(|a| a.title.contains("연달아 실패")));
+}
+
+#[tokio::test]
+async fn a_practice_key_hint_does_not_mention_an_allowed_ip() {
+    let m = json!({"symbol": "BTCUSDT", "exchange": "binance", "position_side": "short", "leverage": 2});
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Short);
+    let (bot, mut rx) = bot_with(m.clone(), fb.clone(), RunMode::Testnet);
+    assert!(!bot.rehearsal_failed("바이낸스에서 키를 거절했어요", "-2015"));
+    let hint = logs(&mut rx).into_iter().find(|l| l.contains("키인지")).unwrap();
+    assert!(hint.contains("선물 데모(demo.binance.com) 키인지, 권한을 확인하세요."), "{hint}");
+    assert!(!hint.contains("허용 IP"), "{hint}");
+
+    let (bot, mut rx) = bot_with(m, fb, RunMode::Live);
+    assert!(!bot.rehearsal_failed("바이낸스에서 키를 거절했어요", "-2015"));
+    let hint = logs(&mut rx).into_iter().find(|l| l.contains("키인지")).unwrap();
+    assert!(hint.contains("실거래(binance.com) 키인지, 허용 IP와 권한을 확인하세요."), "{hint}");
+}
+
+// --- 수수료·신호가 차이·잔고 (화면 전용) -----------------------------------------
+
+fn filled_with_fee(qty: f64, price: f64, fee: Option<crate::brokers::FeePaid>) -> Order {
+    Order { fee, ..filled(qty, price) }
+}
+
+fn fee(quote: f64) -> Option<crate::brokers::FeePaid> {
+    Some(crate::brokers::FeePaid { quote, other: vec![] })
+}
+
+#[tokio::test]
+async fn fees_and_signal_slippage_reach_the_screen_but_not_the_server_snapshot() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(0.5, 100.0, fee(0.05)));
+    let buy = json!({"id": 1, "action": "buy", "notional_frac": 0.5, "signal_price": 99.0});
+    bot.execute_command(&buy, 100.0).await.unwrap();
+    let acts = activities(&mut rx);
+    let bought = acts.iter().find(|a| a.kind == "buy").unwrap();
+    assert_eq!(bought.detail, "신호가 대비 +1.01% · 수수료 0.05 USDT");
+
+    fb.st.lock().unwrap().price = 110.0;
+    fb.push(filled_with_fee(0.5, 110.0, fee(0.055)));
+    bot.execute_command(&json!({"id": 2, "action": "sell", "signal_price": 110.0}), 110.0).await.unwrap();
+    let acts = activities(&mut rx);
+    let sold = acts.iter().find(|a| a.kind == "sell").unwrap();
+    // 수수료 반영 — 가격 손익 5 − 진입 수수료 0.05 − 정리 수수료 0.055 = 4.895. 수수료는 이번 정리에 든 몫의 합.
+    assert_eq!(sold.detail, "실현손익 +4.90 USDT · 이번 실행 누적 +4.90 USDT · 신호가 대비 0.00% · 수수료 0.105 USDT");
+    assert!((bot.realized_net - 4.895).abs() < 1e-9);
+
+    // 서버로 가는 스냅샷은 파이썬 실행기와 같음 — 실현손익에서 수수료를 빼지 않고 수수료 칸도 없음.
+    let snap = bot.snapshot();
+    assert_eq!(snap["realized_pnl"], 5.0);
+    assert!(snap.get("fees_paid").is_none() && snap.get("day_change").is_none());
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert!((ui["fees_paid"].as_f64().unwrap() - 0.105).abs() < 1e-12, "{ui}");
+    assert_eq!(ui["realized_pnl"], 5.0);
+    assert!((ui["realized_net"].as_f64().unwrap() - 4.895).abs() < 1e-9, "{ui}");
+
+    // 손절처럼 신호 없이 낸 주문에는 신호가 차이를 붙이지 않음.
+    fb.push(filled_with_fee(0.5, 100.0, fee(0.0)));
+    bot.execute_command(&json!({"id": 3, "action": "buy", "notional_frac": 0.5}), 100.0).await.unwrap();
+    activities(&mut rx);
+    fb.push(filled_with_fee(0.5, 90.0, None));
+    assert!(bot.close_position().await.unwrap());
+    let sold = activities(&mut rx).into_iter().find(|a| a.kind == "sell").unwrap();
+    assert_eq!(sold.detail, "실현손익 -5.00 USDT(수수료 제외 전) · 이번 실행 누적 0.00 USDT(수수료 제외 전)");
+    assert_eq!(sold.tone, "danger");
+    // 수수료를 모르는 체결이 끼면 화면에도 모름(null)으로 — 수수료 뺀 손익을 주장하지 않음.
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert!(ui["fees_paid"].is_null() && ui["realized_net"].is_null(), "{ui}");
+}
+
+#[tokio::test]
+async fn fees_in_other_assets_are_shown_but_leave_the_total_unknown() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    let bnb = crate::brokers::FeePaid { quote: 0.0, other: vec![("BNB".into(), 0.0003)] };
+    fb.push(filled_with_fee(0.5, 100.0, Some(bnb)));
+    bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 100.0).await.unwrap();
+    let bought = activities(&mut rx).into_iter().find(|a| a.kind == "buy").unwrap();
+    assert_eq!(bought.detail, "수수료 0.0003 BNB");
+    assert!(bot.ui_snapshot(bot.snapshot())["fees_paid"].is_null());
+}
+
+#[tokio::test]
+async fn futures_fees_are_unknown_from_the_start() {
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Long);
+    let (bot, _rx) = bot_with(json!({"symbol": "BTCUSDT", "leverage": 3}), fb, RunMode::Live);
+    assert_eq!(bot.market, Market::Futures);
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert!(ui["fees_paid"].is_null());
+    assert!(ui["day_change"].is_null());
+}
+
+#[test]
+fn slippage_and_fee_texts() {
+    assert_eq!(super::orders::slippage_text(100.0, 100.12).as_deref(), Some("신호가 대비 +0.12%"));
+    assert_eq!(super::orders::slippage_text(100.0, 99.5).as_deref(), Some("신호가 대비 -0.50%"));
+    assert_eq!(super::orders::slippage_text(0.0, 99.5), None);
+    assert_eq!(super::orders::fee_text(fee(12.0).as_ref(), "KRW").as_deref(), Some("수수료 12 KRW"));
+    assert_eq!(super::orders::fee_text(fee(0.0).as_ref(), "USDT"), None);
+    assert_eq!(super::orders::fee_text(None, "USDT"), None);
+}
+
+#[tokio::test]
+async fn the_balance_read_before_start_becomes_one_activity_line_outside_mock() {
+    let m = json!({"symbol": "BTCUSDT"});
+    for (mode, expected) in [(RunMode::Live, true), (RunMode::Mock, false)] {
+        let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+        let (mut bot, mut rx) = bot_with(m.clone(), fb, mode);
+        let mut pre = PreflightResult::new(true, "확인 통과", preflight_fingerprint(&m, mode, &creds()));
+        pre.balance = "사용 가능 잔고 10 USDT · 보유 BTC 0.01".into();
+        bot.preflight = Some(pre);
+        assert!(bot.rehearse().await);
+        let line = activities(&mut rx).into_iter().find(|a| a.title == "잔고를 확인했어요");
+        assert_eq!(line.is_some(), expected, "{mode:?}");
+        if let Some(line) = line {
+            assert_eq!(line.detail, "사용 가능 잔고 10 USDT · 보유 BTC 0.01");
+            assert_eq!((line.kind, line.tone), ("info", "muted"));
+        }
+    }
+}
+
+// --- 주문 결과 분류·보유 반영·명령 갈래의 경계 ------------------------------------
+
+fn result(status: &str, exec: f64, avg: f64, acquired: f64, fees_known: bool) -> Order {
+    Order {
+        status: status.into(),
+        executed_qty: exec,
+        avg_price: avg,
+        acquired_qty: acquired,
+        fees_known,
+        order_id: Some("1".into()),
+        raw_status: if status == "CANCELED" { "EXPIRED".into() } else { status.into() },
+        fee: None,
+    }
+}
+
+/// (보유 중, 보유 수량, 진입가, 불확실, 실현 손익, 먼지 수량)
+fn pos(bot: &Bot) -> (bool, f64, f64, bool, f64, f64) {
+    (bot.in_position, bot.held_qty, bot.entry_price, bot.position_uncertain, bot.realized, bot.position_dust_qty)
+}
+
+fn close(a: f64, b: f64) -> bool {
+    (a - b).abs() < 1e-9
+}
+
+#[tokio::test]
+async fn order_results_are_classified_at_their_boundaries() {
+    // (거래소 결과, Ok인지, 오류 문장 앞부분, (보유 중, 보유 수량, 진입가, 불확실))
+    type Case = (Order, bool, &'static str, (bool, f64, f64, bool));
+    let cases: Vec<Case> = vec![
+        (result("FILLED", 1.0, 100.0, 1.0, true), true, "", (true, 1.0, 100.0, false)),
+        (
+            result("FILLED", 1.0, 0.0, 1.0, true),
+            false,
+            "주문 결과를 확인하지 못했어요(거래소 상태: FILLED)",
+            (true, 1.0, 0.0, true),
+        ),
+        (
+            result("FILLED", 0.0, 0.0, 0.0, true),
+            false,
+            "주문 결과를 확인하지 못했어요(거래소 상태: FILLED)",
+            (true, 0.0, 0.0, true),
+        ),
+        (
+            result("OPEN", 0.5, 100.0, 0.5, true),
+            false,
+            "주문 결과를 확인하지 못했어요(거래소 상태: OPEN)",
+            (true, 0.5, 100.0, true),
+        ),
+        (result("FILLED", 1.0, 100.0, 1.0, false), false, "주문 결과를 확인하지 못했어요", (true, 1.0, 100.0, true)),
+        (
+            result("REJECTED", 0.0, 0.0, 0.0, true),
+            false,
+            "바이낸스에서 주문을 거절했어요(REJECTED)",
+            (false, 0.0, 0.0, false),
+        ),
+        (
+            result("REJECTED", 0.3, 100.0, 0.3, true),
+            false,
+            "주문이 일부만 체결되고 끝났어요(거래소 상태: REJECTED)",
+            (true, 0.3, 100.0, false),
+        ),
+        (
+            result("CANCELED", 0.4, 100.0, 0.4, true),
+            false,
+            "주문이 일부만 체결되고 끝났어요(거래소 상태: EXPIRED)",
+            (true, 0.4, 100.0, false),
+        ),
+        (
+            result("CANCELED", 0.0, 0.0, 0.0, true),
+            false,
+            "주문 결과를 확인하지 못했어요(거래소 상태: EXPIRED)",
+            (false, 0.0, 0.0, false),
+        ),
+    ];
+    for (order, ok, err, want) in cases {
+        let label = format!("{} {} {}", order.status, order.executed_qty, order.avg_price);
+        let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+        let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+        fb.push(order);
+        let got = bot.place(OrderSide::Buy, 1.0, false, 0.0).await;
+        assert_eq!(got.is_ok(), ok, "{label}: {got:?}");
+        if let Err(e) = &got {
+            assert!(e.starts_with(err), "{label}: {e}");
+        }
+        let p = pos(&bot);
+        assert_eq!((p.0, p.3), (want.0, want.3), "{label}");
+        assert!(close(p.1, want.1) && close(p.2, want.2), "{label}: {p:?}");
+    }
+}
+
+#[tokio::test]
+async fn fills_update_the_position_at_their_boundaries() {
+    let spot = || {
+        let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+        let (mut bot, rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+        bot.step = 0.001;
+        (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 100.0);
+        (bot, fb, rx)
+    };
+    // 단위보다 적게 남은 현물 — 먼지로 넘기고 보유를 끝냄.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("FILLED", 0.9995, 110.0, 0.9995, true));
+    assert_eq!(bot.place(OrderSide::Sell, 1.0, false, 0.0).await, Ok(true));
+    let p = pos(&bot);
+    assert!(!p.0 && close(p.1, 0.0005) && p.2 == 0.0 && !p.3 && close(p.4, 9.995) && close(p.5, 0.0005), "{p:?}");
+    // 보유보다 많이 체결 — 손익은 보유분만, 보유는 0.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("FILLED", 1.2, 110.0, 1.2, true));
+    assert_eq!(bot.place(OrderSide::Sell, 1.0, false, 0.0).await, Ok(true));
+    let p = pos(&bot);
+    assert!(!p.0 && p.1 == 0.0 && p.2 == 0.0 && close(p.4, 10.0) && p.5 == 0.0, "{p:?}");
+    // 1e-12 아래로 남은 수량은 0.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("FILLED", 1.0 - 1e-13, 100.0, 1.0 - 1e-13, true));
+    assert_eq!(bot.place(OrderSide::Sell, 1.0, false, 0.0).await, Ok(true));
+    assert_eq!(bot.held_qty, 0.0);
+    // 끝나지 않은 정리 주문 — 진입가를 지움 없이 보유와 불확실 표시를 남김.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("OPEN", 0.5, 100.0, 0.5, true));
+    assert!(bot.place(OrderSide::Sell, 1.0, false, 0.0).await.is_err());
+    let p = pos(&bot);
+    assert!(p.0 && close(p.1, 0.5) && p.2 == 100.0 && p.3, "{p:?}");
+    // 만료로 끝난 현물 정리 — 먼지 규칙은 FILLED만, 남은 수량은 보유로.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("CANCELED", 0.9995, 100.0, 0.9995, true));
+    assert!(bot.place(OrderSide::Sell, 1.0, false, 0.0).await.unwrap_err().starts_with("주문이 일부만 체결"));
+    let p = pos(&bot);
+    assert!(p.0 && close(p.1, 0.0005) && p.2 == 100.0 && p.5 == 0.0, "{p:?}");
+    // 추가 진입 — 받은 수량(acquired)으로 가중평균.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("FILLED", 1.0, 50.0, 0.999, true));
+    assert_eq!(bot.place(OrderSide::Buy, 1.0, false, 0.0).await, Ok(true));
+    let p = pos(&bot);
+    assert!(p.0 && close(p.1, 1.999) && close(p.2, (100.0 + 0.999 * 50.0) / 1.999), "{p:?}");
+    // 평균가를 모르는 추가 진입 — 진입가·보유를 이번 체결로 바꾸고 불확실로 둠.
+    let (mut bot, fb, _rx) = spot();
+    fb.push(result("FILLED", 1.0, 0.0, 1.0, true));
+    assert!(bot.place(OrderSide::Buy, 1.0, false, 0.0).await.is_err());
+    let p = pos(&bot);
+    assert!(p.0 && p.1 == 1.0 && p.2 == 0.0 && p.3, "{p:?}");
+
+    // 선물 정리는 먼지 규칙 없이 남은 수량을 보유로 둠.
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Short);
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "position_side": "short", "leverage": 2}), fb.clone(), RunMode::Live);
+    bot.step = 0.001;
+    (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 100.0);
+    fb.push(result("FILLED", 0.9995, 90.0, 0.9995, true));
+    assert!(bot.place(OrderSide::Buy, 1.0, true, 0.0).await.unwrap_err().starts_with("주문이 일부만 체결"));
+    let p = pos(&bot);
+    assert!(p.0 && close(p.1, 0.0005) && p.2 == 100.0 && close(p.4, 9.995) && p.5 == 0.0, "{p:?}");
+    // 남은 수량보다 단위 이상 적게 판 일부 정리는 성공.
+    fb.push(result("FILLED", 0.0002, 90.0, 0.0002, true));
+    bot.held_qty = 1.0;
+    assert_eq!(bot.place(OrderSide::Buy, 0.0002, true, 0.0).await, Ok(true));
+}
+
+#[tokio::test]
+async fn command_branches_at_their_boundaries() {
+    let holding = || {
+        let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+        let (mut bot, rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+        bot.step = 0.001;
+        (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 100.0);
+        (bot, fb, rx)
+    };
+    // 0.999 이상은 전량 정리, 그 아래는 단위로 내린 일부.
+    let (mut bot, fb, _rx) = holding();
+    let ack = bot.execute_command(&json!({"id": 1, "action": "sell", "qty_frac": 0.999}), 100.0).await.unwrap();
+    assert_eq!(fb.submits()[0].base_qty, Some(1.0));
+    assert_eq!(ack["outcome"], "execution_reported");
+    let (mut bot, fb, _rx) = holding();
+    bot.execute_command(&json!({"id": 1, "action": "sell", "qty_frac": 0.9985}), 100.0).await.unwrap();
+    assert_eq!(fb.submits()[0].base_qty, Some(0.998));
+    // 0이나 빠진 비율은 전량.
+    for frac in [json!(0), Value::Null] {
+        let (mut bot, fb, _rx) = holding();
+        bot.execute_command(&json!({"id": 1, "action": "sell", "qty_frac": frac}), 100.0).await.unwrap();
+        assert_eq!(fb.submits()[0].base_qty, Some(1.0));
+    }
+    // 부분 정리 수량이 단위보다 작으면 주문 없이 실패.
+    let (mut bot, fb, _rx) = holding();
+    let ack = bot.execute_command(&json!({"id": 1, "action": "sell", "qty_frac": 0.0001}), 100.0).await.unwrap();
+    assert_eq!(ack["error"], "부분 청산 수량이 최소 단위보다 작아요.");
+    assert!(fb.submits().is_empty());
+    // 정리 전부터 불확실하면 주문 없이 실패 ack(루프는 계속).
+    let (mut bot, fb, _rx) = holding();
+    bot.position_uncertain = true;
+    let ack = bot.execute_command(&json!({"id": 1, "action": "sell"}), 100.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    assert_eq!(ack["outcome"], "execution_failed");
+    assert!(ack["error"].as_str().unwrap().starts_with("포지션을 확인하지 못해"));
+    assert!(fb.submits().is_empty());
+
+    // 진입 비율은 0~1로 자름.
+    let fresh = || {
+        let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+        let (bot, rx) =
+            bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 50}}), fb.clone(), RunMode::Live);
+        (bot, fb, rx)
+    };
+    let (mut bot, fb, _rx) = fresh();
+    bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 2.0}), 100.0).await.unwrap();
+    assert_eq!(fb.submits()[0].base_qty, Some(0.5));
+    let (mut bot, fb, _rx) = fresh();
+    let ack = bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": -1}), 100.0).await.unwrap();
+    assert_eq!(ack["error"], "주문 수량이 최소 단위보다 작아요.");
+    assert!(fb.submits().is_empty());
+    // 보유 중 추가 진입에서 보유가 늘지 않은 체결(받은 수량 0) — 체결 수량으로 보유·진입가를 채움.
+    let (mut bot, fb, _rx) = holding();
+    bot.capital = 100.0;
+    fb.push(result("FILLED", 0.5, 50.0, 0.0, true));
+    let ack = bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.25}), 50.0).await.unwrap();
+    assert_eq!(
+        ack,
+        json!({"command_id": 1, "ok": true, "executed_qty": 0.5, "fill_price": 50.0, "error": "",
+               "mode": "live", "outcome": "execution_reported"})
+    );
+    assert!(close(bot.held_qty, 1.5) && close(bot.entry_price, (100.0 + 0.5 * 50.0) / 1.5), "{:?}", pos(&bot));
+}
+
+// --- 수수료 반영 손익(화면·안전 규칙) ---------------------------------------------
+
+fn sells(rx: &mut mpsc::UnboundedReceiver<BotEvent>) -> Vec<ActivityEvent> {
+    activities(rx).into_iter().filter(|a| a.kind == "sell").collect()
+}
+
+#[tokio::test]
+async fn upbit_round_trip_shows_fee_aware_realized_pnl() {
+    // 업비트 1,000,000원 매수(수수료 0.05% = 500원) → +0.5%에 매도(수수료 502.5원).
+    // 가격 손익 +5,000 − 500 − 502.5 = +3,997.5원.
+    let fb = FakeBroker::new(50_000_000.0, Market::Spot, Side::Long);
+    fb.st.lock().unwrap().bid_fee = Some(0.0005);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-BTC", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(0.02, 50_000_000.0, fee(500.0)));
+    bot.place(OrderSide::Buy, 0.0, false, 1_000_000.0).await.unwrap();
+    assert_eq!((bot.open_entry_fee, bot.open_fee_known), (500.0, true));
+    fb.st.lock().unwrap().price = 50_250_000.0;
+    fb.push(filled_with_fee(0.02, 50_250_000.0, fee(502.5)));
+    assert!(bot.close_position().await.unwrap());
+    assert!((bot.realized - 5_000.0).abs() < 1e-6, "서버로 가는 값은 수수료 전");
+    assert!((bot.realized_net - 3_997.5).abs() < 1e-6, "{}", bot.realized_net);
+    let sold = sells(&mut rx).pop().unwrap();
+    assert_eq!(sold.title, "BTC 0.02개를 50,250,000 KRW에 팔았어요");
+    assert_eq!(sold.detail, "실현손익 +3,998 KRW · 이번 실행 누적 +3,998 KRW · 수수료 1,003 KRW");
+    assert_eq!(sold.tone, "ok");
+    let snap = bot.snapshot();
+    assert_eq!(snap["realized_pnl"], 5_000.0);
+    let ui = bot.ui_snapshot(snap);
+    assert!((ui["realized_net"].as_f64().unwrap() - 3_997.5).abs() < 1e-6);
+    assert!((ui["fees_paid"].as_f64().unwrap() - 1_002.5).abs() < 1e-6);
+}
+
+#[tokio::test]
+async fn a_long_fill_quantity_is_shown_whole_on_screen_in_the_raw_line_and_the_server_error() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-ZAMA", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(499.750_124_94, 100.0, fee(25.0)));
+    bot.place(OrderSide::Buy, 0.0, false, 50_000.0).await.unwrap();
+    let bought = activities(&mut rx).into_iter().find(|a| a.kind == "buy").unwrap();
+    assert_eq!(bought.title, "ZAMA 499.75012494개를 100 KRW에 샀어요");
+    assert!(bought.raw.contains("수량=499.75012494"), "원본 줄은 자릿수를 다 살림: {}", bought.raw);
+    // 일부 체결 오류 문장은 서버 ack의 error로도 가므로 자릿수를 줄이지 않음.
+    let mut part = result("CANCELED", 0.123_456_78, 100.0, 0.123_456_78, true);
+    part.raw_status = "cancel".into();
+    fb.push(part);
+    let err = bot.place(OrderSide::Buy, 0.0, false, 50_000.0).await.unwrap_err();
+    assert!(err.contains("체결된 0.12345678 ZAMA만"), "{err}");
+    let partial = activities(&mut rx).into_iter().find(|a| a.kind == "buy").unwrap();
+    assert_eq!(partial.title, "ZAMA 0.12345678개를 100 KRW에 샀어요");
+}
+
+#[tokio::test]
+async fn binance_spot_up_015_pct_reads_as_a_small_loss_now() {
+    // 1,000 USDT 매수(수수료 1 USDT) 뒤 +0.15% — 지금 정리하면 1.5 − 1 − 1.0015 = −0.5015 USDT.
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(10.0, 100.0, fee(1.0)));
+    bot.place(OrderSide::Buy, 10.0, false, 0.0).await.unwrap();
+    bot.last_price = 100.15;
+    let snap = bot.snapshot();
+    assert!((snap["unrealized_pct"].as_f64().unwrap() - 0.15).abs() < 1e-9, "서버로 가는 %는 수수료 전");
+    let ui = bot.ui_snapshot(snap);
+    let amount = ui["unrealized_net"].as_f64().unwrap();
+    assert!((amount + 0.5015).abs() < 1e-9, "{ui}");
+    assert_eq!(money(amount, "USDT"), "-0.50 USDT");
+    assert!((ui["invested"].as_f64().unwrap() - 1_001.0).abs() < 1e-9);
+    assert!((ui["unrealized_net_pct"].as_f64().unwrap() + 0.5015 / 1_001.0 * 100.0).abs() < 1e-9);
+}
+
+#[tokio::test]
+async fn partial_exits_take_their_share_of_the_entry_fee() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(2.0, 100.0, fee(0.2)));
+    bot.place(OrderSide::Buy, 2.0, false, 0.0).await.unwrap();
+    fb.st.lock().unwrap().price = 110.0;
+    // 0.5개(1/4) 정리 — 진입 수수료 0.2의 1/4 = 0.05. 5 − 0.05 − 0.055 = 4.895.
+    fb.push(filled_with_fee(0.5, 110.0, fee(0.055)));
+    bot.place(OrderSide::Sell, 0.5, false, 0.0).await.unwrap();
+    assert!(bot.in_position);
+    assert!((bot.open_entry_fee - 0.15).abs() < 1e-12);
+    assert!((bot.realized_net - 4.895).abs() < 1e-9);
+    assert_eq!(
+        sells(&mut rx).pop().unwrap().detail,
+        "실현손익 +4.90 USDT · 이번 실행 누적 +4.90 USDT · 수수료 0.105 USDT"
+    );
+    // 나머지 1.5개 — 15 − 0.15 − 0.165 = 14.685. 합계 19.58(수수료 전 20).
+    fb.push(filled_with_fee(1.5, 110.0, fee(0.165)));
+    assert!(bot.close_position().await.unwrap());
+    assert!((bot.realized_net - 19.58).abs() < 1e-9, "{}", bot.realized_net);
+    assert!((bot.realized - 20.0).abs() < 1e-9);
+    assert_eq!((bot.open_entry_fee, bot.open_fee_known), (0.0, true));
+    assert_eq!(
+        sells(&mut rx).pop().unwrap().detail,
+        "실현손익 +14.69 USDT · 이번 실행 누적 +19.58 USDT · 수수료 0.315 USDT"
+    );
+}
+
+#[tokio::test]
+async fn daily_loss_counts_fees_so_flat_round_trips_trip_it() {
+    // 기준 100 USDT·하루 최대 손실 5%. 같은 가격으로 100 USDT씩 사고팔면 수수료 전 손익은 0이지만
+    // 수수료(모르면 바이낸스 현물 기본 0.1%씩)로 한 번에 −0.2 USDT — 25번 남짓이면 −5%에 닿음.
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let m = json!({"symbol": "BTCUSDT", "params": {"initial_capital": 100}, "risk": {"daily_max_loss_pct": 5}});
+    let (mut bot, _rx) = bot_with(m, fb.clone(), RunMode::Live);
+    let mut guard = bot.risk_guard();
+    guard.roll_day();
+    let mut blocked_at = None;
+    for trip in 0..30i64 {
+        bot.pending_acks.clear();
+        let cmds = vec![entry(trip * 2, json!({"notional_frac": 1.0})), json!({"id": trip * 2 + 1, "action": "sell"})];
+        bot.apply_reply(&reply_with(cmds), &mut guard, 100.0).await.unwrap();
+        if bot.pending_acks[0]["ok"] == false && blocked_at.is_none() {
+            blocked_at = Some(trip);
+        }
+    }
+    assert_eq!(bot.realized, 0.0, "수수료 전으로는 손실이 없음 — 예전 계산이면 막히지 않음");
+    let trip = blocked_at.expect("수수료 반영 손실로 진입이 막혀야 함");
+    assert!((25..=26).contains(&trip), "{trip}");
+    assert!(guard.entry_blocked().1.contains("하루 최대 손실(5%)"));
+}
+
+#[tokio::test]
+async fn futures_with_unknown_fees_use_the_default_rate_for_safety_but_show_gross() {
+    // 선물 1개 100 → 99: 가격 손익 −1.00(−1%). 수수료를 모르니 기본 0.05%로 어림 — 진입 0.05 + 청산 0.0495.
+    // 하루 최대 손실 1.05%: 수수료 전(−1%)이면 닿지 않지만 수수료 반영(−1.0995%)이면 닿음.
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Long);
+    let m = json!({"symbol": "BTCUSDT", "leverage": 3, "params": {"initial_capital": 100},
+                   "risk": {"daily_max_loss_pct": 1.05}});
+    let (mut bot, mut rx) = bot_with(m, fb.clone(), RunMode::Live);
+    bot.place(OrderSide::Buy, 1.0, false, 0.0).await.unwrap();
+    assert!(!bot.open_fee_known);
+    assert!((bot.open_entry_fee - 0.05).abs() < 1e-12, "모르는 진입 수수료는 기본 수수료율로 어림");
+    bot.last_price = 99.0;
+    fb.st.lock().unwrap().price = 99.0;
+    assert!((bot.unrealized_net(99.0) + 1.0995).abs() < 1e-9);
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert!(ui["unrealized_net"].is_null() && ui["realized_net"].is_null() && ui["fees_paid"].is_null(), "{ui}");
+    assert_eq!(ui["invested"], 100.0, "수수료를 모르면 수량×평단");
+    let mut guard = bot.risk_guard();
+    guard.roll_day();
+    bot.enforce_safety_net(&mut guard, 99.0).await.unwrap();
+    assert_eq!(fb.submits().len(), 2, "수수료 반영 손실로 강제 청산");
+    let acts = activities(&mut rx);
+    let forced = acts.iter().find(|a| a.kind == "stop_loss").unwrap();
+    assert_eq!(forced.detail, "하루 최대 손실(1.05%)에 닿았어요(오늘 수수료 포함 -1.10%)");
+    let sold = acts.iter().find(|a| a.kind == "sell").unwrap();
+    assert_eq!(sold.detail, "실현손익 -1.00 USDT(수수료 제외 전) · 이번 실행 누적 -1.00 USDT(수수료 제외 전)");
+}
+
+#[tokio::test]
+async fn stop_loss_reads_as_a_price_move_from_the_average() {
+    let fb = FakeBroker::new(95.0, Market::Spot, Side::Long);
+    let m = json!({"symbol": "BTCUSDT", "risk": {"stop_loss_pct": 5}});
+    let (mut bot, mut rx) = bot_with(m, fb.clone(), RunMode::Live);
+    bot.in_position = true;
+    bot.held_qty = 1.0;
+    bot.entry_price = 100.0;
+    let mut guard = RiskGuard::new(&json!({}), 1000.0, 100.0);
+    bot.enforce_safety_net(&mut guard, 95.0).await.unwrap();
+    let evs = events(&mut rx);
+    let stop = acts_of(&evs).into_iter().find(|a| a.kind == "stop_loss").unwrap();
+    assert_eq!(stop.detail, "평단 대비 가격 -5.00%(손절 기준 -5%) · 현재가 95 USDT · 평단 100 USDT");
+    assert_eq!(stop.raw, "[손절] 95.0 (평단 100.0 · 평단 대비 가격 -5.00%)");
+    let lines: Vec<String> =
+        evs.iter().filter_map(|e| if let BotEvent::Log(l) = e { Some(l.clone()) } else { None }).collect();
+    assert!(
+        lines.iter().any(|l| l == "  실현손익 -5.00 USDT(수수료 제외 전) · 평단 대비 가격 -5.00% · 이번 실행 누적 -5.00 USDT(수수료 제외 전)"),
+        "{lines:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_server_snapshot_keeps_its_python_shape() {
+    // 서버 하트비트는 파이썬 실행기와 같은 칸·같은 값(수수료 전) — 화면용 칸이 새지 않음.
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    fb.push(filled_with_fee(1.0, 100.0, fee(0.1)));
+    bot.place(OrderSide::Buy, 1.0, false, 0.0).await.unwrap();
+    bot.last_price = 102.0;
+    let snap = bot.snapshot();
+    let mut keys: Vec<&str> = snap.as_object().unwrap().keys().map(String::as_str).collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "entry_price",
+            "in_position",
+            "last_price",
+            "note",
+            "position_qty",
+            "position_uncertain",
+            "realized_pnl",
+            "unrealized_pct"
+        ]
+    );
+    assert!((snap["unrealized_pct"].as_f64().unwrap() - 2.0).abs() < 1e-9);
+    fb.push(filled_with_fee(1.0, 102.0, fee(0.102)));
+    assert!(bot.close_position().await.unwrap());
+    assert!((bot.snapshot()["realized_pnl"].as_f64().unwrap() - 2.0).abs() < 1e-9, "수수료를 빼지 않음");
+}
+
+#[tokio::test]
+async fn mock_futures_report_fees_from_the_start() {
+    let fb = FakeBroker::new(100.0, Market::Futures, Side::Long);
+    let (bot, _rx) = bot_with(json!({"symbol": "BTCUSDT", "leverage": 3}), fb, RunMode::Mock);
+    assert_eq!(bot.ui_snapshot(bot.snapshot())["fees_paid"], 0.0, "모의 선물은 수수료를 알려 줌");
+}
+
+// --- 잔고 부족·오류 코드 ------------------------------------------------------------
+
+fn health_of(bot: &Bot) -> RunHealth {
+    bot.health(&crate::server::HeartbeatReply::idle())
+}
+
+#[tokio::test]
+async fn an_entry_rejected_for_funds_raises_the_funds_state_once_until_an_entry_fills() {
+    let fb = FakeBroker::new(15_000_000.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(
+        json!({"symbol": "KRW-BTC", "exchange": "upbit", "params": {"initial_capital": 1_000_000}}),
+        fb.clone(),
+        RunMode::Live,
+    );
+    bot.step = 0.0;
+    let buy = |id: i64| json!({"id": id, "action": "buy", "notional_frac": 0.5, "reason": "골든크로스"});
+
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    let ack = bot.execute_command(&buy(1), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    // 문장(ack·활동 설명)에는 코드가 없고, 원문(자세히 보기)에만 '오류 코드' 줄이 있음.
+    assert_eq!(ack["error"], "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.");
+    assert!(bot.funds_short && health_of(&bot).funds_short, "잔고 부족 상태가 화면으로 감");
+    let evs = events(&mut rx);
+    let acts = acts_of(&evs);
+    let first = acts.iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!(first.title, "잔고가 모자라 주문하지 못했어요");
+    assert_eq!(first.tone, "danger", "처음 한 번은 위험 줄(→ OS 알림)");
+    assert!(
+        first.detail.ends_with("다음 신호에서 다시 주문해요.") && !first.detail.contains("insufficient"),
+        "{}",
+        first.detail
+    );
+    assert!(first.raw.ends_with("\n오류 코드: insufficient_funds_bid"), "{}", first.raw);
+    assert!(logs_of(&evs).iter().any(|l| l.contains("오류 코드: insufficient_funds_bid")), "원문 로그에도 코드");
+
+    // 같은 이유가 이어지면 주의 줄로만 — OS 알림을 거듭 띄우지 않음.
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    bot.execute_command(&buy(2), 15_000_000.0).await.unwrap();
+    let again = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!((again.title.as_str(), again.tone), ("잔고가 모자라 주문하지 못했어요", "warn"));
+    assert!(bot.funds_short);
+
+    // 진입 주문이 체결되면 풀림. 매매 동작은 그대로(멈추지 않고 다음 신호에 다시 주문함).
+    let ack = bot.execute_command(&buy(3), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], true);
+    assert!(!bot.funds_short && !health_of(&bot).funds_short);
+    assert_eq!(fb.submits().len(), 3, "잔고 부족 뒤에도 신호마다 주문을 냄");
+
+    // 다시 생기면 새로 한 번 알림.
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    bot.execute_command(&buy(4), 15_000_000.0).await.unwrap();
+    let fresh = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!(fresh.tone, "danger");
+}
+
+fn logs_of(evs: &[BotEvent]) -> Vec<String> {
+    evs.iter()
+        .filter_map(|e| match e {
+            BotEvent::Log(l) => Some(l.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn other_rejections_and_exit_rejections_do_not_raise_the_funds_state() {
+    let fb = FakeBroker::new(15_000_000.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-BTC", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    bot.step = 0.0;
+    fb.push(Order::rejected("under_min_total_bid".into()));
+    let ack =
+        bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    assert!(!bot.funds_short, "최소 주문 금액은 잔고 부족이 아님");
+    let act = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+    assert_eq!(act.title, "주문이 처리되지 않았어요");
+    assert!(!act.detail.contains("under_min_total") && act.raw.ends_with("오류 코드: under_min_total_bid"), "{act:?}");
+
+    // 보유 중 정리 주문이 코인 잔고 부족으로 거절돼도 진입 잔고 상태는 켜지 않음(정리 실패는 따로 알림).
+    bot.execute_command(&json!({"id": 2, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    fb.push(Order::rejected("insufficient_funds_ask".into()));
+    let ack = bot.execute_command(&json!({"id": 3, "action": "sell"}), 15_000_000.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    assert!(!bot.funds_short);
+}
+
+#[tokio::test]
+async fn binance_funds_rejections_are_named_without_the_code_in_the_sentence() {
+    let cases = [
+        (
+            Market::Spot,
+            Side::Long,
+            "-2010 Account has insufficient balance for requested action.",
+            true,
+            "주문할 USDT 잔고가 모자라요",
+        ),
+        (Market::Futures, Side::Long, "-2019 Margin is insufficient.", true, "주문할 증거금이 모자라요"),
+        (
+            Market::Spot,
+            Side::Long,
+            "-1013 Filter failure: NOTIONAL",
+            false,
+            "바이낸스에서 주문을 거절했어요(Filter failure: NOTIONAL)",
+        ),
+    ];
+    for (market, side, raw, funds, want) in cases {
+        let fb = FakeBroker::new(100.0, market, side);
+        let m = if market == Market::Futures {
+            json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 2})
+        } else {
+            json!({"symbol": "BTCUSDT"})
+        };
+        let (mut bot, mut rx) = bot_with(m, fb.clone(), RunMode::Live);
+        fb.push(Order::rejected(raw.into()));
+        let ack = bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 100.0).await.unwrap();
+        let err = ack["error"].as_str().unwrap();
+        let code = raw.split(' ').next().unwrap();
+        assert!(err.starts_with(want) && !err.contains(code), "{raw}: {err}");
+        assert_eq!(bot.funds_short, funds, "{raw}");
+        let act = acts_of(&events(&mut rx)).into_iter().find(|a| a.kind == "error").unwrap();
+        assert!(act.raw.ends_with(&format!("\n오류 코드: {code}")), "{raw}: {}", act.raw);
+    }
+}
+
+#[tokio::test]
+async fn another_rejection_during_a_funds_streak_keeps_its_own_title() {
+    let fb = FakeBroker::new(15_000_000.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "KRW-BTC", "exchange": "upbit"}), fb.clone(), RunMode::Live);
+    bot.step = 0.0;
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    fb.push(Order::rejected("under_min_total_bid".into()));
+    bot.execute_command(&json!({"id": 2, "action": "buy", "notional_frac": 0.5}), 15_000_000.0).await.unwrap();
+    let last = acts_of(&events(&mut rx)).into_iter().rfind(|a| a.kind == "error").unwrap();
+    assert_eq!(last.title, "주문이 처리되지 않았어요", "잔고 부족이 아닌 거절은 잔고 부족으로 적지 않음");
+    assert!(bot.funds_short, "진입이 체결될 때까지 잔고 부족 상태는 남음");
 }

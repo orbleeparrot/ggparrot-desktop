@@ -1,35 +1,38 @@
-//! 연결 도우미 상태기계 — 업비트·빗썸 키 발급·붙여 넣기·연결 확인 단계. 매매 시작 권한은 없음.
+//! 연결 도우미 상태기계 — 키 발급·붙여 넣기·연결 확인 단계. 매매 시작 권한은 없음.
+//!
+//! - 국내(업비트·빗썸): 허용 IP 등록 → 권한 선택·발급 → 키 복사.
+//! - 바이낸스: 실행 모드·시장으로 고른 사이트(`connection::binance_env`)에서 키 만들기 → 키 복사,
+//!   실거래만 그 뒤 허용 IP·주문 권한(Edit restrictions).
 
-use runner_core::connection::{self, clipboard_key, clipboard_key_is_secret};
+use runner_core::connection;
+
 use runner_core::types::KeySlot;
-use std::time::Duration;
 
 use crate::shared::{Shared, S};
-use crate::state::{Wizard, WATCH_STAGES};
+use crate::state::{Wizard, WizardTarget, WATCH_STAGES};
 
-const CLIPBOARD_MS: u64 = 400;
-const STAGES: [&str; 9] = ["ask", "ip", "perm", "keys", "existing", "manual", "checking", "result_ok", "result_fail"];
+mod clipboard;
+mod flow;
+use flow::{back_stage, flow, key_stage, stage_allowed};
 
 impl Shared {
-    pub fn wizard_open(self: &S, slot: KeySlot, stage: &str) {
-        let stage = if STAGES.contains(&stage) { stage } else { "ask" };
-        if !slot.exchange().is_domestic() {
-            self.notice("warn", "연결 도우미는 업비트 · 빗썸용이에요. 바이낸스는 설정에서 키를 직접 입력해요.");
-            return;
-        }
+    pub fn wizard_open(self: &S, target: WizardTarget, stage: &str) {
+        let (slot, env) = (target.slot, target.env());
+        let stage = if stage_allowed(env, stage) { stage } else { "ask" };
         let clip = self.clipboard_text();
-        {
+        let recheck = {
             let mut c = self.lock();
             if c.claim_busy {
                 drop(c);
-                self.notice(
+                self.notice_from(
+                    "wizard",
                     "warn",
                     "웹에서 매크로를 연결하는 동안에는 연결 도우미를 열 수 없어요. 잠시 뒤 다시 시도하세요.",
                 );
                 return;
             }
             if let Some(w) = c.wizard.as_ref() {
-                let same = w.slot == slot;
+                let same = w.target == target;
                 drop(c);
                 if same {
                     if stage != "ask" {
@@ -42,10 +45,11 @@ impl Shared {
             }
             c.wizard_generation += 1;
             let generation = c.wizard_generation;
+            let before = c.slot_fingerprint(slot);
             c.wizard = Some(Wizard {
-                slot,
+                target,
                 stage: String::new(),
-                path: if ["ip", "perm", "keys"].contains(&stage) { "new".into() } else { String::new() },
+                path: if flow(env).contains(&stage) { "new".into() } else { String::new() },
                 got_access: false,
                 got_secret: false,
                 advance_on_return: String::new(),
@@ -55,45 +59,55 @@ impl Shared {
             if let Some(h) = c.remembered.as_ref().and_then(|r| r.connection_history.get(slot.as_str())).cloned() {
                 c.ip_cache.seed_previous(Some(&h));
             }
+            // 바이낸스 실거래 칸은 열린 도우미의 시장으로 확인함(`Core::probe_market`) — 시장이 바뀌었으면 다시 확인.
+            let changed = c.slot_fingerprint(slot) != before;
             self.spawn_clipboard_watch(generation);
-        }
+            changed && c.slot_pair(slot).is_some()
+        };
         self.wizard_show(stage);
-        // 사용자가 연 도우미가 이 기기 주소를 조회하는 유일한 계기임.
-        self.begin_public_ip(false);
+        if recheck {
+            self.schedule_slot_check(slot, 0);
+        }
+        // 사용자가 연 도우미가 이 기기 주소를 조회하는 유일한 계기임. 허용 IP가 없는 곳(테스트넷·데모)은 조회하지 않음.
+        if flow(env).contains(&"ip") {
+            self.begin_public_ip(false);
+        }
     }
 
     pub fn wizard_close(self: &S) {
-        {
+        let recheck = {
             let mut c = self.lock();
-            if c.wizard.take().is_none() {
-                return;
-            }
+            let Some(slot) = c.wizard.as_ref().map(Wizard::slot) else { return };
+            let before = c.slot_fingerprint(slot);
+            c.wizard = None;
             c.wizard_generation += 1;
-        }
+            // 도우미가 보던 시장에서 실행 목록의 시장으로 돌아가면 그 시장으로 다시 확인.
+            (c.slot_fingerprint(slot) != before && c.slot_pair(slot).is_some()).then_some(slot)
+        };
         self.emit();
+        if let Some(slot) = recheck {
+            self.schedule_slot_check(slot, 700);
+        }
     }
 
-    fn key_stage(path: &str) -> &'static str {
-        if path == "existing" {
-            "existing"
-        } else {
-            "keys"
-        }
+    /// 열린 도우미의 칸. 닫혀 있으면 None.
+    fn wizard_slot(&self) -> Option<KeySlot> {
+        self.lock().wizard.as_ref().map(Wizard::slot)
     }
 
     pub fn wizard_show(self: &S, stage: &str) {
-        if !STAGES.contains(&stage) {
-            return;
-        }
         let clip = if WATCH_STAGES.contains(&stage) { Some(self.clipboard_text()) } else { None };
         let need_ip = {
             let mut c = self.lock();
             let Some(w) = c.wizard.as_mut() else { return };
+            if !stage_allowed(w.env(), stage) {
+                return;
+            }
             w.stage = stage.to_string();
             match stage {
                 "ask" => w.path.clear(),
-                "ip" | "perm" | "keys" => w.path = "new".into(),
                 "existing" => w.path = "existing".into(),
+                s if flow(w.env()).contains(&s) => w.path = "new".into(),
                 _ => {}
             }
             if let Some(text) = clip {
@@ -116,34 +130,26 @@ impl Shared {
             // 이미 발급한 키는 거래소 API 관리에 있음 — 바로 엶.
             self.wizard_open_page(true);
         } else {
-            self.wizard_show("ip");
+            let env = self.lock().wizard.as_ref().map(Wizard::env).unwrap_or("");
+            self.wizard_show(flow(env)[0]);
         }
     }
 
     pub fn wizard_back(self: &S) {
-        let (stage, path) = {
+        let target = {
             let c = self.lock();
-            match c.wizard.as_ref() {
-                Some(w) => (w.stage.clone(), w.path.clone()),
-                None => return,
-            }
+            let Some(w) = c.wizard.as_ref() else { return };
+            back_stage(w.env(), &w.stage, &w.path)
         };
-        let target = match stage.as_str() {
-            "ask" => return self.wizard_close(),
-            "ip" | "existing" => "ask",
-            "perm" => "ip",
-            "keys" => "perm",
-            _ => Self::key_stage(&path),
-        };
-        self.wizard_show(target);
+        match target {
+            Some(stage) => self.wizard_show(stage),
+            None => self.wizard_close(),
+        }
     }
 
     /// '검사' — 확인 화면으로 가고 지금 키로 바로 확인함.
     pub fn wizard_start_check(self: &S) {
-        let slot = match self.lock().wizard.as_ref() {
-            Some(w) => w.slot,
-            None => return,
-        };
+        let Some(slot) = self.wizard_slot() else { return };
         self.wizard_show("checking");
         if !self.begin_slot_check(slot, true) {
             self.refresh_wizard();
@@ -166,7 +172,7 @@ impl Shared {
             w.got_secret = false;
             w.path.clone()
         };
-        self.wizard_show(Self::key_stage(&path));
+        self.wizard_show(key_stage(&path));
     }
 
     /// 앱 상태(IP·연결 검사·키 칸)가 바뀌었을 때 지금 화면을 맞춤.
@@ -174,7 +180,7 @@ impl Shared {
         let (stage, check_state, connected, need_ip) = {
             let c = self.lock();
             let Some(w) = c.wizard.as_ref() else { return };
-            let (state, view, _) = c.wizard_check(w.slot);
+            let (state, view, _) = c.wizard_check(w.slot());
             let need_ip =
                 w.stage == "ip" && !c.ip_cache.busy() && c.ip_cache.result().is_some_and(|r| r.ok && !r.fresh());
             (w.stage.clone(), state, view.connected, need_ip)
@@ -194,29 +200,39 @@ impl Shared {
 
     /// 거래소 브라우저에서 이 창으로 돌아옴.
     pub fn wizard_on_return(self: &S) {
-        let (stage, target) = {
+        let (stage, target, ready) = {
             let mut c = self.lock();
             let Some(w) = c.wizard.as_mut() else { return };
-            (w.stage.clone(), std::mem::take(&mut w.advance_on_return))
+            let (stage, target, slot) = (w.stage.clone(), std::mem::take(&mut w.advance_on_return), w.slot());
+            (stage, target, c.slot_pair(slot).is_some())
         };
         if stage == "result_fail" {
             self.wizard_start_check();
+        } else if target == "check" && stage == "ip" {
+            // 바이낸스 실거래: 허용 IP·주문 권한을 걸고 돌아옴 — 키가 다 있으면 바로 확인함.
+            if ready {
+                self.wizard_start_check();
+            }
         } else if !target.is_empty() && stage == "ip" {
             self.wizard_show(&target);
         }
     }
 
-    /// 공식 허용 목록 주소만 엶(api=true면 API 관리, 아니면 거래소 홈).
+    /// 공식 허용 목록 주소만 엶(api=true면 API 관리, 아니면 거래소 홈). 바이낸스는 도우미의 사이트(env)로.
     pub fn wizard_open_page(self: &S, api: bool) -> bool {
-        let ex = match self.lock().wizard.as_ref() {
-            Some(w) => w.slot.exchange(),
+        let (ex, env) = match self.lock().wizard.as_ref() {
+            Some(w) => (w.slot().exchange(), w.env()),
             None => return false,
         };
-        let url =
-            if api { connection::api_management_url(ex.as_str()) } else { connection::exchange_home_url(ex.as_str()) };
+        let url = if api {
+            connection::api_management_url(ex.as_str(), env)
+        } else {
+            connection::exchange_home_url(ex.as_str(), env)
+        };
         let opened = url.map(|u| self.open_url(u)).unwrap_or(false);
         if !opened {
-            self.notice(
+            self.notice_from(
+                "wizard",
                 "warn",
                 "기본 브라우저를 열지 못했어요. 거래소 공식 홈페이지의 API 관리 메뉴에서 직접 진행하세요.",
             );
@@ -224,59 +240,60 @@ impl Shared {
         opened
     }
 
-    pub fn wizard_copy_ip(self: &S) -> bool {
-        let ok = self.copy_public_ip();
-        if ok {
-            self.notice("info", "이 기기 주소를 복사했어요.");
-        } else {
-            self.notice("warn", "주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 복사하세요.");
+    /// 이 기기 주소 복사. 못 하면 이유를 오류로 돌려줌(화면이 토스트로 보이고 '복사됨'을 띄우지 않음).
+    pub fn wizard_copy_ip(self: &S) -> Result<(), String> {
+        if !self.copy_public_ip() {
+            return Err("주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 복사하세요.".into());
         }
-        ok
+        self.notice_from("wizard", "info", "이 기기 주소를 복사했어요.");
+        Ok(())
     }
 
-    /// 주소 복사와 공식 API 관리 열기를 한 번에. 거래소에서 등록하고 돌아오면 다음 단계로.
+    /// 주소 복사와 공식 API 관리 열기를 한 번에. 거래소에서 등록하고 돌아오면 다음 단계로
+    /// (바이낸스 실거래는 허용 IP가 마지막 단계라 돌아오면 바로 확인).
     pub fn wizard_copy_and_open(self: &S) {
-        let stage = self.lock().wizard.as_ref().map(|w| w.stage.clone()).unwrap_or_default();
+        let (stage, env) =
+            self.lock().wizard.as_ref().map(|w| (w.stage.clone(), w.env())).unwrap_or((String::new(), ""));
         let copied = self.copy_public_ip();
         if stage == "result_fail" {
             self.wizard_open_page(true);
             return;
         }
         if !copied {
-            self.notice("warn", "주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 다시 누르세요.");
+            self.notice_from(
+                "wizard",
+                "warn",
+                "주소를 복사하지 못했어요. [다시 확인]으로 주소를 새로 받은 뒤 다시 누르세요.",
+            );
             return;
         }
         if self.wizard_open_page(true) {
             if let Some(w) = self.lock().wizard.as_mut() {
-                w.advance_on_return = "perm".into();
+                w.advance_on_return = if env.is_empty() { "perm" } else { "check" }.into();
             }
         }
     }
 
     pub fn wizard_set_key(self: &S, field: &str, value: String) {
-        let slot = match self.lock().wizard.as_ref() {
-            Some(w) => w.slot,
-            None => return,
-        };
-        self.set_slot_key(slot, field, value);
+        if let Some(slot) = self.wizard_slot() {
+            self.set_slot_key(slot, field, value);
+        }
     }
 
     pub fn wizard_set_remember(self: &S, remember: bool) {
-        let slot = match self.lock().wizard.as_ref() {
-            Some(w) => w.slot,
-            None => return,
-        };
-        self.set_slot_remember(slot, remember);
+        if let Some(slot) = self.wizard_slot() {
+            self.set_slot_remember(slot, remember);
+        }
     }
 
-    /// 거래소 발급 창에서 복사한 키 하나. 들어온 순서대로 Access → Secret 칸에 넣음.
-    /// 복사한 키를 칸에 넣음. `as_secret`이 있으면(빗썸처럼 모양으로 가릴 수 있으면) 그 칸에, 없으면 복사한
-    /// 순서대로(처음 Access, 다음 Secret).
+    /// 거래소 발급 창에서 복사한 키 하나를 칸에 넣음.
+    /// - `as_secret`이 있으면(빗썸처럼 모양으로 가릴 수 있으면) 그 칸에.
+    /// - 없으면 복사한 순서대로(처음 Access, 다음 Secret).
     pub fn wizard_accept_key(self: &S, key: String, as_secret: Option<bool>) {
-        let (stage, both, slot) = {
+        let (stage, both, slot, following) = {
             let mut c = self.lock();
             let Some(w) = c.wizard.as_mut() else { return };
-            let slot = w.slot;
+            let slot = w.slot();
             if w.got_access && w.got_secret {
                 // 다 받은 뒤 또 들어오면 새로 발급한 키로 보고 처음부터 받음.
                 w.got_access = false;
@@ -308,7 +325,13 @@ impl Shared {
             }
             Self::slot_changed(&mut c, slot);
             let both = c.wizard.as_ref().is_some_and(|w| w.got_access && w.got_secret);
-            (stage, both, slot)
+            // 처음 발급 길에서 키 복사 뒤에도 단계가 남았으면(바이낸스 실거래의 허용 IP·주문 권한) 그리로 감.
+            let following = c
+                .wizard
+                .as_ref()
+                .filter(|w| w.path == "new")
+                .and_then(|w| flow(w.env()).iter().skip_while(|s| **s != "keys").nth(1).copied());
+            (stage, both, slot, following)
         };
         if stage == "perm" {
             self.wizard_show("keys");
@@ -325,51 +348,13 @@ impl Shared {
             if let Some(w) = self.lock().wizard.as_mut() {
                 w.clip_seen.clear();
             }
-            self.wizard_start_check();
+            match following {
+                // 키를 받았으면 그 키에 허용 IP·주문 권한을 걸러 감. 확인은 그 뒤에.
+                Some(next) => self.wizard_show(next),
+                None => self.wizard_start_check(),
+            }
         } else {
             self.schedule_slot_check(slot, 700);
         }
-    }
-
-    /// 키 단계에서 400ms마다 클립보드를 봄. 도우미가 열린 뒤 새로 복사한, 키처럼 생긴 값만 받음.
-    fn spawn_clipboard_watch(self: &S, generation: u64) {
-        let me = self.clone();
-        tauri::async_runtime::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_millis(CLIPBOARD_MS)).await;
-                // 창을 트레이로 숨겨 둔 동안은 클립보드를 보지 않음(도우미를 잊은 채 복사한 다른 값을 받지 않게).
-                let (watching, exchange) = {
-                    let c = me.lock();
-                    match c.wizard.as_ref() {
-                        Some(w) if w.generation == generation => {
-                            (WATCH_STAGES.contains(&w.stage.as_str()) && !c.hidden_to_tray, w.slot.as_str())
-                        }
-                        _ => return,
-                    }
-                };
-                if !watching {
-                    continue;
-                }
-                let text = me.clipboard_text();
-                let changed = {
-                    let mut c = me.lock();
-                    match c.wizard.as_mut() {
-                        Some(w) if w.generation == generation && w.clip_seen != text => {
-                            w.clip_seen = text.clone();
-                            true
-                        }
-                        Some(w) if w.generation == generation => false,
-                        _ => return,
-                    }
-                };
-                if changed {
-                    let key = clipboard_key(exchange, &text);
-                    if !key.is_empty() {
-                        let role = clipboard_key_is_secret(exchange, &key);
-                        me.wizard_accept_key(key, role);
-                    }
-                }
-            }
-        });
     }
 }

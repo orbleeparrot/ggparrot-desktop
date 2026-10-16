@@ -60,7 +60,7 @@ gh secret set APPLE_CERTIFICATE_PASSWORD -R orbleeparrot/ggparrot-desktop
 - 받은 앱으로 확인:
 
 ```bash
-spctl -a -vv "/Applications/GG Parrot.app"
+spctl -a -vv "/Applications/GGParrot.app"
 ```
 
 - `source=Notarized Developer ID`가 나오면 끝.

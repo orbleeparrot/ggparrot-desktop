@@ -1,7 +1,7 @@
 // 포커스 가두기·움직임 줄이기 — 대화상자·시트·연결 도우미가 같이 씀.
-import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
 
-export const FOCUSABLE =
+const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** Tab·Shift+Tab이 root 밖으로 나가지 않게 함. */
@@ -45,8 +45,6 @@ export function reducedMotion(): boolean {
 export function useMediaQuery(query: string, fallback = true): boolean {
   const get = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(query).matches : fallback);
   const [matches, setMatches] = useState(get);
-  const queryRef = useRef(query);
-  queryRef.current = query;
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia(query);

@@ -1,12 +1,15 @@
 // 실행 모드 세그먼트 — 대기·끝남일 때만 바꿈. 국내 거래소는 테스트넷이 없음(modeChoices).
-import { useRef, type KeyboardEvent } from "react";
+// - 모드 설명은 따로 줄을 두지 않고 단추마다 풍선 도움말(title)·접근성 설명(aria-describedby)으로 둠.
+// - 실전 시작 확인은 시작할 때 대화상자로 한 번 더 함(useRunDialogs).
+import { useId, useRef, type KeyboardEvent } from "react";
 import { useRunnerContext } from "../../state/context";
-import { isIdle, MODE_LABELS } from "../../state/runs";
+import { isIdle, MODE_LABELS, MODE_NOTES } from "../../state/runs";
 import type { RunMode, RunSlot } from "../../types";
 
 export function ModeSegment({ slot }: { slot: RunSlot }) {
   const { act } = useRunnerContext();
   const group = useRef<HTMLDivElement>(null);
+  const noteId = useId();
   const choices = slot.modeChoices;
   const editable = isIdle(slot.phase);
 
@@ -45,6 +48,8 @@ export function ModeSegment({ slot }: { slot: RunSlot }) {
             role="radio"
             data-mode={mode}
             aria-checked={selected}
+            aria-describedby={`${noteId}-${mode}`}
+            title={editable ? MODE_NOTES[mode] : undefined}
             tabIndex={selected ? 0 : -1}
             disabled={!editable}
             className={`segment ${selected ? "is-selected" : ""} segment-${mode}`}
@@ -54,6 +59,11 @@ export function ModeSegment({ slot }: { slot: RunSlot }) {
           </button>
         );
       })}
+      {choices.map((mode) => (
+        <span key={mode} id={`${noteId}-${mode}`} className="sr-only">
+          {MODE_NOTES[mode]}
+        </span>
+      ))}
       {!editable && (
         <span id={`${slot.id}-mode-lock`} className="sr-only">
           실행 중에는 모드를 바꿀 수 없어요

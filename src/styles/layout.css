@@ -38,14 +38,6 @@
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
-.badge-version {
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: 11px;
-  font-weight: var(--fw-bold);
-}
 .status {
   display: inline-flex;
   align-items: center;
@@ -107,13 +99,7 @@
     opacity: 0;
   }
 }
-/* 버전 표시와 업데이트 알림을 한 덩어리로 — [v0.18.3][● v0.18.4 새 버전] */
-.version-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
+/* 업데이트 알림 — 새 버전이 있을 때만 앱 이름 옆에 [● v0.19.1 새 버전] */
 .update-chip {
   position: relative;
   display: inline-flex;
@@ -167,57 +153,100 @@
   color: var(--ink);
 }
 
-/* --- 토스트 ------------------------------------------------------------------ */
+/* --- 토스트 ------------------------------------------------------------------
+   머리줄 바로 아래 오른쪽 위. 밝은 카드 + 톤 색 왼쪽 띠·아이콘.
+   - 대화상자·확인 시트·연결 도우미(.scrim, z-index 50~)보다 아래 층 — 열린 대화상자를 가리지 않음(흐린 막 뒤로 비침).
+   - 넓은 창에서 매크로 추가 시트(오른쪽 패널)가 열려 있으면 시트 왼쪽으로 비켜서 그 위 층에 보임. */
 .toasts {
   position: fixed;
+  top: calc(var(--header-h) + 10px);
   right: var(--pad);
-  bottom: var(--pad);
-  z-index: 80;
+  z-index: 45;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(360px, calc(100vw - 32px));
+  width: min(360px, calc(100vw - var(--pad) * 2));
   pointer-events: none;
 }
+/* 알림 — 앱 기본색(노랑) 바탕의 단순한 카드. 색띠·아이콘 원 없이 바탕색으로 눈에 띄게.
+   오류는 같은 모양에 붉은 바탕(옅은 빨강·진한 글자). */
 .toast {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 8px 10px 12px;
-  border-radius: 10px;
-  background: var(--ink);
-  color: var(--bg);
+  min-height: 46px;
+  padding: 11px 6px 11px 14px;
+  border-radius: var(--radius);
+  background: var(--brand);
+  color: var(--brand-ink);
   box-shadow: var(--shadow-lift);
   pointer-events: auto;
   animation: toast-in 220ms var(--ease);
 }
-.toast > svg {
-  flex: none;
-  margin-top: 2px;
+.toast-error {
+  background: var(--danger-soft);
+  color: var(--danger-ink);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
 }
-.toast-error > svg {
-  color: #fca5a5;
+.toast-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  height: 22px;
 }
 .toast-text {
   display: flex;
   flex-direction: column;
+  gap: 1px;
   flex: 1;
+  min-width: 0;
+  padding-top: 2px;
   font-size: var(--fs-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.toast-text strong {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+}
+/* 제목이 있으면 본문은 조금 옅게(같은 색 계열) */
+.toast-text strong + span {
+  opacity: 0.8;
+}
+.toast-detail {
+  align-self: flex-start;
+  margin-top: 2px;
+  color: inherit;
+  font-weight: var(--fw-bold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .toast .icon-btn {
-  width: 24px;
-  height: 24px;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin: -4px 0 -4px;
   color: inherit;
   opacity: 0.7;
 }
-.toast .icon-btn:hover {
-  background: rgb(255 255 255 / 0.12);
+.toast .icon-btn:hover,
+.toast .icon-btn:focus-visible {
+  background: color-mix(in srgb, currentColor 12%, transparent);
   color: inherit;
   opacity: 1;
 }
+@media (min-width: 900px) {
+  body:has(.scrim-side) .toasts {
+    right: calc(min(480px, 100vw) + 12px);
+    z-index: 70;
+  }
+}
+body:has(.scrim-dialog, .scrim-sheet, .scrim-wizard) .toasts {
+  z-index: 45;
+}
 @keyframes toast-in {
   from {
-    transform: translateY(8px);
+    transform: translateY(-6px);
     opacity: 0;
   }
 }
@@ -261,6 +290,12 @@
 }
 
 @media (max-width: 899px) {
+  /* 한 칸 배치 — 문서 하나로 스크롤. 앱 높이를 내용만큼 늘려야 sticky 머리줄이 끝까지 붙어 있음
+     (100vh로 두면 그 높이를 지나 스크롤할 때 머리줄도 함께 밀려 올라감). */
+  .app {
+    height: auto;
+    min-height: 100vh;
+  }
   .app-header {
     position: sticky;
     top: 0;
@@ -278,17 +313,12 @@
     font-size: 15px;
   }
 }
-@media (max-width: 480px) {
-  .badge-version {
-    display: none;
-  }
-}
 
 /* --- 창 테두리 없이 머리줄이 맨 위 -------------------------------------------------
    macOS: 신호등(닫기·최소화·전체 화면)이 머리줄 왼쪽에 겹쳐 그려짐 — 그만큼 비움.
    Windows: 시스템 제목 줄 대신 오른쪽 끝에 창 단추를 직접 그림. */
 .app-header {
-  min-height: 54px;
+  min-height: var(--header-h);
   user-select: none;
   -webkit-user-select: none;
 }

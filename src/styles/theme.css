@@ -13,6 +13,8 @@
   --info-soft: #dbeafe;
   --info-ink: #1d4ed8;
   --brand-deep: #a16207;
+  /* 진한 색 바탕(실전·위험·정보·확인) 위의 글자·아이콘. 라이트·다크 같은 값. */
+  --on-accent: #fff;
 
   --ok: #16a34a;
   --warn: #d97706;
@@ -30,7 +32,9 @@
   --border: #e5e7eb;
   --line: #f1f2f4;
   --ink: #111827;
-  --muted: #6b7280;
+  /* 글자용 회색 — 카드·바탕·hover·주의 바탕 위에서 모두 4.5:1 이상(흰 5.78·#f3f4f6 5.25·warn-soft 5.19). */
+  --muted: #5f6673;
+  /* 장식용(점·구분점·아이콘·점선) — 글자에는 쓰지 않음(흰 바탕 2.54:1). */
   --faint: #9ca3af;
   --hover: #f3f4f6;
   --shadow: 0 1px 2px rgb(17 24 39 / 0.04), 0 1px 1px rgb(17 24 39 / 0.03);
@@ -39,6 +43,8 @@
   --focus: #2563eb;
 
   --rail: 340px;
+  /* 머리줄 높이 — 토스트가 그 아래에서 뜸. */
+  --header-h: 54px;
 
   --font:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",

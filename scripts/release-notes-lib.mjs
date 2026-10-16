@@ -1,5 +1,6 @@
 // 릴리스 본문 만들기 — CHANGELOG.md의 버전 칸에서 사용자용 내용만 뽑음.
-// - 배포할 버전 칸부터 아래로, 배포하지 않은 칸('미배포'·'배포하지 않음')을 다음 배포된 칸 전까지 모두 합침.
+// - 배포 여부는 CHANGELOG에 적지 않음 — 공개한 릴리스의 태그(v<버전>)로 앎. 태그는 [Publish release] 때만 생김.
+// - 배포할 버전 칸과, 그 아래로 지난 배포(그보다 낮은 태그 가운데 가장 높은 버전) 뒤의 칸을 모두 합침.
 // - 분류(### 추가 등)별로 모으고, `### 개발`은 뺌(개발자용이라 사용자에게 보이지 않게).
 // - 분류 앞 소개 글(예: '첫 배포.')도 합친 칸 모두에서 모음.
 // - 끝에 WEB_ONLY_MARKER 아래로 설치 파일 안내를 붙임. 앱의 '바뀐 점'은 이 표시 앞까지만 보임
@@ -11,7 +12,28 @@ export const HIDDEN = new Set(["개발"]);
 /** 웹 릴리스 페이지에만 보일 부분의 시작 표시 — 마크다운에서는 보이지 않는 HTML 주석. */
 export const WEB_ONLY_MARKER = "<!-- web-only -->";
 
-const unreleased = (header) => header.includes("미배포") || header.includes("배포하지 않음");
+/** "0.20.1" → [0, 20, 1]. 모양이 다르면 null. */
+function parseVersion(v) {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v).replace(/^v/, ""));
+  return m ? m.slice(1).map(Number) : null;
+}
+
+/** 두 버전 비교 — a가 낮으면 음수, 같으면 0, 높으면 양수. */
+export function compareVersions(a, b) {
+  const x = parseVersion(a);
+  const y = parseVersion(b);
+  if (!x || !y) throw new Error(`버전 모양이 아니에요: ${!x ? a : b}`);
+  for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] - y[i];
+  return 0;
+}
+
+/** 태그 목록에서 공개한 버전들 — v<주>.<부>.<수>만(그 밖의 태그는 무시). */
+export function releasedVersions(tags) {
+  return tags
+    .map((t) => t.trim())
+    .filter((t) => /^v\d+\.\d+\.\d+$/.test(t))
+    .map((t) => t.slice(1));
+}
 
 /** CHANGELOG 글을 버전 칸 목록으로 — [{ version, header, line, intro: string[], groups: Map<분류, string[]> }] */
 export function parseChangelog(text) {
@@ -46,31 +68,26 @@ function trimLines(lines) {
   return out;
 }
 
-/** 배포할 버전 칸과, 그 아래로 이어지는 배포하지 않은 칸들. 문제가 있으면 Error. */
-function pickSections(text, version, { preview = false } = {}) {
+/** 배포할 버전 칸과, 지난 배포 뒤의 칸들(버전이 높은 순). released: 공개한 버전 목록. 문제가 있으면 Error. */
+function pickSections(text, version, released) {
   const sections = parseChangelog(text);
-  const start = sections.findIndex((s) => s.version === version);
-  if (start < 0) {
-    throw new Error(
-      `CHANGELOG.md에 '## [${version}]' 칸이 없어요. '미배포' 칸을 이 버전으로 바꾼 뒤 태그를 다시 올리세요.`,
-    );
+  if (!sections.some((s) => s.version === version)) {
+    throw new Error(`CHANGELOG.md에 '## [${version}]' 칸이 없어요. 이 버전의 변경을 적은 칸을 먼저 만드세요.`);
   }
-  if (!preview && unreleased(sections[start].header)) {
-    throw new Error(
-      `CHANGELOG.md의 '${sections[start].header}'에 배포 날짜를 적으세요(npm run release:mark -- v${version}).`,
-    );
-  }
-  const picked = [sections[start]];
-  for (const s of sections.slice(start + 1)) {
-    if (!unreleased(s.header)) break;
-    picked.push(s);
-  }
-  return picked;
+  // 지난 배포 — 이 버전보다 낮은 공개 버전 가운데 가장 높은 것. 없으면 첫 배포라 처음부터 다 합침.
+  const last = released
+    .filter((r) => compareVersions(r, version) < 0)
+    .sort(compareVersions)
+    .at(-1);
+  return sections
+    .filter((s) => parseVersion(s.version))
+    .filter((s) => compareVersions(s.version, version) <= 0 && (!last || compareVersions(s.version, last) > 0))
+    .sort((a, b) => compareVersions(b.version, a.version));
 }
 
-/** 배포할 버전의 릴리스 본문. preview면 '미배포' 칸도 받음(태그 전에 미리 보기). 문제가 있으면 Error. */
-export function buildNotes(text, version, options = {}) {
-  const picked = pickSections(text, version, options);
+/** 배포할 버전의 릴리스 본문. released: 공개한 버전 목록(태그에서, releasedVersions). 문제가 있으면 Error. */
+export function buildNotes(text, version, released = []) {
+  const picked = pickSections(text, version, released);
   const intros = [];
   const groups = new Map();
   for (const s of picked) {
@@ -98,15 +115,4 @@ export function installFooter(binary, version) {
     `\n\n${WEB_ONLY_MARKER}\n\n---\n\n설치: macOS \`${mac}\` · Windows \`${win}\`. ` +
     "이미 설치했다면 앱의 설정 › 정보 › 업데이트에서 바로 받을 수 있어요."
   );
-}
-
-/** 배포 표시 — 배포할 칸에 날짜를 달고, 함께 나가는 배포하지 않은 칸은 '배포하지 않음(<버전>에 포함)'으로 바꿈. */
-export function markReleased(text, version, date) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`날짜는 YYYY-MM-DD로 적으세요: ${date}`);
-  const picked = pickSections(text, version, { preview: true });
-  if (!unreleased(picked[0].header)) throw new Error(`'${picked[0].header}'은 이미 배포 표시가 되어 있어요.`);
-  const lines = text.split("\n");
-  lines[picked[0].line] = `## [${version}] - ${date}`;
-  for (const s of picked.slice(1)) lines[s.line] = `## [${s.version}] - 배포하지 않음(${version}에 포함)`;
-  return lines.join("\n");
 }

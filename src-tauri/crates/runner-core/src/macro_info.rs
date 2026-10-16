@@ -70,21 +70,28 @@ pub fn initial_capital(m: &Value) -> Option<f64> {
 pub fn risk_summary(m: &Value) -> Vec<String> {
     let Some(risk) = m.get("risk").filter(|r| r.is_object()) else { return vec![] };
     let num = |k: &str| risk.get(k).and_then(Value::as_f64).filter(|v| v.is_finite() && *v > 0.0);
-    let trim = |v: f64| {
-        let s = format!("{v:.2}");
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    };
     let mut out = vec![];
+    // 손절은 가격 기준(평단 대비 가격), 하루 최대 손실은 수수료 반영 손익 기준 — 두 기준을 문구로 구분함.
     if let Some(v) = num("stop_loss_pct") {
-        out.push(format!("손절 {}%", trim(v)));
+        out.push(format!("손절 평단 대비 가격 -{}%", pct_text(v)));
     }
     if let Some(v) = num("daily_max_loss_pct") {
-        out.push(format!("하루 최대 손실 {}%", trim(v)));
+        out.push(format!("하루 최대 손실 {}%(수수료 포함)", pct_text(v)));
     }
     if let Some(v) = num("max_holding_hours") {
-        out.push(format!("최대 보유 {}시간", trim(v)));
+        out.push(format!("최대 보유 {}시간", pct_text(v)));
     }
     out
+}
+
+/// %·시간 값을 소수 둘째 자리까지, 끝의 0 없이 — 5·2.5·0.33 (웹 `fmtPct`와 같음).
+pub fn pct_text(v: f64) -> String {
+    let s = crate::money::round_away(v, 2).normalize().to_string();
+    if s == "-0" {
+        "0".into()
+    } else {
+        s
+    }
 }
 
 /// 투자 금액을 바꿈. 다른 값은 건드리지 않음.
@@ -140,9 +147,18 @@ mod tests {
     #[test]
     fn risk_summary_reads_local_safety_settings() {
         let m = json!({"risk": {"stop_loss_pct": 3.0, "daily_max_loss_pct": 0, "max_holding_hours": 24, "invest_ratio": 0.5}});
-        assert_eq!(risk_summary(&m), vec!["손절 3%", "최대 보유 24시간"], "투자 비율은 로컬 안전 규칙이 아니다");
+        assert_eq!(
+            risk_summary(&m),
+            vec!["손절 평단 대비 가격 -3%", "최대 보유 24시간"],
+            "투자 비율은 로컬 안전 규칙이 아니다"
+        );
         assert!(risk_summary(&json!({})).is_empty());
-        assert_eq!(risk_summary(&json!({"risk": {"stop_loss_pct": 2.5}})), vec!["손절 2.5%"]);
+        assert_eq!(risk_summary(&json!({"risk": {"stop_loss_pct": 2.5}})), vec!["손절 평단 대비 가격 -2.5%"]);
+        assert_eq!(
+            risk_summary(&json!({"risk": {"daily_max_loss_pct": 5}})),
+            vec!["하루 최대 손실 5%(수수료 포함)"],
+            "하루 최대 손실은 수수료 반영 손익으로 봄"
+        );
     }
 
     #[test]

@@ -11,14 +11,15 @@ use std::time::Duration;
 use tokio::sync::{mpsc, Notify};
 
 use crate::brokers::{
-    fee_inclusive, BinanceBroker, Broker, BrokerError, DomesticBroker, LogFn, MockBroker, OrderSide, SubmitRequest,
-    DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
+    fee_inclusive, with_error_code, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker,
+    OrderSide, SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
 };
+use crate::clock::unix_ms;
 use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
 use crate::log_kind::event_kind;
 use crate::money::{
-    grouped, money, order_qty, pnl_amount, pnl_pct, price_text, py_g, py_gp, py_num, qty_text, round_step,
-    smallest_entry_notional,
+    grouped, money, order_qty, pnl_amount, pnl_pct, price_text, py_g, py_gp, py_num, qty_full, qty_text, round_step,
+    signed_pct, smallest_entry_notional,
 };
 use crate::risk::RiskGuard;
 use crate::server::ServerClient;
@@ -112,11 +113,8 @@ pub struct RunHealth {
     pub price_stale_since: u64,
     /// 손절·강제 청산 주문이 연달아 실패한 횟수(이만큼 남은 포지션을 정리하지 못함).
     pub close_failures: u32,
-}
-
-/// 벽시계 ms — 잠자기 동안 멈추는 Instant 대신 씀(깨어난 뒤 공백을 재려고).
-pub(crate) fn wall_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    /// 진입 주문이 잔고(증거금) 부족으로 거절된 뒤 아직 진입 주문이 체결되지 않음. 다음 신호도 같은 이유로 막힐 수 있음.
+    pub funds_short: bool,
 }
 
 /// 활동 기록 한 줄. kind: start·signal·buy·sell·stop_loss·blocked·connection·error·stop·info.
@@ -132,6 +130,19 @@ pub struct ActivityEvent {
 }
 
 pub use logger::Logger;
+
+/// 정리 체결 한 건의 손익.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ClosePnl {
+    /// 가격 손익(수수료 전).
+    pub gross: f64,
+    /// 수수료 반영 실현손익 — 가격 손익 − `fees`.
+    pub net: f64,
+    /// 이 정리에 든 수수료 = 정리 수수료 + 정리한 수량 몫의 진입 수수료(모르면 어림값).
+    pub fees: f64,
+    /// `fees`를 모두 거래소 값으로 알았는지 여부.
+    pub fees_known: bool,
+}
 
 fn obj(v: Value) -> Map<String, Value> {
     match v {
@@ -238,7 +249,25 @@ pub struct Bot {
     pub in_position: bool,
     pub entry_price: f64,
     pub held_qty: f64,
+    /// 이번 실행 실현손익(수수료 전) — 서버 하트비트의 realized_pnl(파이썬 실행기와 같음).
     pub realized: f64,
+    /// 이번 실행 실현손익(수수료 반영) — 정리마다 가격 손익 − 이번 정리 수수료 − 정리한 수량 몫의 진입 수수료.
+    /// 모르는 수수료는 기본 수수료율로 어림해 넣음(안전 규칙용) — 화면은 `fees_complete`일 때만 이 값을 보임.
+    pub realized_net: f64,
+    /// 지금 보유분의 남은 진입 수수료(견적 통화). 모르는 수수료는 기본 수수료율로 어림한 값.
+    pub open_entry_fee: f64,
+    /// 지금 보유분의 진입 수수료를 모두 거래소 값(견적 통화)으로 알았는지 여부.
+    pub open_fee_known: bool,
+    /// 이번 실행 체결에서 본 수수료율(수수료 ÷ 체결 금액) — 청산 수수료를 어림할 때 먼저 씀.
+    observed_fee_rate: Option<f64>,
+    /// 마지막 정리 체결의 손익 — 손절·강제 청산 로그 줄에 씀.
+    pub(crate) last_close: Option<ClosePnl>,
+    /// 이번 실행에서 낸 수수료(견적 통화). 화면에만 씀 — 서버로 가는 realized_pnl은 수수료를 빼지 않음.
+    pub fees_quote: f64,
+    /// 모든 체결의 수수료를 견적 통화로 알았는지 여부(선물·BNB 수수료가 끼면 거짓).
+    pub fees_complete: bool,
+    /// 지금 실행 중인 서버 명령의 신호 가격(0이면 없음) — 체결 활동에 신호가와의 차이를 보임.
+    signal_price: f64,
     pub position_uncertain: bool,
     pub position_dust_qty: f64,
     pub capital: f64,
@@ -246,6 +275,12 @@ pub struct Bot {
     pub pending_acks: Vec<Value>,
     /// 손절·강제 청산 주문이 연달아 실패한 수 — 다음 틱에 다시 시도하다 너무 많으면 멈춤.
     close_failures: u32,
+    /// 진입 주문이 잔고 부족으로 거절됨(→ [`RunHealth::funds_short`]). 다음 진입 체결에 풀림. 매매 동작은 바꾸지 않음.
+    pub(crate) funds_short: bool,
+    /// 마지막 주문을 거래소가 받지 않았을 때의 오류 코드(지원용). 주문마다 새로 씀. 코드가 없으면 "".
+    pub(crate) order_error_code: String,
+    /// 마지막 주문이 잔고 부족으로 거절된 진입 주문인지 여부. 주문마다 새로 씀.
+    pub(crate) order_no_funds: bool,
     /// 회원 키 거절(401·403)을 한 번만 알림.
     auth_noticed: bool,
     offline_logged: bool,
@@ -392,12 +427,24 @@ impl Bot {
             entry_price: 0.0,
             held_qty: 0.0,
             realized: 0.0,
+            realized_net: 0.0,
+            open_entry_fee: 0.0,
+            open_fee_known: true,
+            observed_fee_rate: None,
+            last_close: None,
+            fees_quote: 0.0,
+            // 실전 선물은 체결 수수료를 읽지 않음. 모의는 선물도 수수료를 알려 줌(MockBroker).
+            fees_complete: market == Market::Spot || mode == RunMode::Mock,
+            signal_price: 0.0,
             position_uncertain: false,
             position_dust_qty: 0.0,
             capital,
             done_command_ids: VecDeque::with_capacity(200),
             pending_acks: vec![],
             close_failures: 0,
+            funds_short: false,
+            order_error_code: String::new(),
+            order_no_funds: false,
             auth_noticed: false,
             offline_logged: false,
             price_failing: false,
@@ -520,6 +567,62 @@ impl Bot {
             "unrealized_pct": if self.in_position && price != 0.0 { pnl_pct(self.entry_price, price, self.side) } else { 0.0 },
             "note": if self.position_uncertain { "주문 결과가 불확실해요 · 거래소에서 주문과 포지션을 확인하세요.".to_string() } else { self.dust_note() },
         })
+    }
+
+    /// 화면으로만 보내는 상태 — 서버 스냅샷에 수수료 반영 손익·투입금·낸 수수료(모르면 null)와
+    /// 전일 대비 등락률(국내만)을 덧붙임. 서버로 가는 값(realized_pnl·unrealized_pct)은 수수료 전 그대로 둠.
+    pub fn ui_snapshot(&self, mut snap: Value) -> Value {
+        let known = |v: f64| if self.fees_complete { json!(v) } else { Value::Null };
+        snap["fees_paid"] = known(self.fees_quote);
+        snap["realized_net"] = known(self.realized_net);
+        let holding = self.in_position && self.entry_price > 0.0 && self.held_qty > 0.0 && self.last_price > 0.0;
+        let fee = if self.open_fee_known { self.open_entry_fee } else { 0.0 };
+        snap["invested"] =
+            json!(if self.in_position { crate::pnl::invested(self.held_qty, self.entry_price, fee) } else { 0.0 });
+        let (amount, pct) = if holding && self.open_fee_known {
+            let amount = self.unrealized_net(self.last_price);
+            let base = crate::pnl::invested(self.held_qty, self.entry_price, self.open_entry_fee);
+            (json!(amount), json!(crate::pnl::pct_of(amount, base)))
+        } else if holding {
+            (Value::Null, Value::Null)
+        } else {
+            (json!(0.0), json!(0.0))
+        };
+        snap["unrealized_net"] = amount;
+        snap["unrealized_net_pct"] = pct;
+        snap["day_change"] = json!(self.broker.as_ref().and_then(|b| b.day_change()));
+        snap
+    }
+
+    /// 수수료를 모를 때 쓰는 수수료율 — 이번 실행 체결에서 본 값 → 거래소가 알려 준 계정 수수료율(국내)
+    /// → 거래소·시장 기본값(바이낸스 현물 0.1%·선물 0.05%·업비트 0.05%·빗썸 0.25%) 순.
+    pub fn fee_rate_estimate(&self) -> f64 {
+        if let Some(rate) = self.observed_fee_rate {
+            return rate;
+        }
+        match &self.broker {
+            Some(b) => [b.ask_fee(), b.bid_fee()]
+                .into_iter()
+                .flatten()
+                .find(|r| *r > 0.0 && crate::pnl::plausible_rate(*r))
+                .unwrap_or_else(|| b.default_fee_rate()),
+            None => crate::pnl::default_fee_rate(self.exchange(), self.market),
+        }
+    }
+
+    /// 지금 정리하면 남는 평가손익(수수료 반영) — 안전 규칙과 화면이 같은 값을 씀. 보유가 없으면 0.
+    pub fn unrealized_net(&self, price: f64) -> f64 {
+        if !self.in_position {
+            return 0.0;
+        }
+        crate::pnl::net_unrealized(
+            self.held_qty,
+            self.entry_price,
+            price,
+            self.side,
+            self.open_entry_fee,
+            self.fee_rate_estimate(),
+        )
     }
 
     fn dust_note(&self) -> String {

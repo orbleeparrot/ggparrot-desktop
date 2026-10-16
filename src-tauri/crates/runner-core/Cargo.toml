@@ -3,7 +3,7 @@ name = "runner-core"
 version.workspace = true
 edition = "2021"
 publish = false
-description = "GG Parrot(껄무새) 코어 — GUI 의존 없음"
+description = "GGParrot(껄무새) 코어 — GUI 의존 없음"
 
 [dependencies]
 serde = { workspace = true }

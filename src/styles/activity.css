@@ -1,5 +1,6 @@
-/* 활동 기록 — 밝은 카드·왼쪽 시각·가운데 실(타임라인) 위의 종류 아이콘·제목/둘째 줄/자세히. */
+/* 활동 기록 — 밝은 카드·왼쪽 시각·가운데 실(타임라인) 위의 종류 아이콘·제목(끝에 펼치기)/둘째 줄/원문. */
 .feed {
+  --act-time-w: 78px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -33,7 +34,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
+  height: 28px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
@@ -69,6 +70,7 @@
   margin-left: auto;
 }
 .feed-body {
+  position: relative; /* 안의 .sr-only 등이 이 스크롤 영역 밖(문서)으로 새지 않게 */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -91,14 +93,14 @@
   position: absolute;
   top: 14px;
   bottom: 14px;
-  left: calc(var(--pad) + 64px + 10px + 12px);
+  left: calc(var(--pad) + var(--act-time-w) + 10px + 12px);
   width: 1px;
   background: var(--border);
 }
 .act {
   position: relative;
   display: grid;
-  grid-template-columns: 64px 24px minmax(0, 1fr);
+  grid-template-columns: var(--act-time-w) 24px minmax(0, 1fr);
   column-gap: 10px;
   padding: 7px var(--pad) 7px var(--pad);
 }
@@ -113,7 +115,7 @@
 }
 .act-time {
   padding-top: 3px;
-  color: var(--faint);
+  color: var(--muted);
   font-size: 11.5px;
   font-weight: var(--fw-bold);
   white-space: nowrap;
@@ -145,21 +147,29 @@
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.act-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-top: 2px;
-  padding: 1px 4px 1px 0;
+/* 제목 끝의 [›] — 보이는 건 작게, 눌리는 곳은 24px. 줄 높이를 늘리지 않게 위아래 음수 여백. */
+.act-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px 0 -4px 2px;
+  padding: 0;
   border: 0;
+  border-radius: 6px;
   background: none;
-  color: var(--faint);
-  font-size: 11.5px;
-  font-weight: var(--fw-bold);
+  color: var(--muted);
+  vertical-align: middle;
   cursor: pointer;
 }
-.act-more:hover {
+.act-toggle:hover,
+.act-toggle[aria-expanded="true"] {
   color: var(--ink);
+  background: var(--hover);
+}
+/* 펼치면 ˅로 도는 건 공통 .chevron(cards.css) — 색만 단추를 따름 */
+.act-toggle .chevron {
+  color: inherit;
 }
 .act-raw {
   margin: 4px 0 2px;
@@ -238,7 +248,7 @@
   box-shadow: 0 0 0 3px var(--card);
 }
 .act-dev-text {
-  color: var(--faint);
+  color: var(--muted);
   font-family: var(--mono);
   font-size: 11px;
   line-height: 1.6;
@@ -278,11 +288,16 @@
   }
 }
 @media (max-width: 480px) {
+  .feed {
+    --act-time-w: 70px;
+  }
   .act {
-    grid-template-columns: 52px 24px minmax(0, 1fr);
     column-gap: 8px;
   }
+  .act-time {
+    font-size: 10.5px;
+  }
   .feed-list::before {
-    left: calc(var(--pad) + 52px + 8px + 12px);
+    left: calc(var(--pad) + var(--act-time-w) + 8px + 12px);
   }
 }

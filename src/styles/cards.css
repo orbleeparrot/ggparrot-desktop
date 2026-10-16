@@ -24,6 +24,9 @@
   border-radius: 10px;
   background: var(--hover);
 }
+.segmented.is-locked {
+  opacity: 0.75;
+}
 .segment {
   height: 34px;
   border: 0;
@@ -50,15 +53,11 @@
 }
 .segment-live.is-selected {
   background: var(--live);
-  color: #fff;
+  color: var(--on-accent);
 }
-.mode-note {
-  font-size: var(--fs-small);
-  color: var(--muted);
-}
-.mode-note.is-live {
-  color: var(--danger);
-  font-weight: var(--fw-bold);
+.segment-testnet.is-selected {
+  background: var(--info);
+  color: var(--on-accent);
 }
 
 /* --- 비밀 칸 ------------------------------------------------------------------ */
@@ -102,17 +101,6 @@
   color: var(--ink);
 }
 
-.segmented.is-locked {
-  opacity: 0.75;
-}
-.segment-live.is-selected {
-  background: var(--live);
-  color: #fff;
-}
-.segment-testnet.is-selected {
-  background: var(--info);
-  color: #fff;
-}
 .chevron {
   flex: none;
   color: var(--muted);

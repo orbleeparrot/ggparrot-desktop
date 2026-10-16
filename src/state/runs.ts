@@ -3,16 +3,33 @@ import type { KeySlot, RunMode, RunSlot, StopMode } from "../types";
 
 export const MODE_LABELS: Record<RunMode, string> = { mock: "모의", testnet: "테스트넷", live: "실전" };
 
+/** 모드 세그먼트 단추의 설명(풍선 도움말·접근성 설명). */
 export const MODE_NOTES: Record<RunMode, string> = {
-  mock: "주문을 보내지 않고 현재가로 연습해요",
-  testnet: "바이낸스 테스트넷에서 가상 자금으로 주문해요",
-  live: "실제 자금으로 주문해요",
+  mock: "주문을 보내지 않고 현재가로 연습해요.",
+  testnet: "바이낸스 테스트넷 키로 연습 주문을 보내요.",
+  live: "실제 자금으로 주문해요. 시작할 때 한 번 더 확인해요.",
 };
+
+/** "모의로"·"테스트넷으로"·"실전으로" — 받침에 맞춘 조사. */
+const MODE_WITH: Record<RunMode, string> = { mock: "모의로", testnet: "테스트넷으로", live: "실전으로" };
+
+/** 상세 조작 줄의 모드 배지 — 모드를 바꿀 수 없는 단계(확인·시작·실행·종료 중)에 세그먼트 대신 보임. */
+export function runningModeText(mode: RunMode, phase: Phase): string {
+  if (phase === "checking") return `${MODE_WITH[mode]} 시작 전 확인 중`;
+  if (phase === "starting") return `${MODE_WITH[mode]} 시작하는 중`;
+  return `${MODE_WITH[mode]} 실행 중`;
+}
 
 export const SIDE_LABELS = { long: "롱", short: "숏" } as const;
 export const MARKET_LABELS = { spot: "현물", futures: "선물" } as const;
 
 export type Phase = RunSlot["phase"];
+
+/** 상태 문구 → [앞부분, 뒷부분]. "실행 중 · 서버 재시도 중" → ["실행 중", "서버 재시도 중"]. 카드가 좁으면 뒷부분을 숨김. */
+export function statusParts(text: string): [string, string] {
+  const i = text.indexOf(" · ");
+  return i < 0 ? [text, ""] : [text.slice(0, i), text.slice(i + 3)];
+}
 
 /** 대기 중이거나 끝난 슬롯만 모드를 바꾸고, 시작하고, 목록에서 뺄 수 있음. */
 export function isIdle(phase: Phase): boolean {
@@ -41,7 +58,7 @@ export function primaryAction(phase: Phase): PrimaryAction {
   return { kind: "busy", label: phase === "checking" ? "연결 확인 중…" : "종료 처리 중…" };
 }
 
-export const STOP_LABELS = { stop_only: "매크로만 종료", close_and_stop: "청산 후 종료" } as const;
+const STOP_LABELS = { stop_only: "매크로만 종료", close_and_stop: "청산 후 종료" } as const;
 
 /** 고를 수 있는 종료 방법 하나. */
 export interface StopChoice {
@@ -90,11 +107,14 @@ export function stopChoices(slot: Pick<RunSlot, "mode" | "run">): StopChoice[] {
   ];
 }
 
-/** 설정 화면에서 데려갈 곳. */
+/** 설정 화면에서 데려갈 곳. log: 앱 기록의 그 줄(알림 토스트의 [자세히]). */
 export type SettingsTarget =
-  { kind: "slot"; slot: KeySlot } | { kind: "member" } | { kind: "section"; section: SettingsSection };
+  | { kind: "slot"; slot: KeySlot }
+  | { kind: "member" }
+  | { kind: "section"; section: SettingsSection }
+  | { kind: "log"; id: number };
 
-export type SettingsSection = "exchanges" | "account" | "library" | "display" | "storage" | "about";
+export type SettingsSection = "exchanges" | "account" | "library" | "display" | "about" | "log";
 
 export function settingsTargetOf(needs: RunSlot["readiness"]["needs"]): SettingsTarget | null {
   if (!needs) return null;
@@ -105,5 +125,6 @@ export function settingsTargetOf(needs: RunSlot["readiness"]["needs"]): Settings
 export function settingsElementId(target: SettingsTarget): string {
   if (target.kind === "slot") return `settings-slot-${target.slot}`;
   if (target.kind === "member") return "settings-member";
+  if (target.kind === "log") return `app-log-${target.id}`;
   return `settings-${target.section}`;
 }

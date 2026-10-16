@@ -22,12 +22,14 @@ export const EXCHANGE_LABELS: Record<Exchange, string> = { binance: "바이낸�
 export const SLOT_LABELS: Record<KeySlot, string> = {
   binance: "바이낸스",
   binance_testnet: "바이낸스 테스트넷",
+  binance_demo: "바이낸스 데모",
   upbit: "업비트",
   bithumb: "빗썸",
 };
 export const SLOT_EXCHANGE: Record<KeySlot, Exchange> = {
   binance: "binance",
   binance_testnet: "binance",
+  binance_demo: "binance",
   upbit: "upbit",
   bithumb: "bithumb",
 };
@@ -36,7 +38,7 @@ export const FIELD_LABELS: Record<Exchange, [string, string]> = {
   upbit: ["Access Key", "Secret Key"],
   bithumb: ["API Key", "Secret Key"],
 };
-export const SLOT_ORDER: KeySlot[] = ["binance", "binance_testnet", "upbit", "bithumb"];
+export const SLOT_ORDER: KeySlot[] = ["binance", "binance_testnet", "binance_demo", "upbit", "bithumb"];
 export const LIBRARY_DIR = "/Users/me/Library/Application Support/ggparrot-desktop/macros";
 
 function macro(over: Partial<MacroInfo> & Pick<MacroInfo, "title" | "exchange" | "symbol">): MacroInfo {
@@ -58,12 +60,46 @@ function macro(over: Partial<MacroInfo> & Pick<MacroInfo, "title" | "exchange" |
     capitalOriginal: null,
     capitalLocked: over.source === "web" ? "웹에서 연결한 매크로는 웹에서 고친 뒤 다시 연결하세요." : "",
     orderCap: quote === "USDT" ? 100 : 150_000,
-    risk: ["손절 3%", "하루 최대 손실 5%"],
+    risk: ["손절 평단 대비 가격 -3%", "하루 최대 손실 5%(수수료 포함)"],
+    exits: EXITS.two,
     ...over,
   };
 }
 
-export const WEB_MACRO = macro({
+/** 청산 기준 견본 — Rust exits.rs(웹 positionExits.js)가 만드는 값과 같은 모양. */
+const EXITS: Record<"two" | "short" | "slOnly" | "trailing" | "tpOnly", MacroInfo["exits"]> = {
+  two: {
+    sl: { pct: 3, label: "손절 -3%" },
+    tp: { pct: 5, label: "익절 +5%" },
+    trailing: null,
+    kind: "two",
+    summary: "익절 +5% · 손절 -3%",
+  },
+  short: {
+    sl: { pct: 2, label: "손절 -2%" },
+    tp: { pct: 4, label: "익절 +4%" },
+    trailing: null,
+    kind: "two",
+    summary: "익절 +4% · 손절 -2%",
+  },
+  slOnly: {
+    sl: { pct: 2, label: "손절 -2%" },
+    tp: null,
+    trailing: null,
+    kind: "sl-only",
+    summary: "손절 -2% · 익절은 신호",
+  },
+  trailing: {
+    sl: { pct: 3, label: "손절 -3%" },
+    tp: null,
+    trailing: { activation: 2, trail: 1, label: "발동 +2% · 고점 -1%" },
+    kind: "two",
+    summary: "트레일링 발동 +2% · 고점 -1% · 손절 -3%",
+  },
+  tpOnly: { sl: null, tp: { pct: 1.5, label: "익절 +1.5%" }, trailing: null, kind: "tp-only", summary: "익절 +1.5%" },
+};
+
+const WEB_MACRO = macro({
   title: "업비트 비트코인 눌림목",
   source: "web",
   exchange: "upbit",
@@ -72,8 +108,11 @@ export const WEB_MACRO = macro({
   signature: "web",
 });
 
+/** 웹 [실행기 열기]로 받은 견본 매크로의 파일 — 앱은 받은 매크로를 웹 내려받기와 같은 이름으로 매크로 폴더에 저장하고 그 파일과 이음. */
+export const WEB_FILE_NAME = "upbit_KRW-BTC_rsi_long_20261015.ggm.json";
+
 /** 매크로 폴더에 처음부터 있는 파일. macro가 null이면 읽히지 않는 파일. */
-export const LIBRARY_SAMPLES: {
+const LIBRARY_SAMPLES: {
   fileName: string;
   macro: MacroInfo | null;
   error?: string;
@@ -89,7 +128,9 @@ export const LIBRARY_SAMPLES: {
       symbol: "BTCUSDT",
       market: "futures",
       leverage: 3,
-      summary: "4시간 봉 RSI가 30 아래에서 올라오면 사고, 70 위에서 꺾이면 팔아요.",
+      strategy: "트레일링 스탑",
+      exits: EXITS.trailing,
+      summary: "4시간 봉에서 2% 오르면 고점을 따라가다 1% 꺾이면 팔아요.",
     }),
   },
   {
@@ -99,6 +140,9 @@ export const LIBRARY_SAMPLES: {
       title: "빗썸 이더 단타",
       exchange: "bithumb",
       symbol: "ETH_KRW",
+      strategy: "볼린저밴드",
+      exits: EXITS.slOnly,
+      risk: ["손절 평단 대비 가격 -2%", "하루 최대 손실 5%(수수료 포함)"],
       summary: "15분 봉 볼린저 하단에서 사고 중앙선에서 팔아요.",
     }),
   },
@@ -113,6 +157,8 @@ export const LIBRARY_SAMPLES: {
       side: "short",
       leverage: 2,
       signature: "unsigned",
+      exits: EXITS.short,
+      risk: ["손절 평단 대비 가격 -2%", "하루 최대 손실 5%(수수료 포함)"],
     }),
   },
   {
@@ -123,6 +169,8 @@ export const LIBRARY_SAMPLES: {
       exchange: "binance",
       symbol: "BTCUSDT",
       signature: "modified",
+      exits: EXITS.tpOnly,
+      risk: ["하루 최대 손실 5%(수수료 포함)"],
       summary: "5분 봉 MACD 교차로 짧게 사고팔아요.",
     }),
   },
@@ -138,6 +186,18 @@ export const LIBRARY_SAMPLES: {
     unsupported: "이 앱은 아직 이 매크로 유형(정기 분할매수 · 하락 방어 전환)을 지원하지 않아요.",
   },
   { fileName: "깨진 파일.ggm.json", macro: null, error: "올바른 껄무새 매크로 파일이 아니에요.", ageMin: 60 * 3 },
+  {
+    // 웹 연결로 받아 저장한 파일 — 서명은 없음(웹 연결 응답에는 서명이 실려 오지 않음).
+    fileName: WEB_FILE_NAME,
+    ageMin: 5,
+    macro: {
+      ...WEB_MACRO,
+      title: WEB_FILE_NAME.replace(/\.ggm\.json$/, ""),
+      source: "file",
+      signature: "unsigned",
+      capitalLocked: "",
+    },
+  },
 ];
 
 /** 매크로 형식 이름(.ggm.json)이 아니라 목록에서 뺀 .json 수(견본: 메모.json). */
@@ -154,12 +214,40 @@ export const IMPORT_SAMPLES: MacroInfo[] = [
   macro({ title: "SOL 돌파", exchange: "binance", symbol: "SOLUSDT", market: "futures", leverage: 2 }),
 ];
 
+/** ?demo=many 카드 검토용 — 긴 종목 이름·긴 전략 이름(카드가 좁을 때 줄이는 순서 확인). */
+const LONG_SAMPLES: MacroInfo[] = [
+  macro({
+    title: "시바 밈 코인 급등 따라가기",
+    exchange: "binance",
+    symbol: "1000SHIBUSDT",
+    market: "futures",
+    leverage: 5,
+    strategy: "거래량 급증 돌파 · 트레일링 스탑 · 세 번 나눠 익절",
+  }),
+  macro({
+    title: "비트 도미넌스 숏",
+    exchange: "binance",
+    symbol: "BTCDOMUSDT",
+    market: "futures",
+    side: "short",
+    leverage: 2,
+    strategy: "도미넌스 역추세",
+  }),
+  macro({
+    title: "업비트 시바 눌림목",
+    exchange: "upbit",
+    symbol: "KRW-SHIB",
+    strategy: "RSI 과매도 분할매수와 이동평균선 이탈 손절",
+  }),
+];
+
 export interface MockKey {
   access: string;
   secret: string;
   remembered: boolean;
   status: SlotCard["status"];
-  problem: "" | "ip" | "auth";
+  /** funds: 연결은 됐지만 주문할 잔고가 모자람(연결됨 칸의 주의 안내). */
+  problem: "" | "ip" | "auth" | "funds";
 }
 
 export interface MockRun {
@@ -173,6 +261,10 @@ export interface MockRun {
   /** 시작 전 연결 확인이 끝나면 이어서 시작함. */
   startAfterCheck: boolean;
   tick: number;
+  /** 미리보기 스크린샷용(?demo=pnl) — 신호 없이 이 가격 근처에서 시세만 흔듦. 없으면 보통 흐름. */
+  holdPrice?: number;
+  /** 미리보기 스크린샷용(?demo=many) — 서버 연결이 계속 끊긴 상태('실행 중 · 서버 재시도 중'). */
+  offline?: boolean;
 }
 
 export interface MockFile {
@@ -193,13 +285,15 @@ export interface Model {
   closeToTray: boolean;
   storage: SettingsState["storage"];
   wizard: WizardState | null;
+  /** 정보 화면의 공인 IP(미리보기는 정해진 주소). */
+  publicIp: SettingsState["publicIp"];
   update: UpdateState;
   files: MockFile[];
   nextRun: number;
   imported: number;
 }
 
-const emptyKey = (): MockKey => ({ access: "", secret: "", remembered: false, status: "empty", problem: "" });
+export const emptyKey = (): MockKey => ({ access: "", secret: "", remembered: false, status: "empty", problem: "" });
 
 export function newRun(m: Model, macro: MacroInfo, fileName: string | null, webLinked = false): MockRun {
   const r: MockRun = {
@@ -222,7 +316,13 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
   const broken = (["read_error", "decrypt_error", "invalid_data", "unsupported"] as const).find((s) => s === storage);
   const m: Model = {
     runs: [],
-    keys: { binance: emptyKey(), binance_testnet: emptyKey(), upbit: emptyKey(), bithumb: emptyKey() },
+    keys: {
+      binance: emptyKey(),
+      binance_testnet: emptyKey(),
+      binance_demo: emptyKey(),
+      upbit: emptyKey(),
+      bithumb: emptyKey(),
+    },
     member: "demo-member-key",
     memberPending: "",
     showDevLog: params.get("dev") === "1",
@@ -239,6 +339,7 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
         }
       : { status: "loaded", note: "" },
     wizard: null,
+    publicIp: { status: "idle", address: "" },
     update: {
       status: "idle",
       current: MOCK_VERSION,
@@ -278,7 +379,19 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
   };
   if (params.get("demo") !== "empty") {
     newRun(m, m.files[0].macro!, m.files[0].fileName);
-    newRun(m, WEB_MACRO, null, true);
+    newRun(m, WEB_MACRO, WEB_FILE_NAME, true);
+  }
+  // ?demo=many — 목록에 스크롤이 생기게 매크로를 스무 개 넘게 채움(긴 이름 견본·읽히는 파일·가져오기 견본을 돌려 씀).
+  if (params.get("demo") === "many") {
+    const pool = [
+      ...LONG_SAMPLES.map((mc) => [mc, `${mc.title}.ggm.json`] as const),
+      ...m.files.filter((f) => f.macro && !f.unsupported).map((f) => [f.macro!, f.fileName] as const),
+      ...IMPORT_SAMPLES.map((mc) => [mc, `${mc.title}.ggm.json`] as const),
+    ];
+    for (let i = 0; i < 22; i += 1) {
+      const [mc, file] = pool[i % pool.length];
+      newRun(m, mc, file);
+    }
   }
   return m;
 }

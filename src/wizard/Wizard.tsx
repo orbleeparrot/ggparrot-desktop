@@ -1,4 +1,4 @@
-// 연결 도우미(국내 거래소) — 지금 보이는 화면(실행·설정) 위에 뜨는 시트(한 열에서는 전체 화면).
+// 연결 도우미(업비트·빗썸·바이낸스) — 지금 보이는 화면(실행·설정) 위에 뜨는 시트(한 열에서는 전체 화면).
 // 포커스를 안에 가두고 Esc로 닫힘. 닫아도 매매는 시작하지 않음.
 import { Check, ExternalLink, LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, type KeyboardEvent } from "react";
@@ -12,12 +12,11 @@ import { IpStage } from "./stages/IpStage";
 import { ManualStage } from "./stages/ManualStage";
 import { ResultStage } from "./stages/ResultStage";
 import { StepDots } from "./StepDots";
-import { footFor, NEXT_STAGE, STAGE_TITLES, type FootButton } from "./steps";
+import { footFor, nextStage, stageTitle, type FootButton } from "./steps";
 
 function titleOf(w: WizardState): string {
-  if (w.stage === "result_fail") return w.headline || STAGE_TITLES.result_fail;
-  if (w.stage === "result_ok") return w.headline || STAGE_TITLES.result_ok;
-  return STAGE_TITLES[w.stage];
+  if (w.stage === "result_fail" || w.stage === "result_ok") return w.headline || stageTitle(w);
+  return stageTitle(w);
 }
 
 function StageBody({ wizard }: { wizard: WizardState }) {
@@ -69,7 +68,7 @@ export function Wizard({ wizard }: { wizard: WizardState }) {
       case "done":
         return act("wizard_close");
       case "next": {
-        const next = NEXT_STAGE[wizard.stage];
+        const next = nextStage(wizard);
         return next ? act("wizard_go", { stage: next }) : undefined;
       }
       case "manual":
@@ -114,7 +113,7 @@ export function Wizard({ wizard }: { wizard: WizardState }) {
           </div>
           <div className="wz-links">
             <button type="button" className="btn btn-quiet btn-sm" onClick={() => act("wizard_open_home")}>
-              {wizard.label} 열기 <ExternalLink size={13} aria-hidden="true" />
+              {wizard.homeLabel} 열기 <ExternalLink size={13} aria-hidden="true" />
             </button>
             <button type="button" className="btn btn-quiet btn-sm" onClick={() => act("wizard_open_api_page")}>
               API 관리 열기 <ExternalLink size={13} aria-hidden="true" />

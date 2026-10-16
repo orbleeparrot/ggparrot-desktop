@@ -19,25 +19,16 @@ impl Shared {
 
     /// 웹 가이드가 '진행 중'에 멈춰 있지 않게 닫힘을 알림(최대 1.5초).
     pub async fn shutdown(self: &S) {
-        let reporters = {
+        let (reporters, saved) = {
             let mut c = self.lock();
             c.closed = true;
             c.wizard = None;
-            let mut out = vec![];
-            for r in c.runs.iter_mut() {
-                if let Some(rep) = r.reporter.take() {
-                    let ex = r.exchange_name();
-                    out.push((rep, ex));
-                }
-            }
-            self.save_runs(&c);
-            out
+            let out: Vec<_> = c.runs.iter_mut().filter_map(Run::take_closing_report).collect();
+            (out, self.save_runs(&c))
         };
-        for (rep, ex) in reporters {
-            match runner_core::setup_progress::progress_payload("closed", &ex, "", (false, false), None, "", false) {
-                Ok(p) => rep.finish(p, Duration::from_millis(1500)).await,
-                Err(_) => rep.close(),
-            }
+        self.warn_save_failed(saved);
+        for (rep, payload) in reporters {
+            finish_report(rep, payload).await;
         }
         self.outbox.close();
     }
@@ -71,5 +62,13 @@ impl Shared {
             return;
         }
         ServerClient::new(&key, &base, self.outbox.clone(), self.http.clone()).resume_pending_events();
+    }
+}
+
+/// 웹 가이드 보고의 마지막 상태를 보내고 닫음(최대 1.5초 기다림). 상태가 없으면 닫기만 함.
+pub(crate) async fn finish_report(rep: Arc<SetupProgressReporter>, payload: Option<Value>) {
+    match payload {
+        Some(p) => rep.finish(p, Duration::from_millis(1500)).await,
+        None => rep.close(),
     }
 }
