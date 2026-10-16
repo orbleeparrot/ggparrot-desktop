@@ -575,11 +575,18 @@ fn exchange_keys_are_accepted_as_copied() {
     let access_48 = "3f9a0c7e".repeat(6);
     let secret_84 = format!("{}OWM0", "OWM0ZTIxYjdkMDVh".repeat(5));
     assert_eq!((access.len(), secret.len(), access_48.len(), secret_84.len()), (46, 84, 48, 84));
-    for (key, is_secret) in [(&access, false), (&secret, true), (&access_48, false), (&secret_84, true)] {
-        assert_eq!(clipboard_key("bithumb", key), *key);
-        assert_eq!(clipboard_key("bithumb", &format!(" {key}\n")), *key);
+    // 실패 메시지에는 키 값 대신 경우 이름만 남김(가짜 값이라도 로그에 키를 쓰지 않게).
+    let cases = [
+        ("access 46", &access, false),
+        ("secret 82+==", &secret, true),
+        ("access 48", &access_48, false),
+        ("secret 84", &secret_84, true),
+    ];
+    for (case, key, is_secret) in cases {
+        assert!(clipboard_key("bithumb", key) == *key, "{case}");
+        assert!(clipboard_key("bithumb", &format!(" {key}\n")) == *key, "{case}");
         // 모양으로 칸을 가림(시크릿을 먼저 복사해도 맞는 칸에).
-        assert_eq!(clipboard_key_is_secret("bithumb", key), Some(is_secret), "{key}");
+        assert!(clipboard_key_is_secret("bithumb", key) == Some(is_secret), "{case}");
     }
     assert_eq!(clipboard_key_is_secret("upbit", &access), None, "업비트는 복사 순서");
 }
