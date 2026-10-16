@@ -1705,7 +1705,7 @@ dependencies = [
 
 [[package]]
 name = "ggparrot-desktop"
-version = "0.19.6"
+version = "0.19.7"
 dependencies = [
  "chrono",
  "dirs",
@@ -3943,7 +3943,7 @@ dependencies = [
 
 [[package]]
 name = "runner-core"
-version = "0.19.6"
+version = "0.19.7"
 dependencies = [
  "async-trait",
  "base64 0.23.1",

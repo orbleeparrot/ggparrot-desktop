@@ -27,16 +27,16 @@
 | 실행 | 매크로 추가 |
 |---|---|
 | ![두 매크로 동시 실행](docs/screenshots/running.png) | ![매크로 추가 창](docs/screenshots/library.png) |
-| **설정·키** | **설정·창 닫아도 계속 실행** |
+| **설정·거래소 연결** | **설정·창 닫아도 계속 실행** |
 | ![설정](docs/screenshots/settings.png) | ![창을 닫아도 계속 실행](docs/screenshots/display.png) |
-| **메뉴 막대(트레이) 메뉴** | **정보·업데이트** |
+| **메뉴 막대(트레이) 메뉴** | **설정·정보(문의용)·앱 기록** |
 | ![트레이 메뉴](docs/screenshots/tray.png) | ![정보](docs/screenshots/about.png) |
 | **연결 도우미·예시 화면** | |
 | ![거래소 화면 예시](docs/screenshots/wizard-example.png) | |
 
 업데이트(로컬 업데이트 서버로 실제 설치까지 시험한 화면):
 
-| 버전 옆 알림 | 내려받는 중 |
+| 새 버전 알림(로고 옆·설정 › 정보) | 내려받는 중 |
 |---|---|
 | ![새 버전 알림](docs/screenshots/update-notice.png) | ![진행률](docs/screenshots/update-downloading.png) |
 | **설치 준비** | **다시 시작 후** |
