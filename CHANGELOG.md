@@ -67,6 +67,7 @@
 - 손익 계산은 `runner-core` `pnl.rs` 한 곳. 서버 하트비트의 손익은 Python 실행기와 같은 수수료 전 값.
 - 검사: vitest·Rust 테스트·clippy·oxlint·Playwright 화면 배치 검사(WebKit·Chromium). CI는 macOS·Windows.
 - 테스트의 가짜 거래소 키를 실행할 때마다 새로 만듦(`brokers/test_keys.rs`) — 코드에 고정 키가 없어 테스트 코드도 CodeQL·gitleaks 분석을 그대로 받음.
+- 코드 보안 분석(CodeQL)은 `.github/workflows/codeql.yml`로 언어(Actions·JS/TS·Rust)를 정해 돌림 — 기본 설정이 `scripts/*.swift`까지 골라 Swift 분석이 실패하던 것을 막음. 테스트 코드 포함.
 - 배포: `main` CI가 통과하면 릴리스 초안(설치 파일·업데이트 파일·이 파일에서 만든 본문)을 자동으로 만듦. 배포 여부는 이 파일에 적지 않고 공개한 릴리스의 태그로 앎(`main`에 자동 커밋 없음). 설치 파일 이름 규칙은 `scripts/bundle-names.mjs` 한 곳.
 - 변경 기록 규칙: 사용자용 분류와 `### 개발`을 나눔. 릴리스 본문은 지난 배포 태그 뒤의 버전 칸을 분류별로 합치고 `### 개발`은 뺌. `---` 아래(설치 파일 안내)는 웹 릴리스 페이지에만 보임.
 - 문서 스크린샷(`docs/screenshots/`)은 데모 앱(별도 식별자·임시 홈·가짜 서버)으로 찍음.

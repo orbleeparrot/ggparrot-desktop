@@ -1,0 +1,43 @@
+name: codeql
+
+# 코드 보안 분석(CodeQL) — 저장소 기본 설정 대신 이 파일로 돌림.
+# - 분석 언어를 직접 정하려고: 기본 설정은 언어를 저절로 고르면서 scripts/*.swift(스크린샷·설치 그림 도구)까지 넣어
+#   macOS 빌드가 필요한 Swift 분석이 늘 실패함. 기본 설정 API는 Rust를 골라 넣을 수도 없음.
+# - 테스트 코드도 모두 분석함(빼지 않음). 테스트의 가짜 키는 실행 때 만들어 고정 값이 없음(brokers/test_keys.rs).
+# - 분류(category)는 기본 설정과 같아 이전 경보가 이어짐.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, rust]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:${{ matrix.language }}
