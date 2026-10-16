@@ -206,11 +206,17 @@ pub fn check_view(exchange: &str, ok: bool, error_name: &str) -> CheckView {
 /// 업비트 키는 영문·숫자뿐임. '_' '-'는 받지 않음 — 토큰·JWT·비밀번호 같은 다른 복사본을 키로
 /// 잘못 받지 않게.
 static UPBIT_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{30,100}$").unwrap());
-/// 빗썸(API 2.0) 키 모양 — Access Key는 영문·숫자 46자, Secret Key는 62바이트 base64(82자 + "=="),
-/// 실제 발급 키로 확인한 형식임. 모양이 정확해 비밀번호 관리자에서 복사한 비밀번호 같은 값은 받지 않고,
-/// 모양으로 어느 칸인지도 가림(시크릿을 먼저 복사해도 맞는 칸에). 다른 모양이면 직접 붙여 넣음.
-static BITHUMB_ACCESS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{46}$").unwrap());
-static BITHUMB_SECRET: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9+/]{82}==$").unwrap());
+/// 빗썸(API 2.0) 키 모양 — 발급마다 길이가 조금씩 다름.
+/// Access Key는 영문·숫자 40~60자(46자 · 48자 소문자 16진을 확인).
+/// Secret Key는 base64 76~100자이고 길이가 4의 배수(82자 + "==" · 84자 패딩 없음을 확인).
+/// 두 범위가 겹치지 않아 모양으로 어느 칸인지 가림(시크릿을 먼저 복사해도 맞는 칸에).
+/// 짧은 비밀번호 같은 값은 받지 않음.
+static BITHUMB_ACCESS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{40,60}$").unwrap());
+static BITHUMB_SECRET: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9+/]{74,100}={0,2}$").unwrap());
+
+fn bithumb_secret_shaped(value: &str) -> bool {
+    BITHUMB_SECRET.is_match(value) && value.len().is_multiple_of(4) && (76..=100).contains(&value.len())
+}
 /// 바이낸스 HMAC 키 모양 — API Key·Secret Key 모두 영문·숫자 64자(테스트넷·데모·실거래 같음).
 /// 두 칸이 같은 모양이라 어느 칸인지는 복사한 순서로 정함. 길이가 바뀌어도 받게 조금 넓게 둠.
 static BINANCE_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{60,100}$").unwrap());
@@ -220,7 +226,7 @@ pub fn clipboard_key_is_secret(exchange: &str, key: &str) -> Option<bool> {
     if exchange != "bithumb" {
         return None;
     }
-    if BITHUMB_SECRET.is_match(key) {
+    if bithumb_secret_shaped(key) {
         Some(true)
     } else if BITHUMB_ACCESS.is_match(key) {
         Some(false)
@@ -241,7 +247,7 @@ pub fn clipboard_key(exchange: &str, text: &str) -> String {
     let shaped = match exchange {
         "upbit" => UPBIT_KEY.is_match(value),
         "binance" => BINANCE_KEY.is_match(value),
-        _ => BITHUMB_ACCESS.is_match(value) || BITHUMB_SECRET.is_match(value),
+        _ => BITHUMB_ACCESS.is_match(value) || bithumb_secret_shaped(value),
     };
     let mixed = value.chars().any(|c| c.is_ascii_digit()) && value.chars().any(|c| c.is_ascii_alphabetic());
     if shaped && mixed {
