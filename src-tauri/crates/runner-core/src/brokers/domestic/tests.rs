@@ -1,4 +1,5 @@
 use super::*;
+use crate::brokers::test_keys::KEYS;
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::matchers::{method, path};
@@ -14,8 +15,16 @@ fn recorder() -> (LogFn, Logs) {
 
 fn make(ex: Exchange, base: &str) -> (DomesticBroker, Logs) {
     let (log, logs) = recorder();
-    let b =
-        DomesticBroker::new("acc", "sec", ex, "KRW-BTC", log, reqwest::Client::new(), Some(base.to_string())).unwrap();
+    let b = DomesticBroker::new(
+        &KEYS.access,
+        &KEYS.secret,
+        ex,
+        "KRW-BTC",
+        log,
+        reqwest::Client::new(),
+        Some(base.to_string()),
+    )
+    .unwrap();
     (b, logs)
 }
 
@@ -100,28 +109,29 @@ fn ordered_pairs(body: &[u8]) -> Vec<(String, String)> {
 
 #[test]
 fn jwt_has_three_parts_and_a_fresh_nonce() {
-    let first = jwt_token("acc", "sec", None, "HS512", false);
-    let second = jwt_token("acc", "sec", None, "HS512", false);
+    let first = jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false);
+    let second = jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false);
     assert_eq!(first.split('.').count(), 3);
     assert_ne!(first, second);
 }
 
 #[test]
 fn query_hash_is_present_only_with_a_query() {
-    let (_h, p) = decode_jwt(&jwt_token("acc", "sec", None, "HS512", false));
+    let (_h, p) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false));
     assert!(p.get("query_hash").is_none());
-    let (_h, p) = decode_jwt(&jwt_token("acc", "sec", Some(&[]), "HS512", false));
+    let (_h, p) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, Some(&[]), "HS512", false));
     assert!(p.get("query_hash").is_none());
-    let (_h, p) = decode_jwt(&jwt_token("acc", "sec", Some(&q(&[("market", "KRW-BTC")])), "HS512", false));
+    let (_h, p) =
+        decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, Some(&q(&[("market", "KRW-BTC")])), "HS512", false));
     assert!(p.get("query_hash").is_some());
     assert_eq!(p["query_hash_alg"], "SHA512");
-    assert_eq!(p["access_key"], "acc");
+    assert_eq!(p["access_key"], KEYS.access.as_str());
     assert_eq!(p["nonce"].as_str().unwrap().len(), 36);
 }
 
 #[test]
 fn payload_keys_are_in_the_original_order() {
-    let token = jwt_token("acc", "sec", Some(&q(&[("market", "KRW-BTC")])), "HS256", true);
+    let token = jwt_token(&KEYS.access, &KEYS.secret, Some(&q(&[("market", "KRW-BTC")])), "HS256", true);
     let raw = token.split('.').nth(1).unwrap();
     let text = String::from_utf8(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(raw).unwrap()).unwrap();
     let idx = |k: &str| text.find(&format!("\"{k}\"")).unwrap();
@@ -140,15 +150,15 @@ fn payload_keys_are_in_the_original_order() {
 #[test]
 fn signature_is_plain_hmac_over_header_and_payload() {
     for alg in ["HS512", "HS256"] {
-        let token = jwt_token("acc", "sec", Some(&q(&[("market", "KRW-BTC")])), alg, false);
+        let token = jwt_token(&KEYS.access, &KEYS.secret, Some(&q(&[("market", "KRW-BTC")])), alg, false);
         let parts: Vec<&str> = token.split('.').collect();
         let input = format!("{}.{}", parts[0], parts[1]);
         let expected = if alg == "HS512" {
-            let mut mac = Hmac::<Sha512>::new_from_slice(b"sec").unwrap();
+            let mut mac = Hmac::<Sha512>::new_from_slice(KEYS.secret.as_bytes()).unwrap();
             mac.update(input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         } else {
-            let mut mac = Hmac::<Sha256>::new_from_slice(b"sec").unwrap();
+            let mut mac = Hmac::<Sha256>::new_from_slice(KEYS.secret.as_bytes()).unwrap();
             mac.update(input.as_bytes());
             mac.finalize().into_bytes().to_vec()
         };
@@ -160,8 +170,8 @@ fn signature_is_plain_hmac_over_header_and_payload() {
 #[test]
 fn query_hash_is_sha512_of_the_unencoded_query_string() {
     let (_h, p) = decode_jwt(&jwt_token(
-        "acc",
-        "sec",
+        &KEYS.access,
+        &KEYS.secret,
         Some(&q(&[("market", "KRW-BTC"), ("identifier", "ggp-1")])),
         "HS512",
         false,
@@ -171,10 +181,10 @@ fn query_hash_is_sha512_of_the_unencoded_query_string() {
 
 #[test]
 fn bithumb_token_is_hs256_with_a_millisecond_timestamp() {
-    let (header, payload) = decode_jwt(&jwt_token("acc", "sec", None, "HS256", true));
+    let (header, payload) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, None, "HS256", true));
     assert_eq!(header["alg"], "HS256");
     assert!(payload["timestamp"].as_u64().unwrap() > 1_700_000_000_000);
-    let (_h, upbit) = decode_jwt(&jwt_token("acc", "sec", None, "HS512", false));
+    let (_h, upbit) = decode_jwt(&jwt_token(&KEYS.access, &KEYS.secret, None, "HS512", false));
     assert!(upbit.get("timestamp").is_none());
 }
 

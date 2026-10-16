@@ -764,8 +764,10 @@ fn app_log_hides_keys_and_tokens_in_lines_and_copy() {
         "UPACCESSVALUE / UPSECRETVALUE / OTHERACCOUNTKEY / Bearer abc.def.ghi https://x.test/p?ticket=T0P",
     );
     let text = app_log_copy_text("[앱 기록]", &c.app_log, ACTIVITY_COPY_CHARS);
-    for secret in ["MEMBERSECRETVALUE", "UPACCESSVALUE", "UPSECRETVALUE", "OTHERACCOUNTKEY", "abc.def", "T0P"] {
-        assert!(!text.contains(secret), "{secret} 이 보임: {text}");
+    // 실패 문구에는 가려야 할 값의 순서만 적음 — 값 자체를 찍지 않음.
+    let hidden = ["MEMBERSECRETVALUE", "UPACCESSVALUE", "UPSECRETVALUE", "OTHERACCOUNTKEY", "abc.def", "T0P"];
+    for (i, needle) in hidden.iter().enumerate() {
+        assert!(!text.contains(needle), "가려야 할 값 {i}번이 보임");
     }
     assert!(text.contains("[키 숨김]") && text.contains("https://x.test/p"), "{text}");
     let line = text.lines().nth(1).unwrap();

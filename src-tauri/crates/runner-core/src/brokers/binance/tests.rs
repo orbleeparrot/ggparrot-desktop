@@ -1,4 +1,5 @@
 use super::*;
+use crate::brokers::test_keys::KEYS;
 use crate::brokers::{FeePaid, OrderSide};
 use crate::clock::unix_ms;
 use hmac::{Hmac, KeyInit, Mac};
@@ -25,8 +26,8 @@ fn make_in(server: &MockServer, market: Market, leverage: u32, testnet: bool) ->
     let log: LogFn = Arc::new(move |m: String| sink.lock().unwrap().push(m));
     let urls = BinanceUrls { spot: server.uri(), futures: server.uri() };
     let b = BinanceBroker::new(
-        "key",
-        "secret",
+        &KEYS.access,
+        &KEYS.secret,
         market,
         "BTCUSDT",
         Side::Long,
@@ -388,11 +389,11 @@ async fn signed_requests_carry_the_key_header_and_a_valid_signature() {
     b.check_account().await.unwrap();
     assert_eq!(logs.lock().unwrap().last().unwrap(), "연결 성공 · 현물 USDT 잔고: 100");
     let req = &requests(&server, "GET", "/api/v3/account").await[0];
-    assert_eq!(req.headers.get("x-mbx-apikey").unwrap().to_str().unwrap(), "key");
+    assert_eq!(req.headers.get("x-mbx-apikey").unwrap().to_str().unwrap(), KEYS.access);
     let query = req.url.query().unwrap();
     let (payload, signature) = query.rsplit_once("&signature=").unwrap();
     assert!(payload.contains("timestamp=") && payload.contains("recvWindow=5000"));
-    let mut mac = Hmac::<Sha256>::new_from_slice(b"secret").unwrap();
+    let mut mac = Hmac::<Sha256>::new_from_slice(KEYS.secret.as_bytes()).unwrap();
     mac.update(payload.as_bytes());
     assert_eq!(signature, hex::encode(mac.finalize().into_bytes()));
 }
@@ -914,8 +915,8 @@ async fn spot_fee_before_ready_uses_the_symbol_split_for_any_known_quote() {
     };
     for (symbol, base, quote) in [("BTCUSDT", "BTC", "USDT"), ("ETHUSDC", "ETH", "USDC"), ("ETHBTC", "ETH", "BTC")] {
         let b = BinanceBroker::new(
-            "key",
-            "secret",
+            &KEYS.access,
+            &KEYS.secret,
             Market::Spot,
             symbol,
             Side::Long,
@@ -933,8 +934,8 @@ async fn spot_fee_before_ready_uses_the_symbol_split_for_any_known_quote() {
     }
     // 견적 통화를 모르는 심볼은 기초 자산을 비워 둠 — 수수료를 모르는 것으로.
     let b = BinanceBroker::new(
-        "key",
-        "secret",
+        &KEYS.access,
+        &KEYS.secret,
         Market::Spot,
         "BTCKRW",
         Side::Long,

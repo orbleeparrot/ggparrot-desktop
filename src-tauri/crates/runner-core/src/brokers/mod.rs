@@ -17,6 +17,8 @@ pub use mock::MockBroker;
 pub type LogFn = Arc<dyn Fn(String) + Send + Sync>;
 
 mod pacing;
+#[cfg(test)]
+pub(crate) mod test_keys;
 pub(crate) use pacing::{cool, cool_key, cooling, retry_after_secs};
 pub use pacing::{lookup_delay, LOOKUP_ATTEMPTS};
 

@@ -54,7 +54,7 @@ async fn rejects_redirects_bad_status_and_bad_json_without_echo() {
         assert_eq!(detect_public_ipv4_from(&server.uri()).await.unwrap_err(), DETECT_IP_FAILURE);
     }
     // 연결 실패 — 오류 문장(주소)을 그대로 돌려주지 않음.
-    let err = detect_public_ipv4_from("http://user:SECRET@127.0.0.1:9/").await.unwrap_err();
+    let err = detect_public_ipv4_from("https://user:SECRET@127.0.0.1:9/").await.unwrap_err();
     assert_eq!(err, DETECT_IP_FAILURE);
     assert!(!err.contains("SECRET"));
 }
