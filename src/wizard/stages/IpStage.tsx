@@ -44,6 +44,7 @@ export function IpStage({ wizard }: { wizard: WizardState }) {
         kind={binance ? "restrict" : "ip"}
         ip={ready ? ip.address : ""}
         label={wizard.label}
+        market={wizard.market}
       />
       <div className="wz-ip">
         <div className="wz-ip-text">
