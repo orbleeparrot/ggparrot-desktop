@@ -16,12 +16,18 @@ impl Shared {
                         me.emit_activity_only();
                     }
                     BotEvent::Activity(a) => {
-                        let slot_changed = {
+                        let (slot_changed, notify_fill) = {
                             let mut c = me.lock();
                             c.push_activity(&id, a.kind, &a.title, &a.detail, &a.raw, false, a.tone);
+                            // 진입 체결("buy") — '사면 알림' 을 켜 둔 실행이면 한 번만 알림(시작 전 확인 창에서 고름).
+                            let notify = a.kind == "buy"
+                                && c.run_mut(&id).is_some_and(|r| std::mem::replace(&mut r.notify_entry_fill, false));
                             // 진입 체결("buy") — 잔고가 있었음. 설정 칸에 남은 잔고 부족 글을 지움.
-                            a.kind == "buy" && c.entry_filled(&id)
+                            (a.kind == "buy" && c.entry_filled(&id), notify)
                         };
+                        if notify_fill {
+                            me.alert_os(&id, "기다리던 조건이 와서 샀어요", &a.title);
+                        }
                         if slot_changed {
                             me.emit();
                             me.refresh_wizard();
@@ -39,6 +45,16 @@ impl Shared {
                             d.updated_at = now_ms();
                         }
                         me.emit_soon();
+                    }
+                    BotEvent::EntryWait(wait) => {
+                        let changed = me.lock().run_mut(&id).and_then(|r| r.data.as_mut()).is_some_and(|d| {
+                            let changed = d.entry_wait != wait;
+                            d.entry_wait = wait;
+                            changed
+                        });
+                        if changed {
+                            me.emit_soon();
+                        }
                     }
                     BotEvent::Health(h) => {
                         // 매 틱 오지만 대개 같음 — 바뀌었을 때만 화면을 다시 그림.

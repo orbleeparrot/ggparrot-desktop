@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunnerContext, type RunnerContextValue } from "../../state/context";
 import { MODE_LABELS } from "../../state/runs";
-import { makeRun, makeSlot, makeState } from "../../test/fixtures";
+import { makeEntryWait, makeRun, makeSlot, makeState } from "../../test/fixtures";
 import type { RunSlot } from "../../types";
 import { RunCard } from "./RunCard";
 
@@ -106,5 +106,22 @@ describe("내 매크로 카드(두 줄)", () => {
     expect(busy.getAttribute("aria-label")).toMatch(new RegExp(`^${symbol} `));
     // 시작·종료 중에는 오른쪽 칸을 비움
     expect(card.querySelector(".run-card-pct, .run-card-flat, .run-card-x-slot")).toBeNull();
+  });
+});
+
+describe("내 매크로 카드 — 진입 대기", () => {
+  it("안 샀으면 '무포지션' 대신 사는 선까지 남은 거리, 가리키면 조건 문장", () => {
+    const run = makeRun({ entryWait: makeEntryWait() });
+    const { card } = renderCard(makeSlot({ phase: "running", run, status: { text: "진입 대기", tone: "ok" } }));
+    const gap = card.querySelector(".run-card-wait")!;
+    expect(gap.textContent).toBe("+1.0%");
+    expect(gap.getAttribute("title")).toContain("가격이 102.00 위로 올라가면 사요.");
+    expect(within(card).queryByText("무포지션")).toBeNull();
+  });
+
+  it("짧은 거리가 없으면(옛 서버) '진입 대기'", () => {
+    const run = makeRun({ entryWait: makeEntryWait({ gap: "" }) });
+    const { card } = renderCard(makeSlot({ phase: "running", run, status: { text: "진입 대기", tone: "ok" } }));
+    expect(card.querySelector(".run-card-wait")!.textContent).toBe("진입 대기");
   });
 });

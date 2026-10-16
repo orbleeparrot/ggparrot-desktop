@@ -104,9 +104,51 @@ export interface RunStatus {
   dayChangePct: number | null;
   /** 서버가 알려 준 매크로 출처(예: "웹 저장본"). 없으면 "". */
   macroOrigin: string;
+  /** 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보낸 값. 대기가 아니면 null. */
+  entryWait: EntryWait | null;
   note: string;
   /** 끝났으면 종료 결과. 실행 중이면 null. */
   finished: null | { status: "stopped" | "error"; note: string; at: number };
+}
+
+/**
+ * 진입 대기 — 서버 하트비트의 entry_wait 그대로(키는 서버 모양 snake_case, 웹 내 에이전트와 같은 값).
+ * 문장 · 거리는 서버가 해요체로 만들어 보냄. 시각은 epoch ms.
+ */
+export interface EntryWait {
+  rule: string;
+  interval: string;
+  interval_label: string;
+  /** 3초마다 보는 규칙(지정가 밴드) — 봉 마감 확인이 없음. */
+  realtime: boolean;
+  /** "가격이 209.52 위로 올라가면 사요." */
+  sentence: string;
+  /** "지금 207.46 · +1.0% 더 오르면" */
+  distance: string;
+  /** 목록 카드 오른쪽 칸용 짧은 거리 — "+1.0%" · "RSI 13.7" · "곧 사요". */
+  gap: string;
+  reached: boolean;
+  meter: {
+    from: { label: string; value: string };
+    to: { label: string; value: string };
+    now: string;
+    /** 0~1 — 시작점에서 사는 선까지 얼마나 왔는지. */
+    progress: number;
+  } | null;
+  buy_line: { price: number; label: string } | null;
+  next_check_ms: number | null;
+  checks: number | null;
+  last_check_ms: number | null;
+  typical: { episodes: number; span_ms: number; avg_ms: number | null; longest_ms: number } | null;
+  log: { at_ms: number; text: string; hit: boolean }[];
+}
+
+/** 시작 전 진입 대기 안내(entry_preview). 기다리는 매크로가 아니거나 서버가 답하지 않으면 waiting=false. */
+export interface EntryPreview {
+  waiting: boolean;
+  sentence?: string;
+  interval_label?: string;
+  typical?: EntryWait["typical"];
 }
 
 /** 실행 슬롯 하나 = 매크로 하나 + 모드 하나 + 서버 세션 하나. */

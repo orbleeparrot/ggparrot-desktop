@@ -103,6 +103,9 @@ pub struct HeartbeatReply {
     pub rejected: u16,
     /// 서버가 종료를 지시한 이유(세션이 없어짐·이미 끝남 등). 비어 있으면 웹에서 누른 종료임.
     pub reason: String,
+    /// 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보내는 '무엇을 · 얼마나 · 언제'
+    /// (조건 문장 · 거리 · 막대 · 사는 선 · 다음 확인 · 확인 기록). 산 뒤·해당 없는 매크로·옛 서버면 None.
+    pub entry_wait: Option<Value>,
 }
 
 impl HeartbeatReply {
@@ -630,6 +633,7 @@ impl ServerClient {
                     action: data.get("action").and_then(Value::as_str).unwrap_or("continue").to_string(),
                     commands: data.get("commands").and_then(Value::as_array).cloned().unwrap_or_default(),
                     reason: data.get("reason").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
+                    entry_wait: data.get("entry_wait").filter(|v| v.is_object()).cloned(),
                     ..Default::default()
                 }
             }
@@ -703,8 +707,10 @@ impl ServerClient {
 }
 
 mod claim;
+mod preview;
 mod recovery;
 pub use claim::{claim_ticket, ClaimError, ClaimedLaunch};
+pub use preview::{entry_preview, is_waiting_macro};
 
 #[cfg(test)]
 mod tests;

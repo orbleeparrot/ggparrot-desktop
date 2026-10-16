@@ -1,4 +1,4 @@
-// 이번 실행에서 받은 현재가 흐름. 보유 중이면 평단을 점선으로 겹침. 숫자 꼬리표는 PriceChart가 HTML로 얹음.
+// 이번 실행에서 받은 현재가 흐름. 보유 중이면 평단을, 진입 대기 중이면 사는 선을 가로선으로 겹침. 숫자 꼬리표는 PriceChart가 HTML로 얹음.
 import { useId } from "react";
 import { chartDirection, chartRange, chartY } from "../state/chart";
 
@@ -7,13 +7,15 @@ interface Props {
   /** 점마다의 시각 — 있으면 가로 위치를 시간에 비례하게 둠(길이가 points와 같을 때만). */
   times?: number[];
   entry?: number;
+  /** 진입 대기의 사는 선(서버 buy_line.price). */
+  buy?: number;
   width?: number;
   height?: number;
   /** 끝점 동그라미 — 늘어나는 SVG에서는 찌그러지므로, 겉에서 HTML로 그릴 때는 끔. */
   head?: boolean;
 }
 
-export function Sparkline({ points, times, entry, width = 240, height = 64, head = true }: Props) {
+export function Sparkline({ points, times, entry, buy, width = 240, height = 64, head = true }: Props) {
   const gradientId = useId();
   if (points.length < 2) {
     return (
@@ -27,7 +29,7 @@ export function Sparkline({ points, times, entry, width = 240, height = 64, head
       </svg>
     );
   }
-  const range = chartRange(points, entry);
+  const range = chartRange(points, entry, buy);
   const ts = times && times.length === points.length && times[times.length - 1] > times[0] ? times : null;
   const x = (i: number) =>
     ts ? ((ts[i] - ts[0]) / (ts[ts.length - 1] - ts[0])) * width : (i / (points.length - 1)) * width;
@@ -51,6 +53,7 @@ export function Sparkline({ points, times, entry, width = 240, height = 64, head
       </defs>
       <polygon points={area} fill={`url(#${gradientId})`} />
       {entry && entry > 0 ? <line className="sparkline-entry" x1="0" x2={width} y1={y(entry)} y2={y(entry)} /> : null}
+      {buy && buy > 0 ? <line className="sparkline-buy" x1="0" x2={width} y1={y(buy)} y2={y(buy)} /> : null}
       <polyline points={line} fill="none" stroke="currentColor" strokeWidth="1.75" vectorEffect="non-scaling-stroke" />
       {head && <circle className="sparkline-head" cx={width} cy={y(last)} r="3" />}
     </svg>

@@ -7,7 +7,7 @@ const PLAIN = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 const plain = (price: number, quote: "USDT" | "KRW") =>
   quote === "KRW" ? formatPrice(price, quote) : PLAIN.format(price);
 import { MARKET_LABELS, MODE_LABELS, SIDE_LABELS } from "./state/runs";
-import type { Activity, ActivityKind, Tone } from "./types";
+import type { Activity, ActivityKind, EntryWait, Tone } from "./types";
 
 export type Emit = (
   r: MockRun,
@@ -139,6 +139,40 @@ export function holdAt(r: MockRun, entry: number, price: number, fixedQty?: numb
   refreshPnl(r);
 }
 
+/** 조건이 와야 사는 전략인지 — 실제 판단은 서버(entry_wait.is_waiting)가 규칙 종류로 함. */
+export function waitsForEntry(strategy: string): boolean {
+  return /RSI|볼린저|트레일링|돌파|이동평균/.test(strategy);
+}
+
+/** 진입 대기 흉내 — 실제 값은 서버(entry_wait.py)가 엔진과 같은 규칙으로 계산해 보냄. */
+export function mockEntryWait(at: number, tick: number): EntryWait {
+  const rsi = 38 + ((tick * 7) % 9);
+  const minute = 60_000;
+  const next = Math.ceil((at + 1) / minute) * minute;
+  return {
+    rule: "F",
+    interval: "1m",
+    interval_label: "1분",
+    realtime: false,
+    sentence: "RSI(14)가 30 아래로 내려가면 사요.",
+    distance: `지금 RSI ${rsi.toFixed(1)} · ${(rsi - 30).toFixed(1)} 더 내려가면`,
+    gap: `RSI ${rsi.toFixed(1)}`,
+    reached: false,
+    meter: {
+      from: { label: "청산 기준", value: "70" },
+      to: { label: "사는 선", value: "30" },
+      now: rsi.toFixed(1),
+      progress: (70 - rsi) / 40,
+    },
+    buy_line: null,
+    next_check_ms: next,
+    checks: Math.floor(tick / 12),
+    last_check_ms: tick >= 12 ? next - minute : null,
+    typical: { episodes: 21, span_ms: 300 * minute, avg_ms: 14 * minute, longest_ms: 52 * minute },
+    log: tick >= 12 ? [{ at_ms: next - minute, text: `RSI ${rsi.toFixed(1)} · 사는 선 30`, hit: false }] : [],
+  };
+}
+
 export function beginRun(emit: Emit, r: MockRun, at: number) {
   const m = r.macro;
   const price = START_PRICE[m.symbol] ?? (m.quote === "USDT" ? 100 : 10_000);
@@ -169,6 +203,7 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     fees: m.market === "spot" || r.mode === "mock" ? 0 : null,
     dayChangePct: m.exchange === "upbit" || m.exchange === "bithumb" ? 1.24 : null,
     macroOrigin: m.source === "web" ? "웹에서 바로 실행" : m.signature === "signed" ? "원본 파일(서명 확인)" : "",
+    entryWait: waitsForEntry(m.strategy) ? mockEntryWait(at, 0) : null,
     note: "",
     finished: null,
   };
@@ -237,6 +272,8 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
   }
 
   const p = plain(run.price, q);
+  // 진입 대기 — 서버가 하트비트로 보내는 entry_wait 흉내(RSI 매크로 · 1분 봉). 산 뒤에는 서버가 보내지 않음.
+  run.entryWait = run.inPosition || !waitsForEntry(m.strategy) ? null : mockEntryWait(at, r.tick);
   if (run.online && !run.inPosition && t % 7 === 2) {
     const qty = Math.floor((orderCap(r) / run.price) * 100000) / 100000;
     const sideWord = m.side === "long" ? "매수" : "매도";

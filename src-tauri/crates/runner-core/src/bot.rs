@@ -92,6 +92,9 @@ pub enum BotEvent {
     },
     /// 사람이 읽는 활동 한 줄(활동 기록). 서버로 가는 실행 기록과는 별개임.
     Activity(ActivityEvent),
+    /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None 이면 대기 아님(샀거나 해당 없음).
+    /// 서버와 끊긴 틱에는 보내지 않아 마지막 값이 남음.
+    EntryWait(Option<Value>),
     Finished {
         status: String,
         note: String,
@@ -284,6 +287,8 @@ pub struct Bot {
     /// 회원 키 거절(401·403)을 한 번만 알림.
     auth_noticed: bool,
     offline_logged: bool,
+    /// 진입 대기의 마지막 확인 시각(서버 last_check_ms) — 바뀔 때마다 활동 기록에 '조건 확인' 한 줄.
+    entry_checked_at: Option<i64>,
     price_failing: bool,
     /// 저하 상태를 잰 시각·한 번만 알린 경고(→ [`RunHealth`]).
     offline_since: u64,
@@ -447,6 +452,7 @@ impl Bot {
             order_no_funds: false,
             auth_noticed: false,
             offline_logged: false,
+            entry_checked_at: None,
             price_failing: false,
             offline_since: 0,
             offline_escalated: false,

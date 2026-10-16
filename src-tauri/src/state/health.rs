@@ -13,6 +13,7 @@ impl RunData {
             updated_at: 0,
             finished: None,
             macro_origin: String::new(),
+            entry_wait: None,
         }
     }
 

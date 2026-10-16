@@ -213,6 +213,8 @@ pub fn run() {
             commands::get_state,
             commands::get_activity,
             commands::add_macro_file,
+            commands::entry_preview,
+            commands::set_entry_notify,
             commands::add_run_from_library,
             commands::move_run,
             commands::remove_run,

@@ -96,6 +96,7 @@ function statusOf(m: Model, r: MockRun): RunSlot["status"] {
       if (r.run?.uncertain) return { text: "포지션 확인 필요", tone: "danger" };
       if (r.run?.fundsShort) return { text: "실행 중 · 잔고 부족 · 주문 못 함", tone: "warn" };
       if (r.run && !r.run.online) return { text: "실행 중 · 서버 재시도 중", tone: "warn" };
+      if (r.run?.entryWait && !r.run.inPosition) return { text: "진입 대기", tone: "ok" };
       return { text: "실행 중", tone: "ok" };
     default: {
       if (r.run?.finished)

@@ -1559,3 +1559,40 @@ async fn another_rejection_during_a_funds_streak_keeps_its_own_title() {
     assert_eq!(last.title, "주문이 처리되지 않았어요", "잔고 부족이 아닌 거절은 잔고 부족으로 적지 않음");
     assert!(bot.funds_short, "진입이 체결될 때까지 잔고 부족 상태는 남음");
 }
+
+#[tokio::test]
+async fn entry_checks_reach_the_screen_and_new_checks_become_one_line() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, mut rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb, RunMode::Mock);
+    let wait = |at: i64, hit: bool, text: &str| crate::server::HeartbeatReply {
+        action: "continue".into(),
+        entry_wait: Some(json!({"last_check_ms": at, "log": [{"at_ms": at, "text": text, "hit": hit}]})),
+        ..Default::default()
+    };
+    // 첫 값은 화면에만 — 시작 직후 지난 봉을 기록에 쏟지 않음
+    bot.apply_entry_wait(&wait(1_000, false, "RSI 41.2 · 사는 선 30"));
+    let evs = events(&mut rx);
+    assert!(evs.iter().any(|e| matches!(e, BotEvent::EntryWait(Some(_)))));
+    assert!(acts_of(&evs).is_empty());
+    // 같은 확인 시각이면 기록 없음
+    bot.apply_entry_wait(&wait(1_000, false, "RSI 41.2 · 사는 선 30"));
+    assert!(acts_of(&events(&mut rx)).is_empty());
+    // 새 봉 확인 → 한 줄
+    bot.apply_entry_wait(&wait(2_000, false, "RSI 36.0 · 사는 선 30"));
+    let acts = acts_of(&events(&mut rx));
+    assert_eq!(acts.len(), 1);
+    assert_eq!(
+        (acts[0].kind, acts[0].title.as_str(), acts[0].detail.as_str()),
+        ("signal", "조건 확인 · 아직", "RSI 36.0 · 사는 선 30")
+    );
+    assert_eq!(acts[0].tone, "muted");
+    bot.apply_entry_wait(&wait(3_000, true, "RSI 28.4 · 사는 선 30"));
+    assert_eq!(acts_of(&events(&mut rx))[0].title, "조건 확인 · 조건 맞음");
+    // 끊긴 틱은 화면 값을 지우지 않음
+    bot.apply_entry_wait(&crate::server::HeartbeatReply { offline: true, ..Default::default() });
+    assert!(events(&mut rx).is_empty());
+    // 서버가 보내지 않으면(샀거나 기다리지 않는 매크로) 화면에서 내림
+    bot.apply_entry_wait(&crate::server::HeartbeatReply { action: "continue".into(), ..Default::default() });
+    assert!(events(&mut rx).iter().any(|e| matches!(e, BotEvent::EntryWait(None))));
+    assert_eq!(bot.entry_checked_at, None);
+}

@@ -18,6 +18,7 @@ import {
 import { trailSpanLabel } from "../../state/priceTrail";
 import { labelOf, serverCell, STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus, Tone } from "../../types";
+import { EntryWaitFacts, EntryWaitHead } from "./EntryWait";
 import { ExitBar } from "./ExitBar";
 import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
@@ -56,6 +57,8 @@ export function StatusCard({
   const mock = mode === "mock";
   const stateClass = run.finished ? (run.finished.status === "error" ? "is-error" : "is-finished") : "is-running";
   const holding = run.inPosition && run.entryPrice > 0;
+  // 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀고 서버가 대기 값을 보내는 동안.
+  const waiting = !run.finished && !run.inPosition && run.entryWait !== null;
   // 실현손익 — 수수료를 알면 수수료 반영 값(Rust realized_net), 모르면 서버 값(수수료 전)에 그렇다고 밝힘.
   const realized = run.realizedNet ?? run.realized;
   const realizedNote = run.realizedNet === null && run.realized !== 0 ? "수수료 제외 전" : "";
@@ -92,8 +95,16 @@ export function StatusCard({
 
       <div className="pnl-row">
         <div className="pnl" aria-live="polite">
-          <span className="eyebrow">{mock ? "평가손익 · 지금 정리하면 · 모의" : "평가손익 · 지금 정리하면"}</span>
-          {run.inPosition ? (
+          <span className="eyebrow">
+            {waiting
+              ? `진입 조건${mock ? " · 모의" : ""}`
+              : mock
+                ? "평가손익 · 지금 정리하면 · 모의"
+                : "평가손익 · 지금 정리하면"}
+          </span>
+          {waiting && run.entryWait ? (
+            <EntryWaitHead wait={run.entryWait} />
+          ) : run.inPosition ? (
             <>
               <div className="pnl-figures">
                 <span className={`pnl-pct num tone-${toneOf(run.unrealizedPct)}`}>
@@ -123,11 +134,14 @@ export function StatusCard({
             points={prices}
             times={priceTimes}
             entry={run.inPosition ? run.entryPrice : undefined}
+            buy={waiting ? run.entryWait?.buy_line?.price : undefined}
             quote={q}
             span={trailSpanLabel(run.startedAt, priceTimes[0] ?? 0, run.updatedAt)}
           />
         </div>
       </div>
+
+      {waiting && run.entryWait && <EntryWaitFacts wait={run.entryWait} now={now} />}
 
       {!run.finished && (
         <ExitBar

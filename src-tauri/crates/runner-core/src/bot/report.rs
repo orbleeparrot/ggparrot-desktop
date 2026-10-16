@@ -22,7 +22,41 @@ impl Bot {
         let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(snap.clone())));
         let reply = self.heartbeat(&snap).await;
         self.apply_connection(&reply);
+        self.apply_entry_wait(&reply);
         reply
+    }
+
+    /// 진입 대기를 화면에 보내고, 서버의 확인 시각이 바뀌면 활동 기록에 '조건 확인' 한 줄을 남김.
+    /// 첫 값은 기록하지 않음(시작 직후 지난 봉들을 한꺼번에 쏟지 않게). 끊긴 틱은 건드리지 않음.
+    pub(super) fn apply_entry_wait(&mut self, reply: &crate::server::HeartbeatReply) {
+        if reply.offline {
+            return;
+        }
+        let _ = self.tx.send(BotEvent::EntryWait(reply.entry_wait.clone()));
+        let Some(wait) = reply.entry_wait.as_ref() else {
+            self.entry_checked_at = None;
+            return;
+        };
+        let checked = wait.get("last_check_ms").and_then(Value::as_i64);
+        if checked.is_none() || checked == self.entry_checked_at {
+            return;
+        }
+        let first = self.entry_checked_at.is_none();
+        self.entry_checked_at = checked;
+        if first {
+            return;
+        }
+        let row = wait.get("log").and_then(Value::as_array).and_then(|rows| rows.first());
+        let hit = row.and_then(|r| r.get("hit")).and_then(Value::as_bool).unwrap_or(false);
+        let detail = row.and_then(|r| r.get("text")).and_then(Value::as_str).unwrap_or_default().to_string();
+        let title = if hit { "조건 확인 · 조건 맞음" } else { "조건 확인 · 아직" };
+        self.logger.activity(
+            "signal",
+            title,
+            detail.clone(),
+            format!("entry check {checked:?} hit={hit} {detail}"),
+            if hit { "ok" } else { "muted" },
+        );
     }
 
     /// 하트비트 결과로 연결·인증·거절 상태를 알리고 화면에 [`RunHealth`]를 보냄.

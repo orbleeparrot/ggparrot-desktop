@@ -930,3 +930,20 @@ fn an_entry_fill_clears_a_stale_funds_note() {
     assert!(!c.entry_filled("a"));
     assert_eq!(slot_note(&c, KeySlot::Upbit).0, "blocked");
 }
+
+#[tokio::test]
+async fn entry_wait_shows_until_the_run_buys() {
+    let mut c = core();
+    c.runs.push(run("a", "BTCUSDT", "binance"));
+    let d = running(&mut c, 0);
+    d.snapshot = json!({"in_position": false});
+    d.entry_wait = Some(json!({"rule": "I", "gap": "+1.0%", "sentence": "가격이 102.00 위로 올라가면 사요."}));
+    let v = serde_json::to_value(c.render("0.20.3")).unwrap();
+    assert_eq!(v["runs"][0]["status"]["text"], "진입 대기");
+    assert_eq!(v["runs"][0]["run"]["entryWait"]["gap"], "+1.0%", "안쪽 키는 서버 모양 그대로");
+    // 산 뒤에는 서버 값이 남아 있어도 내리고 평소처럼 '실행 중'.
+    c.runs[0].data.as_mut().unwrap().snapshot = json!({"in_position": true});
+    let v = serde_json::to_value(c.render("0.20.3")).unwrap();
+    assert_eq!(v["runs"][0]["status"]["text"], "실행 중");
+    assert!(v["runs"][0]["run"]["entryWait"].is_null());
+}

@@ -490,3 +490,66 @@ fn without_any_disk_the_memory_counts_are_noticed_once_a_minute() {
     assert_eq!(w.len(), 1, "{w:?}");
     assert!(w[0].contains("활동 기록 3건") && w[0].contains("용량 초과 3건"), "{}", w[0]);
 }
+
+#[tokio::test]
+async fn heartbeat_carries_entry_wait_only_when_it_is_an_object() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/runner/start"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"session_id": 7})))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/runner/heartbeat"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "action": "continue",
+            "entry_wait": {"rule": "I", "sentence": "가격이 102.00 위로 올라가면 사요.", "gap": "+1.0%", "last_check_ms": 1}
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/api/runner/heartbeat"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"action": "continue", "entry_wait": "oops"})))
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let c = client(&server.uri(), &dir);
+    c.start(&json!({})).await.unwrap();
+    let r = c.heartbeat(&json!({}), vec![]).await;
+    assert_eq!(r.entry_wait.as_ref().unwrap()["gap"], "+1.0%");
+    let r = c.heartbeat(&json!({}), vec![]).await;
+    assert!(r.entry_wait.is_none(), "객체가 아니면 버림");
+}
+
+#[tokio::test]
+async fn entry_preview_sends_macro_and_market_with_member_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/runner/entry-preview"))
+        .and(header("X-Runner-Key", "ggp_member_key_value_123456"))
+        .respond_with(|req: &Request| {
+            let body: Value = serde_json::from_slice(&req.body).unwrap();
+            assert_eq!(body["macro"]["rule_type"], "F");
+            assert_eq!(body["market"], "spot");
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"waiting": true, "sentence": "RSI(14)가 30 아래로 내려가면 사요."}))
+        })
+        .mount(&server)
+        .await;
+    let m = json!({"rule_type": "F", "exchange": "upbit", "symbol": "KRW-BTC", "params": {}});
+    let v = entry_preview(&reqwest::Client::new(), &server.uri(), "ggp_member_key_value_123456", &m).await.unwrap();
+    assert_eq!(v["waiting"], true);
+    // 서버가 실패하면 안내만 건너뜀
+    assert!(entry_preview(&reqwest::Client::new(), &server.uri(), "wrong", &m).await.is_none());
+}
+
+#[test]
+fn only_condition_rules_wait_for_entry() {
+    for rule in ["B", "F", "G", "I", "J"] {
+        assert!(is_waiting_macro(&json!({"rule_type": rule})), "{rule}");
+    }
+    assert!(!is_waiting_macro(&json!({"rule_type": "A"})));
+    assert!(!is_waiting_macro(&json!({"rule_type": "E", "params": {"entry_mode": "immediate"}})));
+    assert!(is_waiting_macro(&json!({"rule_type": "E", "params": {"entry_mode": "dip"}})));
+}

@@ -165,6 +165,8 @@ pub struct RunData {
     pub finished: Option<(String, String, i64)>,
     /// 서버가 시작 응답에 준 매크로 출처 글자(macro_origin_label). 없으면 "".
     pub macro_origin: String,
+    /// 진입 대기(서버 하트비트의 entry_wait) — 조건을 기다리는 매크로가 아직 안 샀을 때만 Some.
+    pub entry_wait: Option<Value>,
 }
 
 /// 지난 실행이 앱이 꺼지며 끝맺지 못했을 때 남기는 종료 이유.
@@ -258,6 +260,8 @@ pub struct Run {
     /// 실전 시작 확인을 띄웠고 아직 답을 받지 않음 — 확인 명령은 이 표시를 써야만 시작함(화면이 오염돼도
     /// 확인 창 없이 실전을 시작하지 못하게).
     pub live_confirm_issued: bool,
+    /// '사면 알림으로 알려 주기'를 켜고 시작함 — 첫 진입 체결 때 OS 알림 한 번 띄우고 끔.
+    pub notify_entry_fill: bool,
     pub data: Option<RunData>,
     pub activity: Vec<ActivityDto>,
     pub reporter: Option<Arc<SetupProgressReporter>>,
@@ -312,6 +316,7 @@ impl Run {
             bot: None,
             stopping: false,
             live_confirm_issued: false,
+            notify_entry_fill: false,
             data: None,
             activity: vec![],
             reporter: None,
