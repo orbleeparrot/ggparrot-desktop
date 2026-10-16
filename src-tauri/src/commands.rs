@@ -72,6 +72,30 @@ pub fn start_run_confirmed(s: State<'_, S>, run_id: String) -> StartReply {
     s.inner().start_run_confirmed(&run_id)
 }
 
+/// 시작 전 진입 대기 안내 — 조건을 기다리는 매크로면 서버에 조건 문장 · 최근 조건이 맞은 횟수 · 간격을 물음.
+/// 기다리는 매크로가 아니거나 서버가 답하지 않으면 {"waiting": false}(시작을 막지 않음). 잠금 안에서는 값만 꺼냄.
+#[tauri::command]
+pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
+    let none = serde_json::json!({"waiting": false});
+    let (macro_, base, key) = {
+        let c = s.inner().lock();
+        let Some(run) = c.run(&run_id) else { return Ok(none) };
+        (run.macro_.clone(), run.server_base.clone(), c.member_key.trim().to_string())
+    };
+    if key.is_empty() || !runner_core::server::is_waiting_macro(&macro_) {
+        return Ok(none);
+    }
+    Ok(runner_core::server::entry_preview(&s.inner().http, &base, &key, &macro_).await.unwrap_or(none))
+}
+
+/// '사면 알림으로 알려 주기' — 켜 두면 이 실행의 첫 진입 체결 때 OS 알림을 한 번 띄움.
+#[tauri::command]
+pub fn set_entry_notify(s: State<'_, S>, run_id: String, on: bool) {
+    if let Some(run) = s.inner().lock().run_mut(&run_id) {
+        run.notify_entry_fill = on;
+    }
+}
+
 #[tauri::command]
 pub fn stop_run(s: State<'_, S>, run_id: String, mode: String) -> R<()> {
     let mode = StopMode::parse(&mode).ok_or("알 수 없는 종료 방식이에요.")?;

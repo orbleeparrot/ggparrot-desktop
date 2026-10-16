@@ -1,5 +1,15 @@
 // 테스트용 상태 스냅샷 만들기(계약 v2). 값은 Rust가 보내는 모양을 따름.
-import type { Activity, AppState, KeySlot, MacroInfo, RunSlot, RunStatus, SettingsState, SlotCard } from "../types";
+import type {
+  Activity,
+  AppState,
+  EntryWait,
+  KeySlot,
+  MacroInfo,
+  RunSlot,
+  RunStatus,
+  SettingsState,
+  SlotCard,
+} from "../types";
 
 export const binanceMacro: MacroInfo = {
   title: "BTC 추세.ggm.json",
@@ -99,6 +109,7 @@ export function makeRun(over: Partial<RunStatus> = {}): RunStatus {
     fees: null,
     dayChangePct: null,
     macroOrigin: "",
+    entryWait: null,
     note: "",
     finished: null,
     ...over,
@@ -188,6 +199,33 @@ export function act(over: Partial<Activity> = {}): Activity {
     raw: "",
     dev: false,
     tone: "muted",
+    ...over,
+  };
+}
+
+/** 진입 대기(서버 entry_wait 모양) — 변동성 돌파 · 1시간 봉. */
+export function makeEntryWait(over: Partial<EntryWait> = {}): EntryWait {
+  return {
+    rule: "I",
+    interval: "1h",
+    interval_label: "1시간",
+    realtime: false,
+    sentence: "가격이 102.00 위로 올라가면 사요.",
+    distance: "지금 101.00 · +1.0% 더 오르면",
+    gap: "+1.0%",
+    reached: false,
+    meter: {
+      from: { label: "이 봉 시가", value: "100.00" },
+      to: { label: "사는 선", value: "102.00" },
+      now: "101.00",
+      progress: 0.5,
+    },
+    buy_line: { price: 102, label: "사는 선 102.00" },
+    next_check_ms: null,
+    checks: 3,
+    last_check_ms: null,
+    typical: { episodes: 21, span_ms: 30 * 86_400_000, avg_ms: 9 * 3_600_000, longest_ms: 2 * 86_400_000 },
+    log: [],
     ...over,
   };
 }

@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunnerContext, type RunnerContextValue } from "../../state/context";
-import { binanceMacro, makeRun, makeSlot, makeState, upbitMacro } from "../../test/fixtures";
+import { binanceMacro, makeEntryWait, makeRun, makeSlot, makeState, upbitMacro } from "../../test/fixtures";
 import { RunCard } from "./RunCard";
 import { StatusCard } from "./StatusCard";
 
@@ -329,5 +329,58 @@ describe("목록 카드와 상태 카드의 %", () => {
     const card = container.querySelector(".pnl-pct")?.textContent;
     expect(list).toBe("-0.05%");
     expect(card).toBe(list);
+  });
+});
+
+describe("진입 대기", () => {
+  it("안 샀으면 평가손익 자리에 조건 · 거리 · 막대, 아래에 세 칸, 차트에 사는 선", () => {
+    const { container } = render(
+      <StatusCard
+        run={makeRun({ entryWait: makeEntryWait() })}
+        macro={binanceMacro}
+        phase="running"
+        mode="mock"
+        status={{ text: "진입 대기", tone: "ok" }}
+        prices={[100, 100.5, 101]}
+      />,
+    );
+    expect(screen.getByText("진입 조건 · 모의")).toBeTruthy();
+    expect(screen.getByText("가격이 102.00 위로 올라가면 사요.")).toBeTruthy();
+    expect(screen.getByText("지금 101.00 · +1.0% 더 오르면")).toBeTruthy();
+    expect(screen.getByRole("img", { name: /이 봉 시가 100.00에서 사는 선 102.00까지 중 지금 101.00/ })).toBeTruthy();
+    expect(screen.getByText("평소 기다린 시간")).toBeTruthy();
+    expect(screen.getByText("약 9시간")).toBeTruthy();
+    expect(screen.getByText("3번")).toBeTruthy();
+    expect(container.querySelector(".chart-tag.is-buy")?.textContent).toContain("사는 선 102.00");
+    expect(screen.queryByText(/평가손익/)).toBeNull();
+  });
+
+  it("실시간 규칙(밴드)은 다음 확인 대신 '실시간'", () => {
+    render(
+      <StatusCard
+        run={makeRun({ entryWait: makeEntryWait({ realtime: true, checks: null, typical: null }) })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    expect(screen.getByText("실시간")).toBeTruthy();
+    expect(screen.getByText("가격이 닿는 순간")).toBeTruthy();
+    expect(screen.getByText("계속")).toBeTruthy();
+  });
+
+  it("샀으면 평소처럼 평가손익", () => {
+    render(
+      <StatusCard
+        run={makeRun({ inPosition: true, qty: 1, entryPrice: 102, entryWait: makeEntryWait() })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    expect(screen.getByText("평가손익 · 지금 정리하면")).toBeTruthy();
+    expect(screen.queryByText("가격이 102.00 위로 올라가면 사요.")).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import type {
   Activity,
   AppLogEntry,
   AppState,
+  EntryPreview,
   Exchange,
   KeyField,
   KeySlot,
@@ -38,6 +39,8 @@ export interface CommandMap {
   set_run_mode: { args: RunArg & { mode: RunMode }; ret: void };
   start_run: { args: RunArg; ret: StartReply };
   start_run_confirmed: { args: RunArg; ret: StartReply };
+  entry_preview: { args: RunArg; ret: EntryPreview };
+  set_entry_notify: { args: RunArg & { on: boolean }; ret: void };
   stop_run: { args: RunArg & { mode: StopMode }; ret: void };
   copy_activity: { args: RunArg; ret: void };
   open_market_page: { args: RunArg; ret: void };

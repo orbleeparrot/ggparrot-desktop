@@ -17,7 +17,16 @@ import {
   type MockRun,
   type Model,
 } from "./mockData";
-import { activityText, beginRun, holdAt, stopActivities, tickRun, type Emit } from "./mockActivity";
+import {
+  activityText,
+  beginRun,
+  holdAt,
+  mockEntryWait,
+  stopActivities,
+  tickRun,
+  waitsForEntry,
+  type Emit,
+} from "./mockActivity";
 import { conflictMessage, filled, isActive, keySlotOf, marketPageOf, snapshot } from "./mockSnapshot";
 import { createWizard, type WizardTarget } from "./mockWizard";
 import { formatClock } from "./state/format";
@@ -25,6 +34,7 @@ import { MAX_ACTIVITY } from "./state/activity";
 import { SIDE_LABELS } from "./state/runs";
 import type {
   Activity,
+  EntryPreview,
   AppLogEntry,
   AppLogLevel,
   AppLogSource,
@@ -426,6 +436,13 @@ export function createMockBackend(
       if (isActive(r)) return { kind: "blocked", message: "이미 실행 중이에요." };
       return start(r);
     },
+    entry_preview: ({ runId }): EntryPreview => {
+      const r = findRun(runId);
+      if (!waitsForEntry(r.macro.strategy)) return { waiting: false };
+      const w = mockEntryWait(Date.now(), 0);
+      return { waiting: true, sentence: w.sentence, typical: w.typical, interval_label: w.interval_label };
+    },
+    set_entry_notify: () => undefined,
     stop_run: ({ runId, mode }) => stop(findRun(runId), mode as StopMode),
     copy_activity: ({ runId }) => {
       const text = activityText(activity.get(String(runId)) ?? [], formatClock);

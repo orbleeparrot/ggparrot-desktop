@@ -1,5 +1,5 @@
 // 상태 카드의 현재가 그래프 — 선(Sparkline) 위에 숫자 꼬리표를 HTML로 얹음.
-// - 오른쪽 칸: 지금 가격(선 끝 높이)·평단(점선 높이). 너무 가까우면 하나를 비켜 놓음(spreadLabels).
+// - 오른쪽 칸: 지금 가격(선 끝 높이)·평단(점선 높이)·진입 대기의 사는 선. 너무 가까우면 비켜 놓음(spreadLabels).
 // - 그래프 안 왼쪽 위·아래: 이 구간의 최고·최저. 아래 줄: 그래프가 덮는 시간("실행 시작부터 · 1시간 20분").
 // - 가로축은 받은 시각 — 오래된 점을 줄여도(priceTrail.ts) 시간 비례가 그대로임.
 // - SVG는 preserveAspectRatio="none"이라 글자를 SVG 안에 두면 찌그러짐 — 그래서 HTML로 둠.
@@ -20,12 +20,14 @@ interface Props {
   /** 점마다 받은 시각(epoch ms) — 가로축. 없거나 길이가 다르면 점 순서대로 고르게 놓음. */
   times?: number[];
   entry?: number;
+  /** 진입 대기의 사는 선 — 아직 안 산 동안만(서버 entry_wait.buy_line). */
+  buy?: number;
   quote: MacroInfo["quote"];
   /** 그래프가 덮는 시간 이름(priceTrail.ts trailSpanLabel). ""이면 표시하지 않음. */
   span: string;
 }
 
-export function PriceChart({ points, times, entry, quote, span }: Props) {
+export function PriceChart({ points, times, entry, buy, quote, span }: Props) {
   if (points.length < 2) {
     return (
       <div className="price-chart is-empty" aria-hidden="true">
@@ -37,13 +39,16 @@ export function PriceChart({ points, times, entry, quote, span }: Props) {
   }
   const entryPrice = entry && entry > 0 ? entry : 0;
   const hasEntry = entryPrice > 0;
-  const range = chartRange(points, entryPrice);
+  const buyPrice = !hasEntry && buy && buy > 0 ? buy : 0;
+  const hasBuy = buyPrice > 0;
+  const range = chartRange(points, entryPrice, buyPrice);
   const last = points[points.length - 1];
   const high = Math.max(...points);
   const low = Math.min(...points);
   const lastY = chartY(last, range, PLOT_PX);
-  const [priceTop, entryTop] = spreadLabels(
-    hasEntry ? [lastY, chartY(entryPrice, range, PLOT_PX)] : [lastY],
+  const line = hasEntry ? entryPrice : buyPrice;
+  const [priceTop, lineTop] = spreadLabels(
+    line > 0 ? [lastY, chartY(line, range, PLOT_PX)] : [lastY],
     PLOT_PX,
     TAG_GAP,
     TAG_HALF,
@@ -52,7 +57,7 @@ export function PriceChart({ points, times, entry, quote, span }: Props) {
   return (
     <div className={`price-chart dir-${chartDirection(points)}`} aria-hidden="true">
       <div className="chart-plot" style={{ height: PLOT_PX }}>
-        <Sparkline points={points} times={times} entry={entryPrice} height={PLOT_PX} head={false} />
+        <Sparkline points={points} times={times} entry={entryPrice} buy={buyPrice} height={PLOT_PX} head={false} />
         <span className="chart-dot" style={{ top: lastY }} />
         {high !== low && (
           <>
@@ -63,8 +68,13 @@ export function PriceChart({ points, times, entry, quote, span }: Props) {
       </div>
       <div className="chart-gutter" style={{ height: PLOT_PX }}>
         {hasEntry && (
-          <span className="chart-tag is-entry num" style={{ top: entryTop }}>
+          <span className="chart-tag is-entry num" style={{ top: lineTop }}>
             평단 {formatPrice(entryPrice, quote)}
+          </span>
+        )}
+        {hasBuy && (
+          <span className="chart-tag is-buy num" style={{ top: lineTop }}>
+            사는 선 {formatPrice(buyPrice, quote)}
           </span>
         )}
         <span className="chart-tag is-price num" style={{ top: priceTop }}>

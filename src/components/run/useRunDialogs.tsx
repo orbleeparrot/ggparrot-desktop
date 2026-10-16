@@ -1,13 +1,15 @@
 // 시작·종료·빼기 흐름과 그 대화상자. start_run의 답(실전 확인·막힘·확인 중)을 여기서 처리함.
 // 답이 도우미(wizard)면 Rust가 이미 도우미를 열었으므로 여기서는 하지 않음.
 // 시작 전 검사가 끝난 뒤 Rust가 보내는 runner:confirm도 같은 실전 확인 시트를 띄움.
-import { ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
+// 조건을 기다리는 매크로는 [시작] 직후 서버에 물어(entry_preview) '바로 사지 않아요' 시트를 먼저 띄움.
+import { Hourglass, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { on, type ConfirmPayload } from "../../ipc";
 import type { Act } from "../../state/context";
 import { settingsTargetOf, stopChoices, type SettingsTarget } from "../../state/runs";
-import { EV_CONFIRM, type AppState, type StartReply, type StopMode } from "../../types";
+import { EV_CONFIRM, type AppState, type EntryPreview, type StartReply, type StopMode } from "../../types";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { rough } from "./EntryWait";
 
 interface Deps {
   state: AppState | null;
@@ -28,6 +30,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   const [blocked, setBlocked] = useState<{ runId: string; message: string } | null>(null);
   const [stopAsk, setStopAsk] = useState<{ runId: string; mode: StopMode } | null>(null);
   const [removeAsk, setRemoveAsk] = useState<string | null>(null);
+  const [waitAsk, setWaitAsk] = useState<{ runId: string; preview: EntryPreview; notify: boolean } | null>(null);
   const sending = useRef(new Set<string>());
 
   useEffect(() => {
@@ -70,7 +73,22 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
     [act, handle],
   );
 
-  const startRun = useCallback((runId: string) => void send(runId, "start_run"), [send]);
+  // 기다리는 매크로면 먼저 안내 시트 — 서버가 답하지 않으면 안내 없이 바로 시작(막지 않음).
+  const startRun = useCallback(
+    (runId: string) =>
+      void (async () => {
+        if (sending.current.has(runId)) return;
+        let preview: EntryPreview | undefined;
+        try {
+          preview = await act("entry_preview", { runId });
+        } catch {
+          preview = undefined;
+        }
+        if (preview?.waiting && preview.sentence) setWaitAsk({ runId, preview, notify: true });
+        else void send(runId, "start_run");
+      })(),
+    [act, send],
+  );
   const askStop = useCallback((runId: string, mode: StopMode) => setStopAsk({ runId, mode }), []);
   const askRemove = useCallback((runId: string) => setRemoveAsk(runId), []);
 
@@ -84,8 +102,55 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   const stopChoice = stopAsk && stopSlot ? stopChoices(stopSlot).find((c) => c.mode === stopAsk.mode) : undefined;
   const blockedTarget = blocked ? settingsTargetOf(find(blocked.runId)?.readiness.needs ?? null) : null;
 
+  const typical = waitAsk?.preview.typical ?? null;
   const dialogs = (
     <>
+      {waitAsk && (
+        <ConfirmDialog
+          variant="sheet"
+          icon={<Hourglass size={20} />}
+          title="이 매크로는 바로 사지 않아요"
+          onClose={() => setWaitAsk(null)}
+          cancel={{ label: "취소" }}
+          confirm={{
+            label: "기다리며 시작",
+            className: "btn-primary",
+            run: () => {
+              void act("set_entry_notify", { runId: waitAsk.runId, on: waitAsk.notify });
+              void send(waitAsk.runId, "start_run");
+            },
+          }}
+          large
+        >
+          <p className="dialog-meta num">{name(waitAsk.runId)}</p>
+          <p>{waitAsk.preview.sentence} 조건이 맞을 때만 사요.</p>
+          {typical && (
+            <dl className="ew-facts">
+              <div>
+                <dt>평소 기다린 시간</dt>
+                <dd className="num">{typical.avg_ms ? rough(typical.avg_ms) : "드묾"}</dd>
+              </div>
+              <div>
+                <dt>최근 {rough(typical.span_ms).replace("약 ", "")}</dt>
+                <dd className="num">{typical.episodes}번 진입</dd>
+              </div>
+              <div>
+                <dt>가장 길게 기다린 때</dt>
+                <dd className="num">{typical.longest_ms ? rough(typical.longest_ms) : "—"}</dd>
+              </div>
+            </dl>
+          )}
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={waitAsk.notify}
+              onChange={(e) => setWaitAsk({ ...waitAsk, notify: e.target.checked })}
+            />
+            <span>사면 알림으로 알려 주기</span>
+          </label>
+        </ConfirmDialog>
+      )}
+
       {live && (
         <ConfirmDialog
           variant="sheet"

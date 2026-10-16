@@ -37,6 +37,13 @@ function End({ slot }: { slot: RunSlot }) {
   const run = slot.run;
   if (isIdle(slot.phase)) return <span className="run-card-x-slot" aria-hidden="true" />;
   if (!run || run.finished || slot.phase !== "running") return null;
+  if (!run.inPosition && run.entryWait && !run.finished) {
+    return (
+      <span className="run-card-wait num" title={`${run.entryWait.sentence} ${run.entryWait.distance}`}>
+        {run.entryWait.gap || "진입 대기"}
+      </span>
+    );
+  }
   if (!run.inPosition) return <span className="run-card-flat">무포지션</span>;
   return (
     <span className={`run-card-pct num tone-${toneOf(run.unrealizedPct)}`}>{formatPercent(run.unrealizedPct)}</span>

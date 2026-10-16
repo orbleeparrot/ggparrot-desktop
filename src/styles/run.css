@@ -1315,3 +1315,123 @@
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
 }
+
+/* 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 평가손익 자리 · 세 칸 · 사는 선 · 목록 카드.
+   위계는 글자 크기 · 굵기로만(조건 문장 20 → 거리 14 → 세 칸 값 17 · 라벨 12). 흐린 글은 라벨에만. */
+.entry-wait {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ew-sentence {
+  margin: 2px 0 0;
+  font-size: 20px;
+  font-weight: var(--fw-bold);
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-wrap: balance;
+  word-break: keep-all;
+}
+.ew-distance {
+  margin: 0;
+  font-size: 14px;
+  font-weight: var(--fw-bold);
+  color: var(--ink);
+}
+.entry-wait.is-reached .ew-distance {
+  color: var(--ok-ink);
+}
+.ew-meter {
+  margin-top: 8px;
+}
+.ew-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.ew-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--at, 0%);
+  border-radius: 3px;
+  background: var(--brand);
+}
+.entry-wait.is-reached .ew-fill {
+  background: var(--ok);
+}
+.ew-pin {
+  position: absolute;
+  left: var(--at, 0%);
+  top: -5px;
+  width: 2px;
+  height: 16px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+.ew-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.ew-ends b {
+  color: var(--ink);
+}
+.ew-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.ew-facts > div {
+  min-width: 0;
+}
+/* 시작 전 안내 시트 — 세 칸 아래 '사면 알림' 줄과 띄움. */
+.dialog-body .ew-facts + .check-row {
+  margin-top: 16px;
+}
+.ew-facts dt {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+}
+.ew-facts dd {
+  margin: 1px 0 0;
+  font-size: 17px;
+  font-weight: var(--fw-bold);
+  color: var(--ink);
+  line-height: 1.3;
+}
+.ew-facts dd.ew-sub {
+  margin-top: 0;
+  font-size: var(--fs-small);
+  color: var(--ink);
+  font-weight: var(--fw-regular);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chart-tag.is-buy {
+  border: 1px solid var(--brand-deep);
+  background: var(--card);
+  color: var(--brand-deep);
+  line-height: 16px;
+}
+.sparkline-buy {
+  stroke: var(--brand-deep);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.run-card-wait {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  color: var(--brand-deep);
+  white-space: nowrap;
+}
