@@ -463,6 +463,23 @@ for (const vp of VIEWPORTS) {
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       await expect(page.locator(`#${await toggle.getAttribute("aria-controls")}`)).toBeVisible();
+      // 펼친 칸은 반쪽 폭으로 홀로 남지 않음 — 같은 줄에 짝이 있거나 한 줄을 다 씀(옆이 비지 않게).
+      // 펼친 칸이 짝수면 하나 더 펼쳐 홀수(짝 없는 칸이 생기는 경우)를 만듦.
+      const openCount = await page.locator(".slot-card:not(.is-collapsed)").count();
+      if (openCount % 2 === 0) await page.locator(".slot-card.is-collapsed .slot-toggle").first().click();
+      expect((await page.locator(".slot-card:not(.is-collapsed)").count()) % 2).toBe(1);
+      const lonely = await page.evaluate(() => {
+        const grid = document.querySelector(".slot-grid")!.getBoundingClientRect();
+        const cards = Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => ({
+          id: el.id,
+          r: el.getBoundingClientRect(),
+        }));
+        return cards
+          .filter(({ r }) => r.width < grid.width - 2)
+          .filter(({ id, r }) => !cards.some((o) => o.id !== id && Math.abs(o.r.top - r.top) < 2))
+          .map(({ id }) => id);
+      });
+      expect(lonely, "짝 없이 반쪽 폭인 칸").toEqual([]);
       // 연결됨이어도 고쳐야 할 안내(업비트 잔고 부족)는 주의 색 줄.
       await expect(page.locator("#settings-slot-upbit .note-warn")).toContainText("잔고가 모자라요");
 

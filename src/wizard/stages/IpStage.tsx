@@ -15,8 +15,9 @@ const PUBLIC_IP_CAVEAT =
 export function restrictLead(market: WizardState["market"]): string {
   const permission = market === "futures" ? "Enable Futures" : "Enable Spot & Margin & Stock Trading";
   return (
-    "API Management의 키 카드에서 Edit restrictions를 누르고 Restrict access to trusted IPs only를 골라 " +
-    `이 기기 주소를 넣으세요. 주문 권한(${permission})도 켜고 Save를 누르면 돌아와 바로 연결을 확인해요.`
+    "API Management의 키 카드에서 Edit restrictions를 누르고 Restrict access to trusted IPs only를 고르면 " +
+    "나오는 칸에 이 기기 주소를 넣고 Confirm을 누르세요. " +
+    `주문 권한(${permission})도 켜고 Save를 누르면 돌아와 바로 연결을 확인해요.`
   );
 }
 

@@ -226,7 +226,7 @@ export function snapshot(m: Model): AppState {
       serverCustom: false,
       os: "macOS 15.6.1 (arm64)",
       publicIp: m.publicIp,
-      serverLinkLevel: "19",
+      serverLinkLevel: "20",
     },
     library: {
       dir: LIBRARY_DIR,

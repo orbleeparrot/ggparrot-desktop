@@ -176,7 +176,7 @@ export interface SettingsState {
   os: string;
   /** 공인 IP — 연결 도우미와 같은 조회 결과(120초가 지나면 expired). */
   publicIp: { status: "idle" | "loading" | "ok" | "expired" | "error"; address: string };
-  /** 서버 연동 레벨(정수 문자열, "19") — 서버가 기능별 최소 레벨과 비교하는 값. */
+  /** 서버 연동 레벨(정수 문자열, 예 "20") — 서버가 기능별 최소 레벨과 비교하는 값. 앱 버전 가운데 숫자와 같음. */
   serverLinkLevel: string;
 }
 

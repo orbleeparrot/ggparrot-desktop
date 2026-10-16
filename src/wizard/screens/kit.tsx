@@ -96,6 +96,11 @@ export function InputBox(p: {
   line: string;
   focus: string;
   radius?: number;
+  /** 어두운 화면(바이낸스)용 — 칸 바탕·입력 글자·안내 글 색, 안내 글 크기. */
+  fill?: string;
+  ink?: string;
+  hint?: string;
+  hintSize?: number;
 }) {
   const typed = p.s.typed[p.name] ?? "";
   const focused = p.s.focus.has(p.name);
@@ -108,17 +113,17 @@ export function InputBox(p: {
         width={p.x1 - p.x0}
         height={p.y1 - p.y0}
         rx={p.radius ?? 0}
-        fill="#FFFFFF"
+        fill={p.fill ?? "#FFFFFF"}
         stroke={focused ? p.focus : p.line}
         strokeWidth={focused ? 1.5 : 1}
       />
       {typed ? (
-        <T x={p.x0 + 10} y={cy} bold>
+        <T x={p.x0 + 10} y={cy} bold fill={p.ink}>
           {typed}
           {focused && <tspan className="ex-caret">|</tspan>}
         </T>
       ) : (
-        <T x={p.x0 + 10} y={cy} fill={PLACEHOLDER}>
+        <T x={p.x0 + 10} y={cy} fill={p.hint ?? PLACEHOLDER} size={p.hintSize}>
           {p.placeholder}
         </T>
       )}

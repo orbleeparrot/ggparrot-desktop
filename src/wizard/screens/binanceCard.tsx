@@ -6,6 +6,7 @@ import {
   BN_INK,
   BN_KEYS,
   BN_LINE,
+  BN_MUTE,
   BN_PANEL,
   BN_RED,
   BN_YELLOW,
@@ -16,7 +17,7 @@ import {
   tw,
   type Dark,
 } from "./binanceKit";
-import { CheckMark, T } from "./kit";
+import { CheckMark, InputBox, T } from "./kit";
 import { W, type Scene, type SceneState } from "./types";
 
 // 실거래 키 카드의 API restrictions(3열). 선물 계정을 열기 전에 만든 키에는 Enable Futures가 없음.
@@ -280,13 +281,20 @@ function darkExisting(env: Dark): Scene {
 
 const R_REST = CARD_Y + 40;
 const R_IP = restrictionsBottom("live", R_REST) + 6;
-const R_BOTTOM = ipAccessBottom(R_IP) + 14;
+// 'Restrict access…'를 고르면 그 아래 나오는 IP 입력 칸 — 노란 테두리·안내 글·오른쪽 Confirm(바이낸스 화면 2026-10-15).
+const IPBOX_X0 = CX0 + 30;
+const IPBOX_Y0 = ipAccessBottom(R_IP) + 8;
+const IPBOX_X1 = Math.min(CX1 - 14, IPBOX_X0 + 440);
+const IPBOX_Y1 = IPBOX_Y0 + 30;
+const IPBOX_HINT = "When entering more than one IP address, please separate them with spaces.";
+const CONFIRM_X = IPBOX_X1 - 12;
+const R_BOTTOM = IPBOX_Y1 + 14;
 const R_H = R_BOTTOM + 12;
 const CANCEL_W = tw("Cancel", SMALL) + 20;
 const SAVE_W = tw("Save", SMALL) + 24;
 const SAVE_X1 = CX1 - 14 - CANCEL_W - 8;
 
-/** 키 카드의 Edit restrictions → 'Restrict access to trusted IPs only' → 주문 권한 → Save.
+/** 키 카드의 Edit restrictions → 'Restrict access to trusted IPs only' → 이 기기 주소 입력·Confirm → 주문 권한 → Save.
  *  카드 머리·API restrictions·IP access restrictions만 그림(키 줄은 앞 단계에서 이미 복사함). */
 export const binanceLiveRestrict: Scene = {
   url: DARK_URL.live,
@@ -295,6 +303,8 @@ export const binanceLiveRestrict: Scene = {
   targets: {
     edit: editTarget(CARD_Y),
     restrict: [CX0 + 21, R_IP + IP_TITLE_GAP + 40],
+    ipin: [IPBOX_X0 + Math.min(200, (IPBOX_X1 - IPBOX_X0) * 0.45), (IPBOX_Y0 + IPBOX_Y1) / 2],
+    confirm: [CONFIRM_X - tw("Confirm", 12, true) / 2, (IPBOX_Y0 + IPBOX_Y1) / 2],
     trade: (() => {
       const [x, y] = restrictionAt(LIVE_RESTRICTIONS.indexOf(TRADE), R_REST);
       return [x + 6.5, y + 6.5] as const;
@@ -309,7 +319,15 @@ export const binanceLiveRestrict: Scene = {
     { t: "move", to: "restrict" },
     { t: "click" },
     { t: "on", name: "restrict" },
-    { t: "wait", ms: 700 },
+    { t: "show", layer: "ipbox" },
+    { t: "wait", ms: 400 },
+    { t: "move", to: "ipin" },
+    { t: "click" },
+    { t: "focus", input: "ipin" },
+    { t: "type", input: "ipin" },
+    { t: "move", to: "confirm" },
+    { t: "click" },
+    { t: "wait", ms: 500 },
     { t: "move", to: "trade" },
     { t: "click" },
     { t: "on", name: "trade" },
@@ -326,6 +344,29 @@ export const binanceLiveRestrict: Scene = {
         <CardHead env="live" y={CARD_Y} />
         <Restrictions s={s} env="live" y={R_REST} />
         <IpAccess y={R_IP} enabled={editing} restricted={s.on.has("restrict")} />
+        {s.layers.has("ipbox") && (
+          <g className="ex-layer">
+            <InputBox
+              s={s}
+              name="ipin"
+              x0={IPBOX_X0}
+              y0={IPBOX_Y0}
+              x1={IPBOX_X1}
+              y1={IPBOX_Y1}
+              placeholder={fit(IPBOX_HINT, IPBOX_X1 - IPBOX_X0 - 90, SMALL)}
+              line={BN_GOLD}
+              focus={BN_GOLD}
+              radius={6}
+              fill={BN_BG}
+              ink={BN_INK}
+              hint={BN_MUTE}
+              hintSize={SMALL}
+            />
+            <T x={CONFIRM_X} y={(IPBOX_Y0 + IPBOX_Y1) / 2} bold fill="#5E6673" anchor="end">
+              Confirm
+            </T>
+          </g>
+        )}
         {/* Edit restrictions를 누르면 머리 오른쪽이 Save·Cancel로 바뀌고 IP 칸을 고를 수 있게 됨. */}
         {editing && (
           <g className="ex-layer">

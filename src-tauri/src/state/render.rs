@@ -745,7 +745,7 @@ pub(crate) struct SettingsDto {
     os: String,
     /// 공인 IP(정보 화면) — 연결 도우미와 같은 조회 결과.
     public_ip: PublicIpDto,
-    /// 서버 연동 레벨(`runner_core::SERVER_LINK_LEVEL`, "19").
+    /// 서버 연동 레벨(`runner_core::SERVER_LINK_LEVEL`, 앱 버전 가운데 숫자 — 예 "20").
     server_link_level: String,
 }
 

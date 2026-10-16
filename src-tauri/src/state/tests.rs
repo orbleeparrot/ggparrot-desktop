@@ -110,8 +110,8 @@ fn support_text_has_environment_but_no_keys() {
     let now = chrono::Local::now();
     let text = c.support_text("0.19.0", "macOS 15.6 (arm64)", now);
     assert!(!text.contains("SECRET"), "키·회원 키 값은 넣지 않음: {text}");
-    for want in
-        ["앱 버전: v0.19.0", "서버 연동 레벨: 19", "OS: macOS 15.6 (arm64)", "공인 IP: 확인 전", "회원 키: 입력됨"]
+    let level = format!("서버 연동 레벨: {}", runner_core::SERVER_LINK_LEVEL);
+    for want in ["앱 버전: v0.19.0", &level, "OS: macOS 15.6 (arm64)", "공인 IP: 확인 전", "회원 키: 입력됨"]
     {
         assert!(text.contains(want), "{want:?} 없음: {text}");
     }

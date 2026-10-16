@@ -140,7 +140,7 @@ export function makeSettings(over: Partial<SettingsState> = {}): SettingsState {
     serverCustom: true,
     os: "macOS 15.6.1 (arm64)",
     publicIp: { status: "ok", address: "203.0.113.7" },
-    serverLinkLevel: "19",
+    serverLinkLevel: "20",
     ...over,
   };
 }

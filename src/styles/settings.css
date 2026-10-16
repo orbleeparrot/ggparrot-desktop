@@ -210,6 +210,10 @@
   box-shadow: none;
   background: color-mix(in srgb, var(--card) 70%, var(--bg));
 }
+/* 펼친 칸 가운데 짝이 없는 칸 — 반쪽 폭으로 두면 옆이 비어 한 줄을 다 씀(SettingsScreen wideSlots). */
+.slot-card.is-wide {
+  grid-column: 1 / -1;
+}
 .slot-card.is-collapsed .slot-title {
   font-size: var(--fs-body);
 }

@@ -3,7 +3,6 @@
 //   펼치면 키 칸이 보임. 접혀 있어도 고쳐야 할 안내(warn)는 그대로 보임.
 // - 안내 색은 Rust가 주는 noteTone("warn"·"muted"). 없으면 막힘(blocked)·확인 실패·잔고·권한·허용 IP 문구로 짐작함.
 import { ChevronRight, LoaderCircle, RefreshCw, TriangleAlert, Wand2 } from "lucide-react";
-import { useState } from "react";
 import { useRunnerContext } from "../../state/context";
 import { noteToneOf, slotInUse } from "../../state/slots";
 import type { SlotCard } from "../../types";
@@ -32,11 +31,14 @@ function badgeTone(s: SlotCard): string {
 
 interface Props {
   slot: SlotCard;
-  /** [설정에서 입력]으로 이 칸에 데려올 때의 번호 — 바뀌면 접힌 칸을 펼침(키 칸에 포커스를 둘 수 있게). */
-  openSeq?: number;
+  /** 쓰지 않는 칸을 펼쳤는지 — 설정 화면이 들고 있음(두 칸 배치에서 짝 없는 칸을 넓히려고). 쓰는 칸은 늘 펼침. */
+  open: boolean;
+  onToggle(open: boolean): void;
+  /** 한 줄을 다 씀 — 펼친 칸 가운데 짝이 없는 칸(wideSlots). */
+  wide?: boolean;
 }
 
-export function SlotCardView({ slot, openSeq }: Props) {
+export function SlotCardView({ slot, open, onToggle, wide = false }: Props) {
   const { act } = useRunnerContext();
   const filled = slot.accessFilled && slot.secretFilled;
   const id = `settings-slot-${slot.slot}`;
@@ -46,20 +48,13 @@ export function SlotCardView({ slot, openSeq }: Props) {
   const binanceNote = BINANCE_NOTES[slot.slot];
   const warn = noteToneOf(slot) === "warn";
   const collapsible = !slotInUse(slot);
-  const [open, setOpen] = useState(false);
-  // 데려오기 번호가 바뀌면 펼침 — 렌더 중에 맞춰 같은 커밋에서 키 칸이 생기게 함(goToSettings가 바로 찾음).
-  const [seenSeq, setSeenSeq] = useState<number | undefined>(undefined);
-  if (openSeq !== undefined && openSeq !== seenSeq) {
-    setSeenSeq(openSeq);
-    setOpen(true);
-  }
   const expanded = !collapsible || open;
   const bodyId = `${id}-body`;
 
   return (
     <article
       id={id}
-      className={`slot-card status-${slot.status} ${expanded ? "" : "is-collapsed"}`}
+      className={`slot-card status-${slot.status} ${expanded ? "" : "is-collapsed"} ${wide ? "is-wide" : ""}`}
       tabIndex={-1}
       aria-labelledby={`${id}-title`}
     >
@@ -97,7 +92,7 @@ export function SlotCardView({ slot, openSeq }: Props) {
             aria-controls={bodyId}
             aria-label={`${slot.label} 키 칸 ${expanded ? "접기" : "펼치기"}`}
             title={expanded ? "접기" : "키 직접 넣기"}
-            onClick={() => setOpen(!expanded)}
+            onClick={() => onToggle(!expanded)}
           >
             <ChevronRight size={15} strokeWidth={2.4} className={`chevron ${expanded ? "is-open" : ""}`} />
           </button>

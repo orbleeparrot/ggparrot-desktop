@@ -316,16 +316,19 @@ describe("설정 목차 · 기억한 키", () => {
     return screen.findByRole("navigation", { name: "설정 목차" });
   };
 
-  it("목차는 보이는 묶음을 aria-current로 밝힘 — 굴리면(IntersectionObserver) 따라가고, 누르면 바로", async () => {
-    let notify: ((entries: Partial<IntersectionObserverEntry>[]) => void) | null = null;
-    class FakeObserver {
-      constructor(cb: (entries: Partial<IntersectionObserverEntry>[]) => void) {
-        notify = cb;
-      }
-      observe() {}
-      disconnect() {}
-    }
-    vi.stubGlobal("IntersectionObserver", FakeObserver);
+  it("목차는 읽는 묶음을 aria-current로 밝힘 — 제목이 위쪽 35% 선을 넘은 마지막 묶음, 맨 아래면 절반 선, 누르면 바로", async () => {
+    // jsdom에는 배치가 없어 묶음 제목 위치·본문 높이를 직접 정함.
+    const tops: Record<string, number> = {
+      "settings-exchanges": 20,
+      "settings-account": 700,
+      "settings-library": 900,
+      "settings-display": 1100,
+      "settings-about": 1300,
+      "settings-log": 1500,
+    };
+    const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      return { top: tops[this.id] ?? 0 } as DOMRect;
+    });
     try {
       const nav = await openSettings();
       const current = () =>
@@ -334,18 +337,33 @@ describe("설정 목차 · 기억한 키", () => {
           .filter((b) => b.getAttribute("aria-current") === "true")
           .map((b) => b.textContent);
       expect(current()).toEqual(["거래소 연결"]);
-      const section = (id: string) => document.getElementById(`settings-${id}`)!;
-      act(() =>
-        notify!([
-          { target: section("exchanges"), isIntersecting: false },
-          { target: section("library"), isIntersecting: true },
-        ]),
-      );
+      const root = document.querySelector<HTMLElement>(".settings-body")!;
+      const box = { clientHeight: 600, scrollHeight: 2000, scrollTop: 300 };
+      for (const [k, v] of Object.entries(box)) Object.defineProperty(root, k, { configurable: true, value: v });
+      const scrollTo = (t: Record<string, number>) => {
+        Object.assign(tops, t);
+        fireEvent.scroll(root);
+      };
+      // 선(600 × 0.35 = 210) 위로 올라온 마지막 묶음 — 앞 묶음 꼬리가 보여도 매크로 폴더.
+      scrollTo({
+        "settings-exchanges": -900,
+        "settings-account": -300,
+        "settings-library": 120,
+        "settings-display": 260,
+        "settings-about": 700,
+        "settings-log": 1100,
+      });
       expect(current()).toEqual(["매크로 폴더"]);
+      // 맨 아래 — 선이 절반(300)으로 내려감. 짧은 앱 기록이 아래 절반이면 정보, 위 절반이면 앱 기록.
+      Object.defineProperty(root, "scrollTop", { configurable: true, value: 1400 });
+      scrollTo({ "settings-display": -200, "settings-about": 40, "settings-log": 420 });
+      expect(current()).toEqual(["정보"]);
+      scrollTo({ "settings-about": -100, "settings-log": 280 });
+      expect(current()).toEqual(["앱 기록"]);
       fireEvent.click(within(nav).getByRole("button", { name: "정보" }));
       expect(current()).toEqual(["정보"]);
     } finally {
-      vi.unstubAllGlobals();
+      rect.mockRestore();
     }
   });
 

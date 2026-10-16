@@ -85,7 +85,7 @@ fn payload_has_no_secrets_and_version() {
     let p = session_payload(&m, true, RunMode::Testnet);
     assert_eq!(p["symbol"], "BTCUSDT");
     assert_eq!(p["market"], "futures");
-    assert_eq!(p["runner_version"], "19");
+    assert_eq!(p["runner_version"], crate::SERVER_LINK_LEVEL);
     assert_eq!(p["mode"], "testnet");
     assert!(p.get("api_key").is_none());
 }

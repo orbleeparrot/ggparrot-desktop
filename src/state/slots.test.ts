@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { slotCard } from "../test/fixtures";
-import { arrangeSlots, noteToneOf, slotInUse, slotOrder } from "./slots";
+import { arrangeSlots, noteToneOf, slotInUse, slotOrder, wideSlots } from "./slots";
 
 describe("거래소 연결 칸 순서·접기", () => {
   const slots = [
@@ -53,5 +53,21 @@ describe("거래소 연결 칸 순서·접기", () => {
       ),
     ).toBe("warn");
     expect(noteToneOf(slotCard("upbit", { ...derived, status: "connected", note: "저장 위치 안내" }))).toBe("muted");
+  });
+});
+
+describe("펼친 칸 넓히기(두 칸 배치)", () => {
+  it("펼친 칸이 하나뿐이면 한 줄을 다 씀", () => {
+    expect(wideSlots([false, false, true, false, false])).toEqual([false, false, true, false, false]);
+  });
+
+  it("이어진 펼친 칸은 둘씩 짝짓고, 홀수면 마지막 칸만 넓힘", () => {
+    expect(wideSlots([true, true, false])).toEqual([false, false, false]);
+    expect(wideSlots([true, true, true, false, false])).toEqual([false, false, true, false, false]);
+    expect(wideSlots([true, false, true, true])).toEqual([true, false, false, false]);
+  });
+
+  it("접힌 칸은 넓히지 않음(CSS가 늘 한 줄로 둠)", () => {
+    expect(wideSlots([false, false])).toEqual([false, false]);
   });
 });
