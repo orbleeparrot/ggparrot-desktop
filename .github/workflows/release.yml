@@ -2,11 +2,11 @@ name: release
 
 # main에 들어온 커밋의 CI가 통과하면 자동으로 그 버전(src-tauri/Cargo.toml)의 릴리스 **초안**을 만듦.
 #   - macOS·Windows 설치 파일과 앱 업데이트 파일(서명·latest.json)을 초안에 붙임 — 초안에서 바로 내려받아 시험할 수 있음.
-#   - 본문은 CHANGELOG에서 자동으로(사용자용 분류만, 배포하지 않은 칸 합침, scripts/release-notes.mjs --preview).
+#   - 본문은 CHANGELOG에서 자동으로(사용자용 분류만, 지난 배포 태그 뒤의 칸 합침, scripts/release-notes.mjs).
 #   - 같은 흐름의 이전 초안은 지우고 새로 만듦(최신 커밋 하나만 초안으로 남음).
-#   - 그 버전이 이미 공개됐으면 건너뜀(배포 표시 커밋 등).
+#   - 그 버전이 이미 공개됐으면 건너뜀.
 # 사용자에게 나가는 것은 Releases에서 초안을 확인하고 [Publish release]를 누를 때 — 그때 태그 v<버전>이 생기고
-# 앱의 '업데이트 확인'이 새 버전을 봄(latest 릴리스만 읽음). 공개 뒤 CHANGELOG 배포 표시는 release-published가 함.
+# 앱의 '업데이트 확인'이 새 버전을 봄(latest 릴리스만 읽음). 배포 여부는 CHANGELOG에 적지 않고 이 태그로 앎.
 #
 # 필요한 저장소 비밀값
 #   TAURI_SIGNING_PRIVATE_KEY           ~/.tauri/ggparrot-desktop-updater.key 내용(앱 업데이트 서명 — 필수)
@@ -66,7 +66,7 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: 릴리스 본문(CHANGELOG의 사용자용 내용, 배포하지 않은 칸 합침)
+      - name: 릴리스 본문(CHANGELOG의 사용자용 내용, 지난 배포 태그 뒤의 칸 합침)
         id: notes
         if: steps.check.outputs.skip != 'true'
         env:
@@ -74,7 +74,9 @@ jobs:
         # 초안 본문(파일)과 앱 업데이트의 '바뀐 점'(latest.json, build 작업에 넘김)에 같은 내용을 씀.
         # 여러 줄 출력의 끝 표시는 매번 무작위로 — 본문에 같은 줄이 있어도 끊기지 않게.
         run: |
-          node scripts/release-notes.mjs "v$VERSION" --preview > "$RUNNER_TEMP/notes.md"
+          # 지난 배포는 공개한 릴리스의 태그로 앎 — 얕은 checkout에는 태그가 없어 받아 옴.
+          git fetch --tags --force --quiet origin
+          node scripts/release-notes.mjs "v$VERSION" > "$RUNNER_TEMP/notes.md"
           eof="GGP_NOTES_$(openssl rand -hex 16)"
           { echo "body<<$eof"; cat "$RUNNER_TEMP/notes.md"; echo "$eof"; } >> "$GITHUB_OUTPUT"
       - name: 이전 초안을 지우고 새 초안 만들기

@@ -20,7 +20,6 @@
     "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --all-targets -- -D warnings",
     "check:versions": "node scripts/check-versions.mjs",
     "release:notes": "node scripts/release-notes.mjs",
-    "release:mark": "node scripts/release-notes.mjs --mark",
     "build:mac": "tauri build --target universal-apple-darwin && node scripts/name-bundles.mjs",
     "build:win": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 CARGO_TARGET_DIR=\"$PWD/src-tauri/target-win\" CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc tauri build --target x86_64-pc-windows-gnu --bundles nsis && node scripts/name-bundles.mjs"
   },
