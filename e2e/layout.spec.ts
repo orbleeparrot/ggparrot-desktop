@@ -63,15 +63,23 @@ for (const vp of VIEWPORTS) {
         const g = window.__geo;
         const out: string[] = [];
         const cards = Array.from(document.querySelectorAll<HTMLElement>(".run-card"));
-        const heights = cards.map((c) => g.box(c).h);
-        const min = Math.min(...heights);
-        const max = Math.max(...heights);
-        if (max - min > 1) out.push(`카드 높이가 다름: ${min}~${max}px (${heights.join(",")})`);
+        // 두 줄 카드(확인 필요 · 실행 중)끼리, 한 줄 행(대기)끼리 높이가 같음.
+        for (const [what, sel] of [
+          ["두 줄 카드", ".run-card:not(.is-compact)"],
+          ["한 줄 행", ".run-card.is-compact"],
+        ] as const) {
+          const heights = Array.from(document.querySelectorAll<HTMLElement>(sel)).map((c) => g.box(c).h);
+          if (!heights.length) continue;
+          const min = Math.min(...heights);
+          const max = Math.max(...heights);
+          if (max - min > 1) out.push(`${what} 높이가 다름: ${min}~${max}px (${heights.join(",")})`);
+        }
 
         cards.forEach((card, i) => {
           const name = `카드 ${i + 1}(${card.querySelector(".run-card-symbol")?.textContent})`;
           const cb = g.box(card);
-          const blockers = [".run-card-action", ".run-card-remove-slot"]
+          // 한 줄 행의 [▶] · [×]는 가리킬 때 글자 끝 위에 겹쳐 뜨는 게 설계 — 두 줄 카드만 비켜 감을 잼.
+          const blockers = (card.classList.contains("is-compact") ? [] : [".run-card-action", ".run-card-remove-slot"])
             .map((s) => card.querySelector(s))
             .filter((el): el is Element => !!el && g.shown(el))
             .map((el) => ({ cls: el.className, box: g.box(el) }));
@@ -117,34 +125,52 @@ for (const vp of VIEWPORTS) {
       await open(page, "?demo=many");
       const rows = await page.evaluate(() => {
         const g = window.__geo;
-        return Array.from(document.querySelectorAll<HTMLElement>(".run-card")).map((card) => {
-          const sym = card.querySelector<HTMLElement>(".run-card-symbol")!;
-          const head = card.querySelector<HTMLElement>(".run-card-head")!;
-          const top = card.querySelector<HTMLElement>(".run-card-top")!;
-          const end = top.lastElementChild !== head ? top.lastElementChild : null;
-          const mode = card.querySelector<HTMLElement>(".run-card-mode")!;
-          const badge = mode.querySelector<HTMLElement>(".mode-badge")!;
-          const visibleText = g.textBoxes(sym).reduce((w, t) => w + t.box.w, 0);
-          const gap = parseFloat(getComputedStyle(top).columnGap) || 0;
-          const room = (end && g.shown(end) ? g.box(end).l : g.box(top).r) - gap;
-          return {
-            symbol: sym.textContent ?? "",
-            visibleText,
-            truncated: sym.scrollWidth > sym.clientWidth,
-            ellipsis: getComputedStyle(sym).textOverflow === "ellipsis",
-            // 배지가 둘째 줄로 밀려(가려져) 점만 남았는지.
-            collapsed: g.box(badge).t - g.box(mode).t > 4 || g.box(mode).w < g.box(badge).w - 0.5,
-            headRight: g.box(head).r,
-            room: Math.round(room * 100) / 100,
-            badgeInside: g.inside(g.box(badge), g.box(mode)),
-          };
-        });
+        // 모드 배지는 기본(모의)이 아닌 두 줄 카드에만 — 점으로 줄어드는 규칙은 그 카드들로 잼.
+        return Array.from(document.querySelectorAll<HTMLElement>(".run-card:not(.is-compact):has(.run-card-mode)")).map(
+          (card) => {
+            const sym = card.querySelector<HTMLElement>(".run-card-symbol")!;
+            const head = card.querySelector<HTMLElement>(".run-card-head")!;
+            const top = card.querySelector<HTMLElement>(".run-card-top")!;
+            const end = top.lastElementChild !== head ? top.lastElementChild : null;
+            const mode = card.querySelector<HTMLElement>(".run-card-mode")!;
+            const badge = mode.querySelector<HTMLElement>(".mode-badge")!;
+            const visibleText = g.textBoxes(sym).reduce((w, t) => w + t.box.w, 0);
+            const gap = parseFloat(getComputedStyle(top).columnGap) || 0;
+            const room = (end && g.shown(end) ? g.box(end).l : g.box(top).r) - gap;
+            return {
+              symbol: sym.textContent ?? "",
+              visibleText,
+              truncated: sym.scrollWidth > sym.clientWidth,
+              ellipsis: getComputedStyle(sym).textOverflow === "ellipsis",
+              // 배지가 둘째 줄로 밀려(가려져) 점만 남았는지.
+              collapsed: g.box(badge).t - g.box(mode).t > 4 || g.box(mode).w < g.box(badge).w - 0.5,
+              headRight: g.box(head).r,
+              room: Math.round(room * 100) / 100,
+              badgeInside: g.inside(g.box(badge), g.box(mode)),
+            };
+          },
+        );
       });
       const problems: string[] = [];
-      for (const s of ["1000SHIBUSDT", "BTCDOMUSDT", "KRW-SHIB"]) {
+      for (const s of ["1000SHIBUSDT"]) {
         const r = rows.find((x) => x.symbol === s);
         if (!r) problems.push(`${s} 카드가 없음`);
         else if (r.visibleText < 40) problems.push(`${s}: 보이는 글자 폭 ${r.visibleText}px — 거의 잘림`);
+      }
+      // 대기 묶음의 한 줄 행도 긴 종목이 거의 다 보임(넓은 창은 목록이 따로 굴러가니 행마다 보이게 굴린 뒤 잼).
+      const compact = await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>(".run-card.is-compact .run-card-symbol")).map((sym) => {
+          sym.scrollIntoView({ block: "nearest" });
+          return {
+            symbol: sym.textContent ?? "",
+            visible: window.__geo.textBoxes(sym).reduce((w, t) => w + t.box.w, 0),
+          };
+        }),
+      );
+      for (const s of ["BTCDOMUSDT", "KRW-SHIB"]) {
+        const r = compact.find((x) => x.symbol === s);
+        if (!r) problems.push(`${s} 행이 없음`);
+        else if (r.visible < 40) problems.push(`${s}: 보이는 글자 폭 ${r.visible}px — 거의 잘림`);
       }
       for (const r of rows) {
         if (r.truncated && !r.ellipsis) problems.push(`${r.symbol}: 잘리는데 줄임표 없음`);
@@ -158,7 +184,7 @@ for (const vp of VIEWPORTS) {
       expect(problems).toEqual([]);
     });
 
-    test("× 단추 — 가리킬 때·포커스일 때만 보이고 자리는 늘 비워 둠", async ({ page }) => {
+    test("× 단추 — 가리킬 때·포커스일 때만 보이고, 숨어 있을 때는 눌리지 않음", async ({ page }) => {
       await open(page, "?demo=many");
       const card = page.locator(".run-card.has-remove").first();
       await card.scrollIntoViewIfNeeded();
@@ -169,7 +195,9 @@ for (const vp of VIEWPORTS) {
           const btn = c.querySelector(".run-card-remove")!;
           const slot = c.querySelector(".run-card-x-slot");
           return {
+            compact: c.classList.contains("is-compact"),
             opacity: getComputedStyle(btn).opacity,
+            events: getComputedStyle(btn).pointerEvents,
             btn: g.box(btn),
             slot: slot ? g.box(slot) : null,
             texts: g.textBoxes(c.querySelector(".run-card-select")!).map((t) => `${t.text}@${g.fmt(t.box)}`),
@@ -177,10 +205,15 @@ for (const vp of VIEWPORTS) {
         });
       const before = await measure();
       expect(before.opacity, "가리키기 전 × 투명").toBe("0");
-      expect(before.slot, "× 자리(.run-card-x-slot)가 있음").not.toBeNull();
-      expect(before.slot!.w).toBeGreaterThanOrEqual(before.btn.w - 0.5);
-      expect(Math.abs(before.slot!.l - before.btn.l), "× 자리와 × 단추 가로 위치").toBeLessThanOrEqual(1);
-      expect(Math.abs(before.slot!.t - before.btn.t), "× 자리와 × 단추 세로 위치").toBeLessThanOrEqual(1);
+      if (before.compact) {
+        // 한 줄 행 — 자리를 비우지 않고 겹쳐 뜸. 숨어 있을 때는 눌리지 않음(행을 고르는 클릭을 가로채지 않게).
+        expect(before.events, "숨은 × 는 눌리지 않음").toBe("none");
+      } else {
+        expect(before.slot, "× 자리(.run-card-x-slot)가 있음").not.toBeNull();
+        expect(before.slot!.w).toBeGreaterThanOrEqual(before.btn.w - 0.5);
+        expect(Math.abs(before.slot!.l - before.btn.l), "× 자리와 × 단추 가로 위치").toBeLessThanOrEqual(1);
+        expect(Math.abs(before.slot!.t - before.btn.t), "× 자리와 × 단추 세로 위치").toBeLessThanOrEqual(1);
+      }
 
       await card.locator(".run-card-symbol").hover();
       const hovered = await measure();

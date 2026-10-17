@@ -1,4 +1,5 @@
 // 머리줄의 버전 표시 바로 옆 업데이트 알림 — 새 버전·내려받는 중(진행 막대·%)·설치 준비·설치 중.
+// - 새 버전 칩에 빨간 점을 두지 않음(오류처럼 보임) — 노란 칩만으로 충분히 보임.
 // 누르면 설정 › 정보 › 업데이트로 가서 내려받기·설치를 이어 감.
 import { LoaderCircle, RotateCcw } from "lucide-react";
 import { progressPct } from "../state/update";
@@ -40,7 +41,6 @@ export function UpdateChip({ update, onOpen }: { update: UpdateState; onOpen(): 
       aria-label={`${label} · 설정의 업데이트 열기`}
       style={pct === null ? undefined : ({ "--p": `${pct}%` } as React.CSSProperties)}
     >
-      {update.status === "available" && <span className="update-dot" aria-hidden="true" />}
       {icon}
       <span className="update-chip-text">{label}</span>
     </button>

@@ -69,10 +69,169 @@
   font-weight: var(--fw-bold);
   color: var(--muted);
 }
+/* 묶음 — 확인 필요(노란 칸 안의 카드) · 실행 중(흰 카드) · 대기(회색 칸의 한 줄 행). 머리마다 아이콘 · 이름 · 개수 · 선. */
+.run-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: none;
+}
+.run-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.run-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 2px;
+  color: var(--ink);
+}
+.run-group-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+}
+.run-group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.run-group-name {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.run-group-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+}
+.run-group-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.run-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.run-group-toggle:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.run-group-chev {
+  transition: transform 140ms var(--ease);
+}
+.run-group-chev.is-open {
+  transform: rotate(180deg);
+}
+.run-group.is-attention .run-group-head {
+  color: var(--warn-ink);
+}
+.run-group.is-attention .run-group-icon {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.run-group.is-attention .run-group-count {
+  background: var(--warn-ink);
+  color: var(--on-accent);
+}
+.run-group.is-attention .run-group-line {
+  background: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.run-group.is-running .run-group-icon {
+  background: var(--ok-soft);
+}
+.run-group.is-running .run-group-count {
+  background: var(--live);
+  color: var(--on-accent);
+}
+.run-group.is-running .run-group-line {
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
+}
+.run-group.is-idle .run-group-head {
+  color: var(--muted);
+}
+.run-group.is-idle .run-group-icon {
+  background: var(--hover);
+  color: var(--muted);
+}
+.run-group.is-idle .run-group-count {
+  background: var(--hover);
+  color: var(--muted);
+}
 .run-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* 확인 필요 — 노란 칸 안에 카드 */
+.run-group.is-attention .run-list {
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  border-radius: calc(var(--radius) + 4px);
+  background: color-mix(in srgb, var(--warn-soft) 70%, var(--bg));
+}
+/* 대기 — 회색 칸에 한 줄 행 */
+.run-group.is-idle .run-list {
+  gap: 2px;
+  padding: 4px;
+  border-radius: calc(var(--radius) + 2px);
+  background: color-mix(in srgb, var(--hover) 80%, var(--bg));
+}
+/* 찾기 칸 — 매크로가 8개를 넘을 때 */
+.run-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--faint);
+}
+.run-search:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent);
+}
+.run-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+.run-empty {
+  padding: 18px 4px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  text-align: center;
 }
 .run-card {
   position: relative;
@@ -85,10 +244,6 @@
   transition:
     border-color 140ms var(--ease),
     box-shadow 140ms var(--ease);
-}
-/* 실행 중 카드 — 긴 목록에서 눈에 띄게 테두리를 초록 쪽으로 */
-.run-card.is-live {
-  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
 }
 .run-card:hover {
   border-color: color-mix(in srgb, var(--ink) 22%, var(--border));
@@ -113,19 +268,10 @@
    고르기 버튼이 카드 전체이고, ×(1줄 오른쪽)·주 버튼(2줄 오른쪽)은 버튼 안에 비워 둔 자리 위에 놓인 형제.
    --act-w: 주 버튼 너비(종류마다 고정) — 2줄 글자가 이만큼 비켜 감. */
 .run-card {
-  --act-w: 66px;
+  --act-w: 28px;
   --x-size: 28px;
   --card-pad: 10px;
   container: run-card / inline-size;
-}
-.run-card.act-stop {
-  --act-w: 66px;
-}
-.run-card.act-stop-menu {
-  --act-w: 82px;
-}
-.run-card.act-busy {
-  --act-w: 30px;
 }
 .run-card-select {
   display: grid;
@@ -161,6 +307,18 @@
   gap: 6px;
   flex: 0 1 auto;
   min-width: 0;
+}
+.run-card-head > .ex-logo {
+  grid-column: 1;
+}
+.run-card-head > .run-card-symbol {
+  grid-column: 2;
+}
+.run-card-head > .side {
+  grid-column: 3;
+}
+.run-card-head > .run-card-mode {
+  grid-column: 4;
 }
 .run-card-symbol {
   font-size: var(--fs-title);
@@ -301,12 +459,22 @@
 .run-card-action {
   bottom: var(--card-pad);
   width: var(--act-w);
-  height: 30px;
+  height: 28px;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
 }
 .run-card-action .btn-sm {
   width: var(--act-w);
-  min-height: 30px;
+  min-height: 28px;
+  height: 28px;
   padding: 0;
+}
+/* [▶] · [■]는 마우스를 올리거나 카드 안에 키보드 포커스가 있거나 종료 메뉴가 열렸을 때만. 도는 표시는 늘. */
+.run-card:hover .run-card-action,
+.run-card:has(:focus-visible) .run-card-action,
+.run-card:has([aria-expanded="true"]) .run-card-action,
+.run-card.act-busy .run-card-action {
+  opacity: 1;
 }
 .run-card-remove-slot {
   top: var(--card-pad);
@@ -323,6 +491,100 @@
 .run-card:has(:focus-visible) .run-card-remove,
 .run-card-remove:focus-visible {
   opacity: 1;
+}
+/* 확인 필요 카드 — 2줄은 이유(상태 뒷부분)가 먼저: 경과 · 전략은 빼고 이유가 다 보이게. */
+.run-group.is-attention .run-card-elapsed,
+.run-group.is-attention .run-card-strategy {
+  display: none;
+}
+.run-group.is-attention .run-card-meta {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.run-group.is-attention .run-card-status-more {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 대기 묶음의 한 줄 행 — 로고 · 종목 · 숏 · 모드 · 상태 · 전략 …… [▶] · [×] 자리. 바탕은 묶음 칸(회색), 행은 가리킬 때 · 고르면 흰색. */
+.run-card.is-compact {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.run-card.is-compact:hover {
+  border-color: transparent;
+  background: var(--card);
+}
+.run-card.is-compact.is-selected {
+  border-color: var(--brand-hover);
+  background: var(--card);
+}
+.run-card.is-compact .run-card-select {
+  display: flex;
+  grid-template-rows: none;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 12px 0 12px;
+}
+.run-card.is-compact .run-card-symbol {
+  flex: none;
+  max-width: 45%;
+  font-size: var(--fs-body);
+}
+.run-card.is-compact .run-card-mode {
+  flex: none;
+}
+.run-row-line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-row-status {
+  font-weight: var(--fw-bold);
+}
+.run-row-status.tone-muted {
+  color: var(--muted);
+}
+.run-row-strategy::before {
+  content: "·";
+  margin: 0 5px;
+  color: var(--faint);
+}
+/* 한 줄 행의 [▶] · [×] — 글자 끝 위에 겹쳐 뜸(왼쪽은 흰색으로 흐리게 덮음). 숨어 있을 때는 눌리지 않음. */
+.run-card.is-compact .run-card-action,
+.run-card.is-compact .run-card-remove-slot {
+  top: 5px;
+  bottom: auto;
+}
+.run-card.is-compact .run-card-action {
+  right: calc(var(--card-pad) + var(--x-size) + 4px);
+  box-shadow: -18px 0 10px -4px var(--card);
+  border-radius: var(--radius-sm);
+}
+.run-card.is-compact:not(.has-remove) .run-card-action {
+  right: var(--card-pad);
+}
+.run-card.is-compact .run-card-action,
+.run-card.is-compact .run-card-remove {
+  pointer-events: none;
+}
+.run-card.is-compact:hover .run-card-action,
+.run-card.is-compact:has(:focus-visible) .run-card-action,
+.run-card.is-compact:hover .run-card-remove,
+.run-card.is-compact:has(:focus-visible) .run-card-remove {
+  pointer-events: auto;
+}
+.run-card.is-compact .run-card-remove-slot {
+  background: var(--card);
+  border-radius: var(--radius-sm);
+}
+.run-card.is-compact:not(:hover):not(:has(:focus-visible)) .run-card-remove-slot {
+  background: transparent;
 }
 /* 아주 좁은 카드(작은 창의 한 열) — 모드는 점으로, 2줄은 상태 앞부분·경과만 */
 @container run-card (max-width: 260px) {

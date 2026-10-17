@@ -38,17 +38,32 @@
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
+/* 상태 알약 자리 — 알약이 없어도 [웹] · ⚙을 오른쪽 끝으로 밈 */
+.header-status {
+  display: flex;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+}
 .status {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
   min-width: 0;
   padding: 4px 10px;
+  border: 0;
   border-radius: 999px;
   background: var(--hover);
+  color: inherit;
+  font: inherit;
   font-weight: var(--fw-bold);
   font-size: var(--fs-small);
+}
+button.status {
+  cursor: pointer;
+}
+button.status:hover {
+  filter: brightness(0.97);
 }
 .status.tone-ok {
   background: var(--ok-soft);
@@ -136,14 +151,11 @@
   background: var(--brand);
   color: var(--brand-ink);
 }
-.update-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--danger);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 25%, transparent);
+.header-web {
+  gap: 4px;
+  height: 32px;
+  padding: 0 10px;
 }
-.header-web,
 .header-gear {
   width: 34px;
   height: 34px;

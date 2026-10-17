@@ -1,4 +1,5 @@
 // [■ 종료 ▾] — 종료 방법(stopChoices)을 고르는 메뉴. 고를 게 하나뿐이면 메뉴 없이 [■ 종료] 단추. 고르면 확인 대화상자로 감.
+// iconOnly: 목록 카드의 작은 [■] — 글자 없이(이름은 aria-label · 풍선 도움말), 마우스를 올릴 때만 보이는 자리에 씀.
 import { ChevronDown, Square } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { StopChoice } from "../../state/runs";
@@ -9,11 +10,13 @@ export function StopMenu({
   choices,
   onChoose,
   size = "sm",
+  iconOnly = false,
 }: {
   label: string;
   choices: StopChoice[];
   onChoose(mode: StopMode): void;
   size?: "sm" | "md";
+  iconOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -51,16 +54,18 @@ export function StopMenu({
     }
   }
 
+  const cls = `btn btn-stop ${size === "sm" ? "btn-sm" : ""} ${iconOnly ? "is-icon" : ""}`;
   if (choices.length === 1)
     return (
       <button
         type="button"
-        className={`btn btn-stop ${size === "sm" ? "btn-sm" : ""}`}
+        className={cls}
         aria-label={label}
+        title={iconOnly ? "종료" : undefined}
         onClick={() => onChoose(choices[0].mode)}
       >
         <Square size={11} fill="currentColor" aria-hidden="true" />
-        종료
+        {!iconOnly && "종료"}
       </button>
     );
 
@@ -69,7 +74,8 @@ export function StopMenu({
       <button
         ref={trigger}
         type="button"
-        className={`btn btn-stop ${size === "sm" ? "btn-sm" : ""}`}
+        className={cls}
+        title={iconOnly ? "종료" : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -83,8 +89,8 @@ export function StopMenu({
         }}
       >
         <Square size={11} fill="currentColor" aria-hidden="true" />
-        종료
-        <ChevronDown size={14} aria-hidden="true" />
+        {!iconOnly && "종료"}
+        {!iconOnly && <ChevronDown size={14} aria-hidden="true" />}
       </button>
       {open && (
         <div ref={menu} id={menuId} className="menu" role="menu" aria-label="종료 방법" onKeyDown={onMenuKey}>
