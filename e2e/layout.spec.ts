@@ -478,58 +478,51 @@ for (const vp of VIEWPORTS) {
       } else {
         await expect(page.locator(".settings-nav")).toBeHidden();
       }
-      // 쓰지 않는 칸은 한 줄로 접힘 — 쓰는 칸 뒤에 오고, 높이가 낮고, 펼치기 단추가 aria-expanded를 바꿈.
+      // 거래소마다 같은 폭의 한 줄 — 키 칸은 처음엔 모두 닫힘. 쓰지 않는 연습 칸은 뒤 '연습 칸'에 낮게, 머리는 한 줄.
       const slots = await page.evaluate(() =>
-        Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => ({
-          id: el.id,
-          collapsed: el.classList.contains("is-collapsed"),
-          h: el.getBoundingClientRect().height,
-          // 머리 칸들의 세로 가운데 차이 — 한 줄이면 몇 px 안쪽.
-          midSpread: (() => {
-            const mids = Array.from(el.querySelectorAll(".slot-head > *")).map((c) => {
-              const r = c.getBoundingClientRect();
-              return (r.top + r.bottom) / 2;
-            });
-            return Math.max(...mids) - Math.min(...mids);
-          })(),
-        })),
+        Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => {
+          const list = el.closest(".slot-list")!.getBoundingClientRect();
+          const r = el.getBoundingClientRect();
+          const mids = Array.from(el.querySelectorAll(".slot-head > *")).map((c) => {
+            const b = c.getBoundingClientRect();
+            return (b.top + b.bottom) / 2;
+          });
+          const side = el.querySelector(".slot-side")!.getBoundingClientRect();
+          const toggle = el.querySelector(".slot-toggle")!.getBoundingClientRect();
+          return {
+            id: el.id,
+            practice: !!el.closest(".slot-list.is-practice"),
+            open: el.querySelector(".slot-toggle")!.getAttribute("aria-expanded") === "true",
+            h: r.height,
+            fullWidth: Math.abs(r.width - list.width) <= 2,
+            midSpread: Math.max(...mids) - Math.min(...mids),
+            // 잔고 · [연결 도우미] 칸은 ▾ 바로 왼쪽(오른쪽 끝)에 붙음.
+            sideGap: toggle.left - side.right,
+          };
+        }),
       );
-      const firstCollapsed = slots.findIndex((x) => x.collapsed);
-      expect(firstCollapsed, "접힌 칸이 있음(?demo=settings 테스트넷 · 데모)").toBeGreaterThan(0);
+      const firstPractice = slots.findIndex((x) => x.practice);
+      expect(firstPractice, "연습 칸이 있음(?demo=settings 테스트넷 · 데모)").toBeGreaterThan(0);
       expect(
-        slots.slice(firstCollapsed).every((x) => x.collapsed),
-        "쓰는 칸이 앞, 접힌 칸이 뒤",
+        slots.slice(firstPractice).every((x) => x.practice),
+        "쓰는 칸이 앞, 연습 칸이 뒤",
       ).toBe(true);
-      for (const x of slots.filter((y) => y.collapsed)) {
-        expect(x.h, `${x.id} 접힌 높이`).toBeLessThanOrEqual(56);
+      for (const x of slots) {
+        expect(x.open, `${x.id} 키 칸은 처음엔 닫힘`).toBe(false);
+        expect(x.fullWidth, `${x.id} 목록 폭을 다 씀`).toBe(true);
         expect(x.midSpread, `${x.id} 머리 칸이 한 줄(세로 가운데 차이)`).toBeLessThanOrEqual(4);
+        expect(x.sideGap, `${x.id} 오른쪽 칸과 ▾ 사이`).toBeLessThanOrEqual(24);
       }
-      // 펼치면 is-collapsed가 빠지므로 칸 id로 붙잡음.
-      const firstId = slots[firstCollapsed].id;
+      for (const x of slots.filter((y) => y.practice)) expect(x.h, `${x.id} 연습 칸 높이`).toBeLessThanOrEqual(56);
+      const firstId = slots[0].id;
       const toggle = page.locator(`#${firstId} .slot-toggle`);
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       await expect(page.locator(`#${await toggle.getAttribute("aria-controls")}`)).toBeVisible();
-      // 펼친 칸은 반쪽 폭으로 홀로 남지 않음 — 같은 줄에 짝이 있거나 한 줄을 다 씀(옆이 비지 않게).
-      // 펼친 칸이 짝수면 하나 더 펼쳐 홀수(짝 없는 칸이 생기는 경우)를 만듦.
-      const openCount = await page.locator(".slot-card:not(.is-collapsed)").count();
-      if (openCount % 2 === 0) await page.locator(".slot-card.is-collapsed .slot-toggle").first().click();
-      expect((await page.locator(".slot-card:not(.is-collapsed)").count()) % 2).toBe(1);
-      const lonely = await page.evaluate(() => {
-        const grid = document.querySelector(".slot-grid")!.getBoundingClientRect();
-        const cards = Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => ({
-          id: el.id,
-          r: el.getBoundingClientRect(),
-        }));
-        return cards
-          .filter(({ r }) => r.width < grid.width - 2)
-          .filter(({ id, r }) => !cards.some((o) => o.id !== id && Math.abs(o.r.top - r.top) < 2))
-          .map(({ id }) => id);
-      });
-      expect(lonely, "짝 없이 반쪽 폭인 칸").toEqual([]);
-      // 연결됨이어도 고쳐야 할 안내(업비트 잔고 부족)는 주의 색 줄.
-      await expect(page.locator("#settings-slot-upbit .note-warn")).toContainText("잔고가 모자라요");
+      // 연결됨이어도 고쳐야 할 안내(업비트 잔고 부족)는 주의 색 줄, 잔고는 오른쪽 끝에 주의 색.
+      await expect(page.locator("#settings-slot-upbit .slot-why")).toContainText("잔고가 모자라요");
+      await expect(page.locator("#settings-slot-upbit .slot-balance.is-short")).toContainText("KRW");
 
       const log = page.locator(".applog-scroll");
       await log.scrollIntoViewIfNeeded();

@@ -45,8 +45,8 @@ describe("거래소 연결 칸", () => {
   });
 });
 
-describe("쓰지 않는 칸 접기 · 안내 색", () => {
-  it("빈 칸은 한 줄로 접히고 › 단추(aria-expanded)로 키 칸을 펼침", () => {
+describe("키 칸 열고 닫기 · 잔고 · 안내 색", () => {
+  it("키 칸은 처음엔 닫혀 있고 ▾ 단추(aria-expanded)로 엶", () => {
     withContext(<Slot slot={slotCard("binance_testnet")} />);
     const toggle = screen.getByRole("button", { name: /키 칸 펼치기/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -58,14 +58,41 @@ describe("쓰지 않는 칸 접기 · 안내 색", () => {
     expect(body.hidden).toBe(false);
   });
 
-  it("쓰는 칸은 접지 않음(펼치기 단추 없음)", () => {
-    withContext(<Slot slot={slotCard("binance", { status: "connected", accessFilled: true, secretFilled: true })} />);
-    expect(screen.queryByRole("button", { name: /키 칸 펼치기|키 칸 접기/ })).toBeNull();
+  it("연결된 칸도 키 칸은 닫혀 있고, 오른쪽 끝에 잔고 · 확인 시각, 세 확인 띠", () => {
+    withContext(
+      <Slot
+        slot={slotCard("upbit", {
+          status: "connected",
+          accessFilled: true,
+          secretFilled: true,
+          headline: "✓ 연결됨",
+          checks: { auth: "ok", ip: "ok", order: "ok" },
+          balance: "사용 가능 잔고 12,300 KRW · 보유 BTC 0.01",
+          checkedAt: new Date(2026, 9, 17, 16, 40).getTime(),
+        })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /키 칸 펼치기/ }).getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("사용 가능 잔고")).toBeTruthy();
+    expect(screen.getByText("12,300 KRW")).toBeTruthy();
+    expect(screen.getByText(/4:40 확인 · 보유 BTC 0.01/)).toBeTruthy();
+    expect(screen.getByRole("list", { name: "키 확인 결과" }).textContent).toContain("주문 권한");
   });
 
-  it("넓은 칸(wide)은 is-wide로 한 줄을 다 씀", () => {
-    withContext(<SlotCardView slot={slotCard("upbit")} open onToggle={() => {}} wide />);
-    expect(document.getElementById("settings-slot-upbit")!.className).toContain("is-wide");
+  it("막힌 칸은 빨간 칸의 이유와 이 기기 주소 한 줄, 잔고 자리에 노란 [연결 도우미]", () => {
+    withContext(
+      <Slot
+        slot={slotCard("bithumb", {
+          status: "blocked",
+          accessFilled: true,
+          secretFilled: true,
+          headline: "● 허용 IP 확인 필요",
+          checks: { auth: "ok", ip: "bad", order: "wait" },
+        })}
+      />,
+    );
+    expect(screen.getByText(/허용 IP · 등록된 IP와 다름/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "연결 도우미" }).className).toContain("btn-primary");
   });
 
   it("고쳐야 할 안내(warn)는 연결됨 칸이어도 주의 색 줄로, 접힌 칸에서도 보임", () => {
@@ -81,10 +108,10 @@ describe("쓰지 않는 칸 접기 · 안내 색", () => {
         })}
       />,
     );
-    expect(screen.getByText("주문할 원화 잔고가 모자라요.").className).toContain("note-warn");
+    expect(screen.getByText("주문할 원화 잔고가 모자라요.").className).toContain("slot-why");
     cleanup();
     withContext(<Slot slot={slotCard("bithumb", { note: "키 저장소를 읽지 못했어요.", noteTone: "warn" })} />);
     expect(screen.getByRole("button", { name: /키 칸 펼치기/ })).toBeTruthy();
-    expect(screen.getByText("키 저장소를 읽지 못했어요.").className).toContain("note-warn");
+    expect(screen.getByText("키 저장소를 읽지 못했어요.").className).toContain("slot-why");
   });
 });
