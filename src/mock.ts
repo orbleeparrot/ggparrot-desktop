@@ -662,7 +662,14 @@ export function createMockBackend(
       reached: false,
       conditions: [
         { key: "line", label: "사는 선 26.118 넘기", now: "넘음 · 고가 26.26", ok: true, at_close: false, wait: "" },
-        { key: "ma", label: "20봉 평균 26.523 위에서 끝나기", now: "−1.2%", ok: false, at_close: true, wait: "20봉 평균 26.523 위에서 끝나야 사요" },
+        {
+          key: "ma",
+          label: "20봉 평균 26.523 위에서 끝나기",
+          now: "−1.2%",
+          ok: false,
+          at_close: true,
+          wait: "20봉 평균 26.523 위에서 끝나야 사요",
+        },
       ],
       last_bar: { at_ms: now - 10 * 60_000, entered: false, why: "고가 26.12가 사는 선 26.336에 못 미쳤어요" },
       meter: {

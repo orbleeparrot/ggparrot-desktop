@@ -157,7 +157,9 @@ describe("실행 상태 카드", () => {
   });
 
   it("보유가 없으면 투입금·보유 수량은 '없음', 청산 기준은 칩 한 줄", () => {
-    const { container } = render(<StatusCard run={makeRun()} macro={binanceMacro} phase="running" status={ok} prices={[]} />);
+    const { container } = render(
+      <StatusCard run={makeRun()} macro={binanceMacro} phase="running" status={ok} prices={[]} />,
+    );
     expect(screen.getByText("투입금").nextElementSibling?.textContent).toBe("없음");
     expect(screen.getByText("보유 수량").nextElementSibling?.textContent).toBe("없음");
     const chips = [...container.querySelectorAll(".exit-chip")].map((chip) => [chip.className, chip.textContent]);
@@ -361,7 +363,13 @@ describe("진입 대기", () => {
 
   it("옛 서버(headline 없음)면 조건 문장을 마침표 없이 큰 글씨로", () => {
     const { container } = render(
-      <StatusCard run={makeRun({ entryWait: makeEntryWait() })} macro={binanceMacro} phase="running" status={ok} prices={[]} />,
+      <StatusCard
+        run={makeRun({ entryWait: makeEntryWait() })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
     );
     expect(container.querySelector(".ew-sentence")?.textContent).toBe("가격이 102.00 위로 올라가면 사요");
   });

@@ -65,7 +65,11 @@ function Ladder({ ladder }: { ladder: NonNullable<EntryWait["ladder"]> }) {
       </div>
       <div className={`ew-ladder-labels ${close ? "is-stacked" : ""}`}>
         {marks.map((m, i) => (
-          <span key={m.key} className={`${m.main ? "is-main" : ""} ${close && i === 1 ? "is-low" : ""}`} style={place(m.pos)}>
+          <span
+            key={m.key}
+            className={`${m.main ? "is-main" : ""} ${close && i === 1 ? "is-low" : ""}`}
+            style={place(m.pos)}
+          >
             {m.label} <b className="num">{m.value}</b>
           </span>
         ))}

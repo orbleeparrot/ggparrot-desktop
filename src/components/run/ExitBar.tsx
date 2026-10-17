@@ -33,7 +33,10 @@ export function ExitBar({ rules, side, quote, entry, price }: Props) {
       <div className="exit-chips" role="group" aria-label={`청산 기준 · ${exitSummary(rules)}`}>
         <span className="exit-line-head">청산 기준</span>
         {parts.map((part) => (
-          <span key={part} className={`exit-chip ${/손절/.test(part) ? "tone-down" : /익절|발동/.test(part) ? "tone-up" : ""}`}>
+          <span
+            key={part}
+            className={`exit-chip ${/손절/.test(part) ? "tone-down" : /익절|발동/.test(part) ? "tone-up" : ""}`}
+          >
             {part}
           </span>
         ))}
