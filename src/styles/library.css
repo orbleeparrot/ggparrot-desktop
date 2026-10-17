@@ -185,16 +185,19 @@
   font-weight: var(--fw-bold);
 }
 /* [+ 추가] — 마우스를 올리거나 키보드로 고를 때만(그때는 '실행 목록 N개' 자리를 덮음) */
+/* 카드 두 줄 높이를 채우는 단추(40px) — 작은 알약이 아니라 오른쪽 끝의 제대로 된 단추 */
 .lib-add {
   display: none;
   align-items: center;
-  gap: 3px;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 6px;
+  justify-content: center;
+  gap: 5px;
+  height: 40px;
+  min-width: 84px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
   background: var(--brand);
   color: var(--brand-ink);
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
   font-weight: var(--fw-bold);
 }
 .lib-item:is(:hover, :focus-visible):not(:disabled) {
