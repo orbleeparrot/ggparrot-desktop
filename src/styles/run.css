@@ -48,12 +48,6 @@
   font-weight: var(--fw-bold);
   color: var(--ink);
 }
-/* 개수는 '내 매크로' 바로 옆(무엇의 개수인지 붙어 읽히게), [+ 추가]만 오른쪽 끝 */
-.panel-count {
-  font-size: var(--fs-small);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
-}
 /* [+ 추가] — 머리 오른쪽 작은 단추(예전 아래쪽 큰 점선 단추 대신, 목록 자리를 차지하지 않게) */
 .panel-add {
   flex: none;

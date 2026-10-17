@@ -100,7 +100,6 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
   const [idleOpen, setIdleOpen] = useState(readIdleOpen);
   const [idleAll, setIdleAll] = useState(false);
   const runs = state.runs;
-  const running = runs.filter((r) => r.phase === "running").length;
   const searchable = runs.length > SEARCH_FROM;
   const searching = searchable && query.trim() !== "";
   const groups = groupRuns(searching ? runs.filter((r) => matches(r, query)) : runs);
@@ -274,9 +273,6 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
     >
       <div ref={head} className="panel-head">
         <h2 className="panel-title">내 매크로</h2>
-        <span className="panel-count num">
-          {running > 0 ? `${runs.length}개 중 ${running}개 실행 중` : `${runs.length}개`}
-        </span>
         <button type="button" className="btn btn-ghost btn-sm panel-add" aria-label="매크로 추가" onClick={openLibrary}>
           <Plus size={14} aria-hidden="true" />
           추가
