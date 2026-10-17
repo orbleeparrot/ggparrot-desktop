@@ -416,6 +416,35 @@ describe("진입 대기", () => {
     expect(container.querySelector(".status-head")?.textContent).toMatch(/\d\d:\d\d 마감까지 5분/);
   });
 
+  it("RSI 처럼 내려가야 사는 규칙은 값 눈금에 사는 구역을 사는 선 왼쪽(아래)에 칠함", () => {
+    const { container } = render(
+      <StatusCard
+        run={makeRun({
+          entryWait: makeEntryWait({
+            rule: "F",
+            sentence: "RSI(14)가 40 아래로 내려가면 사요.",
+            scale: {
+              marks: [
+                { key: "line", label: "사는 선", value: "40", pos: 0.12, main: true },
+                { key: "exit", label: "청산 기준", value: "70", pos: 0.88, main: false },
+              ],
+              now: { label: "지금", value: "64.5", pos: 0.74 },
+              zone: 0.12,
+              zone_side: "below",
+            },
+          }),
+        })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    expect(screen.getByRole("img", { name: "사는 선 40 · 청산 기준 70 중 지금 64.5" })).toBeTruthy();
+    expect(container.querySelector(".ew-ladder-zone")?.className).toContain("is-below");
+    expect(container.querySelector(".ew-meter")).toBeNull();
+  });
+
   it("실시간 규칙(밴드)은 맨 윗줄에 '실시간 확인'", () => {
     render(
       <StatusCard

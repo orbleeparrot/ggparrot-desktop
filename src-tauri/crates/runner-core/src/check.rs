@@ -3,7 +3,7 @@
 use serde_json::Value;
 use std::time::Duration;
 
-use crate::bot::{build_broker, rehearsal_amounts};
+use crate::bot::{build_broker, martingale_min_order_reason, rehearsal_amounts};
 use crate::brokers::null_log;
 use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
 use crate::types::{exchange_name_of, macro_leverage, macro_side, macro_symbol, Credentials, Exchange, RunMode, Side};
@@ -70,6 +70,10 @@ pub async fn perform_connection_check(
     };
     let (notional, spend) = rehearsal_amounts(m, exchange.as_str(), Some(&broker));
     let (ok, reason) = broker.rehearse(notional, spend).await;
+    let reason = (!ok)
+        .then(|| martingale_min_order_reason(m, exchange.as_str(), &broker.last_error_name()))
+        .flatten()
+        .unwrap_or(reason);
     let mut result = PreflightResult::new(ok, safe_preflight_reason(&reason, c), fingerprint);
     result.error_name = broker.last_error_name();
     result.error_code = broker.last_error_code();

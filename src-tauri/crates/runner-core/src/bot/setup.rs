@@ -107,6 +107,10 @@ impl Bot {
         };
         let (notional, spend) = rehearsal_amounts(&self.macro_, &self.exchange_name, Some(&broker));
         let (ok, reason) = broker.rehearse(notional, spend).await;
+        let reason = (!ok)
+            .then(|| super::martingale_min_order_reason(&self.macro_, &self.exchange_name, &broker.last_error_name()))
+            .flatten()
+            .unwrap_or(reason);
         let reason = safe_preflight_reason(&reason, &self.credentials);
         if ok {
             self.log(format!("주문 전 확인: {reason}"));
