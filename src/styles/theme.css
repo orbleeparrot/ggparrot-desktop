@@ -1,6 +1,6 @@
-/* 디자인 토큰 — 라이트가 기본, prefers-color-scheme: dark에서 다크로 바뀜. */
+/* 디자인 토큰 — 라이트가 기본, <html data-theme="dark">에서 다크로 바뀜(설정 › 창 · 화면의 시스템 · 라이트 · 다크, state/theme.ts). */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   --brand: #f5c542;
   --brand-hover: #eab308;
@@ -47,7 +47,7 @@
   --header-h: 54px;
 
   --font:
-    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    Pretendard, "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
     system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "D2Coding", monospace;
 
@@ -66,33 +66,32 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --brand-soft: #3a2f0b;
-    --ok-soft: #0f2a1b;
-    --warn-soft: #33240b;
-    --danger-soft: #3a1414;
-    --ok-ink: #4ade80;
-    --warn-ink: #fbbf24;
-    --danger-ink: #f87171;
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-soft: #3a2f0b;
+  --ok-soft: #0f2a1b;
+  --warn-soft: #33240b;
+  --danger-soft: #3a1414;
+  --ok-ink: #4ade80;
+  --warn-ink: #fbbf24;
+  --danger-ink: #f87171;
 
-    --bg: #0b1220;
-    --card: #111827;
-    --card-sunken: #0e1626;
-    --border: #1f2937;
-    --line: #1a2332;
-    --ink: #f3f4f6;
-    --muted: #9ca3af;
-    --faint: #6b7280;
-    --hover: #1a2333;
-    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-    --shadow-lift: 0 16px 40px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.4);
-    --scrim: rgb(2 6 23 / 0.6);
-    --focus: #60a5fa;
-    --live-soft: #0f2a1b;
-    --info: #60a5fa;
-    --info-soft: #132443;
-    --info-ink: #93c5fd;
-    --brand-deep: #facc15;
-  }
+  --bg: #0b1220;
+  --card: #111827;
+  --card-sunken: #0e1626;
+  --border: #1f2937;
+  --line: #1a2332;
+  --ink: #f3f4f6;
+  --muted: #9ca3af;
+  --faint: #6b7280;
+  --hover: #1a2333;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-lift: 0 16px 40px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.4);
+  --scrim: rgb(2 6 23 / 0.6);
+  --focus: #60a5fa;
+  --live-soft: #0f2a1b;
+  --info: #60a5fa;
+  --info-soft: #132443;
+  --info-ink: #93c5fd;
+  --brand-deep: #facc15;
 }

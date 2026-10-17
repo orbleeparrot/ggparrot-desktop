@@ -1,8 +1,11 @@
 // 설정 › 매크로 폴더 — 경로와 [폴더 열기].
 import { FolderOpen } from "lucide-react";
 import { useRunnerContext } from "../../state/context";
-import { LIBRARY_HINT } from "../library/LibrarySheet";
 import { Section } from "./Section";
+
+/** 매크로 폴더 설명 — 설정 › 매크로 폴더 머리 아래(매크로 추가 시트에서는 줄글을 뺐음). */
+const LIBRARY_HINT =
+  "웹에서 받은 .ggm.json 파일을 창에 끌어다 놓거나 매크로 추가의 [파일에서 추가]로 넣으면 이 폴더에 복사되고 목록에 나타나요.";
 
 export function LibrarySection() {
   const { state, act } = useRunnerContext();

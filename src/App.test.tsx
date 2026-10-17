@@ -301,16 +301,17 @@ describe("종료 · 이동", () => {
     );
   });
 
-  it("모의 · 보유 없음이면 고를 게 없어 [■ 종료] 하나 — 모의는 실제 주문이 없다고 말한다", async () => {
+  it("모의 보유 중이면 고를 게 없어 [■ 청산] 하나 — 모의는 실제 주문이 없다고 말한다", async () => {
     const holding = makeRun({ inPosition: true, qty: 1, entryPrice: 100 });
     current = makeState({ runs: [makeSlot({ phase: "running", mode: "mock", run: holding })] });
     render(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 종료" }));
+    fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 청산" }));
     expect(screen.queryByRole("menuitem")).toBeNull();
-    const dlg = await screen.findByRole("dialog", { name: "종료할까요?" });
+    const dlg = await screen.findByRole("dialog", { name: "청산할까요?" });
     expect(dlg.textContent).toContain("실제 주문은 보내지 않아요");
-    expect(dlg.textContent).not.toContain("청산");
-    fireEvent.click(within(dlg).getByRole("button", { name: "종료" }));
+    const confirm = within(dlg).getByRole("button", { name: "청산" });
+    expect(confirm.className).toContain("btn-danger-solid");
+    fireEvent.click(confirm);
     await waitFor(() =>
       expect(calledWith("stop_run")).toEqual([["stop_run", { runId: "run-1", mode: "close_and_stop" }]]),
     );

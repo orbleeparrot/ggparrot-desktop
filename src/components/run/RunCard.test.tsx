@@ -41,13 +41,13 @@ describe("내 매크로 카드(두 줄)", () => {
     expect(select.querySelector(".run-card-x-slot")).not.toBeNull();
   });
 
-  it("실행 중 카드: 오른쪽 칸은 손익 %, × 는 없고 주 버튼은 종료", () => {
+  it("실행 중 카드: 오른쪽 칸은 손익 %, × 는 없고 주 버튼은 청산(모의 보유 중)", () => {
     const run = makeRun({ inPosition: true, entryPrice: 100, qty: 1, unrealizedPct: 1.37 });
     const { card } = renderCard(makeSlot({ phase: "running", run, status: { text: "실행 중", tone: "ok" } }));
     expect(screen.queryByRole("button", { name: /목록에서 빼기/ })).toBeNull();
     expect(card.querySelector(".run-card-pct")?.className).toContain("tone-up");
     expect(card.querySelector(".run-card-x-slot")).toBeNull();
-    expect(screen.getByRole("button", { name: `${symbol} 종료` })).toBeTruthy();
+    expect(screen.getByRole("button", { name: `${symbol} 청산` })).toBeTruthy();
   });
 
   it("상태 문구는 앞·뒷부분으로 나눠 두고(좁으면 뒷부분을 숨김) 전체는 title 로", () => {
