@@ -1,7 +1,10 @@
 // 시작·종료·빼기 흐름과 그 대화상자. start_run의 답(실전 확인·막힘·확인 중)을 여기서 처리함.
 // 답이 도우미(wizard)면 Rust가 이미 도우미를 열었으므로 여기서는 하지 않음.
 // 시작 전 검사가 끝난 뒤 Rust가 보내는 runner:confirm도 같은 실전 확인 시트를 띄움.
-// 조건을 기다리는 매크로는 [시작] 직후 서버에 물어(entry_preview) '바로 사지 않아요' 시트를 먼저 띄움.
+// 조건을 기다리는 매크로는 [시작] 직후 서버에 물어(entry_preview) 둠:
+// - 실전: 실전 확인 시트 한 장에 '바로 사지 않아요' 칸 · 돈 · 안전 칸을 함께(두 장으로 끊지 않음)
+// - 모의 · 테스트넷: '바로 사지 않아요' 시트([기다리며 시작])
+// 시트는 제목 바로 아래 테두리 칸 — 제목 밑 회색 설명 글을 두지 않음.
 import { Hourglass, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { on, type ConfirmPayload } from "../../ipc";
@@ -9,7 +12,8 @@ import type { Act } from "../../state/context";
 import { settingsTargetOf, stopChoices, type SettingsTarget } from "../../state/runs";
 import { EV_CONFIRM, type AppState, type EntryPreview, type StartReply, type StopMode } from "../../types";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { rough } from "./EntryWait";
+import { MoneyCells } from "./MoneyCells";
+import { StopFacts, WaitBox, WaitFacts } from "./SheetParts";
 
 interface Deps {
   state: AppState | null;
@@ -31,7 +35,15 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   const [stopAsk, setStopAsk] = useState<{ runId: string; mode: StopMode } | null>(null);
   const [removeAsk, setRemoveAsk] = useState<string | null>(null);
   const [waitAsk, setWaitAsk] = useState<{ runId: string; preview: EntryPreview; notify: boolean } | null>(null);
+  // 실전 시작 확인 시트에 함께 보일 '바로 사지 않아요' — [시작] 때 물어 둔 답(매크로마다).
+  const [previews, setPreviews] = useState<Record<string, EntryPreview>>({});
+  const [liveNotify, setLiveNotify] = useState(true);
   const sending = useRef(new Set<string>());
+  // 비동기 시작 흐름이 지금 모드를 읽을 곳 — 최신 상태는 effect에서 담음.
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  }, [state]);
 
   useEffect(() => {
     let alive = true;
@@ -73,7 +85,8 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
     [act, handle],
   );
 
-  // 기다리는 매크로면 먼저 안내 시트 — 서버가 답하지 않으면 안내 없이 바로 시작(막지 않음).
+  // 기다리는 매크로면 안내를 먼저 물어 둠 — 서버가 답하지 않으면 안내 없이 바로 시작(막지 않음).
+  // 실전은 안내를 실전 확인 시트에 함께 넣고, 모의 · 테스트넷은 안내 시트를 먼저 띄움.
   const startRun = useCallback(
     (runId: string) =>
       void (async () => {
@@ -84,8 +97,19 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
         } catch {
           preview = undefined;
         }
-        if (preview?.waiting && preview.sentence) setWaitAsk({ runId, preview, notify: true });
-        else void send(runId, "start_run");
+        const waiting = preview?.waiting && preview.sentence ? preview : null;
+        const live = latest.current?.runs.find((r) => r.id === runId)?.mode === "live";
+        setPreviews((prev) => {
+          const next = { ...prev };
+          if (waiting) next[runId] = waiting;
+          else delete next[runId];
+          return next;
+        });
+        if (waiting && !live) setWaitAsk({ runId, preview: waiting, notify: true });
+        else {
+          setLiveNotify(true);
+          void send(runId, "start_run");
+        }
       })(),
     [act, send],
   );
@@ -102,7 +126,8 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   const stopChoice = stopAsk && stopSlot ? stopChoices(stopSlot).find((c) => c.mode === stopAsk.mode) : undefined;
   const blockedTarget = blocked ? settingsTargetOf(find(blocked.runId)?.readiness.needs ?? null) : null;
 
-  const typical = waitAsk?.preview.typical ?? null;
+  const liveSlot = live ? find(live.runId) : undefined;
+  const livePreview = live ? previews[live.runId] : undefined;
   const dialogs = (
     <>
       {waitAsk && (
@@ -124,22 +149,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
         >
           <p className="dialog-meta num">{name(waitAsk.runId)}</p>
           <p>{waitAsk.preview.sentence} 조건이 맞을 때만 사요.</p>
-          {typical && (
-            <dl className="ew-facts">
-              <div>
-                <dt>평소 기다린 시간</dt>
-                <dd className="num">{typical.avg_ms ? rough(typical.avg_ms) : "드묾"}</dd>
-              </div>
-              <div>
-                <dt>최근 {rough(typical.span_ms).replace("약 ", "")}</dt>
-                <dd className="num">{typical.episodes}번 진입</dd>
-              </div>
-              <div>
-                <dt>가장 길게 기다린 때</dt>
-                <dd className="num">{typical.longest_ms ? rough(typical.longest_ms) : "—"}</dd>
-              </div>
-            </dl>
-          )}
+          <WaitFacts typical={waitAsk.preview.typical} />
           <label className="check-row">
             <input
               type="checkbox"
@@ -162,11 +172,21 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
           confirm={{
             label: "실전으로 시작",
             className: "btn-live",
-            run: () => void send(live.runId, "start_run_confirmed"),
+            run: () => {
+              if (livePreview) void act("set_entry_notify", { runId: live.runId, on: liveNotify });
+              void send(live.runId, "start_run_confirmed");
+            },
           }}
           large
         >
-          <p className="pre">{live.message}</p>
+          {livePreview && <WaitBox preview={livePreview} />}
+          {liveSlot && <MoneyCells macro={liveSlot.macro} compact />}
+          {livePreview && (
+            <label className="check-row">
+              <input type="checkbox" checked={liveNotify} onChange={(e) => setLiveNotify(e.target.checked)} />
+              <span>사면 알림으로 알려 주기</span>
+            </label>
+          )}
         </ConfirmDialog>
       )}
 
@@ -186,6 +206,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
 
       {stopAsk && (
         <ConfirmDialog
+          variant="sheet"
           title={`${stopChoice?.label ?? "종료"}할까요?`}
           tone={stopChoice?.danger ? "danger" : "default"}
           onClose={() => setStopAsk(null)}
@@ -195,9 +216,9 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
             className: stopChoice?.danger ? "btn-danger-solid" : "btn-primary",
             run: () => void act("stop_run", { runId: stopAsk.runId, mode: stopAsk.mode }),
           }}
+          large
         >
-          <p>{stopChoice?.hint ?? "매크로를 끝내요."}</p>
-          <p className="dialog-meta num">{name(stopAsk.runId)}</p>
+          <StopFacts slot={stopSlot} choice={stopChoice} />
         </ConfirmDialog>
       )}
 

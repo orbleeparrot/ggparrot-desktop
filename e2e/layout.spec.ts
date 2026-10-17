@@ -195,7 +195,7 @@ for (const vp of VIEWPORTS) {
       expect(focused.texts, "포커스여도 글자 자리가 그대로").toEqual(before.texts);
     });
 
-    test("상세 조작 줄 — 대기(시작 단추): 세그먼트·주 단추 같은 높이·가운데·모드 설명 줄 없음", async ({
+    test("상세 조작 줄 — 대기(시작 단추): 세그먼트·주 단추 같은 높이·가운데, 모드 설명은 그 아래 한 줄", async ({
       page,
     }, info) => {
       await open(page, "?open=1");
@@ -206,11 +206,16 @@ for (const vp of VIEWPORTS) {
         const row = document.querySelector(".detail-controls")!;
         const seg = row.querySelector(".segmented")!;
         const btn = row.querySelector(".detail-start, .detail-stop .btn, .btn")!;
-        const hints = Array.from(
-          document.querySelectorAll(".run-detail [class*='mode-hint'], .run-detail [class*='mode-note']"),
-        )
-          .filter((el) => g.shown(el))
-          .map((el) => el.className);
+        // 모드 설명(MODE_NOTES)은 조작 줄 밖, 같은 카드 안 아래 한 줄.
+        const notes = Array.from(document.querySelectorAll(".run-detail .mode-note")).filter((el) => g.shown(el));
+        const note = notes[0];
+        const noteLines = note ? new Set(g.textBoxes(note).map((t) => Math.round(t.box.t))).size : 0;
+        const hints = {
+          count: notes.length,
+          below: note ? g.box(note).t >= g.box(row).b - 1 : false,
+          inCard: note ? note.parentElement === row.parentElement : false,
+          lines: noteLines,
+        };
         // 조작 줄 안에 세그먼트·단추 말고 보이는 글자가 있는지(설명 줄).
         const owners = [seg, ...Array.from(row.querySelectorAll(".btn"))].map((el) => g.box(el));
         const stray = g
@@ -223,7 +228,7 @@ for (const vp of VIEWPORTS) {
       const segMid = (r.seg.t + r.seg.b) / 2;
       const btnMid = (r.btn.t + r.btn.b) / 2;
       expect(Math.abs(segMid - btnMid), `세로 가운데 세그먼트 ${segMid} · 단추 ${btnMid}`).toBeLessThanOrEqual(1);
-      expect(r.hints, "모드 설명 줄").toEqual([]);
+      expect(r.hints, "모드 설명 줄").toEqual({ count: 1, below: true, inCard: true, lines: 1 });
       expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });

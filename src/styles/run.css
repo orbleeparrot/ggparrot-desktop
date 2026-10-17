@@ -487,17 +487,33 @@
   white-space: nowrap;
   font-size: var(--fs-small);
 }
-/* 모드·시작/종료 — 세그먼트와 버튼은 한 줄에서 같은 높이(40px). 모드 설명은 세그먼트 단추의 풍선 도움말. */
+/* 모드·시작/종료 카드 — 세그먼트(실행 중이면 상태 한 줄)와 버튼은 한 줄에서 같은 높이(40px),
+   대기 중에는 그 아래 고른 모드의 설명 한 줄(MODE_NOTES). */
+.detail-mode-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
 .detail-controls {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 10px 16px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
+}
+.mode-note {
+  padding-left: 4px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.mode-note.mode-live {
+  color: var(--live);
 }
 .detail-mode {
   flex: 1 1 260px;
@@ -516,7 +532,7 @@
 .detail-start {
   min-width: 132px;
 }
-.detail-controls.is-running {
+.detail-mode-card:has(.detail-controls.is-running) {
   padding-block: 10px;
 }
 /* 실행 중 — 세그먼트 대신 상태 한 줄(모드 배지 · 저하 칩 · 경과 · 봉 마감 · 서버), 오른쪽은 종료 단추.
@@ -616,48 +632,72 @@
   display: flex;
   gap: 8px;
 }
-.blocker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 10px 9px 12px;
-  border-radius: var(--radius-sm);
-  background: var(--warn-soft);
-  color: var(--warn-ink);
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-small);
-}
-.blocker > svg {
-  flex: none;
-}
-.blocker-text {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 투자 금액 — 보기·바꾸기 */
+/* 돈 · 안전 설정 칸 — 줄글 대신 이름 · 값. 칸은 한 줄에 다 들어가면 한 줄, 모자라면 다음 줄로(줄마다 꽉 채움).
+   칸 사이 선은 틈(1px)으로 그림. */
 .capital-row {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
 }
-.capital-main {
+.money-cells {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--line);
 }
-.capital-value {
+.money-cell {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  flex: 1 1 0;
+  min-width: 128px;
+  padding: 9px 12px 10px;
+  background: var(--card);
+}
+.money-cell dt {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.money-cell dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
   font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+/* 투자 금액 칸은 바꾸기 단추까지 들어가게 넓게, 바꾸는 중이면 한 줄을 다 씀 */
+.money-cell.is-capital {
+  flex-grow: 1.6;
+  min-width: 176px;
+}
+.money-cell.is-editing {
+  flex-basis: 100%;
+}
+.money-original {
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+/* 시트 안 — 두 칸씩 */
+.money-cells.is-compact .money-cell {
+  flex-basis: calc(50% - 1px);
+  min-width: 0;
 }
 .capital-actions {
   display: inline-flex;
-  gap: 4px;
+  gap: 2px;
   margin-left: auto;
+  font-size: var(--fs-body);
+}
+.capital-actions .btn-sm {
+  height: 26px;
+  padding-inline: 6px;
 }
 .capital-form {
   display: inline-flex;
@@ -674,16 +714,104 @@
 }
 .capital-note {
   margin: 0;
+  color: var(--muted);
   font-size: var(--fs-small);
 }
-.capital-risk {
+.capital-guard {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   margin: 0;
+  color: var(--muted);
   font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+
+/* 시작 전 확인 — 가짜 그래프 자리. 줄마다 표시(✓·!·○·모래시계) · 이름(아래 작은 줄) · 오른쪽 상태. */
+.pre-start {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px var(--pad) 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.pre-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pre-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px 0;
+}
+.pre-row + .pre-row {
+  border-top: 1px solid var(--line);
+}
+.pre-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--border);
+  color: var(--muted);
+}
+.pre-row.is-ok .pre-mark {
+  background: var(--ok);
+  box-shadow: none;
+  color: var(--on-accent);
+}
+.pre-row.is-warn .pre-mark {
+  background: var(--warn-soft);
+  box-shadow: none;
+  color: var(--warn-ink);
+}
+.pre-row.is-wait .pre-mark {
+  background: var(--brand-soft);
+  box-shadow: none;
+  color: var(--brand-deep);
+}
+.pre-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+.pre-title {
+  font-weight: var(--fw-bold);
+}
+.pre-sub {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.pre-row.is-warn .pre-sub {
+  color: var(--warn-ink);
+}
+.pre-right {
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.pre-row.is-ok .pre-right {
+  color: var(--ok-ink);
+}
+.pre-row.is-warn .pre-right {
+  color: var(--warn-ink);
 }
 
 /* --- 상태 카드 ---------------------------------------------------------------- */
-.status-card,
-.idle-card {
+.status-card {
   flex: none;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1456,41 +1584,6 @@
 .exit-end.tone-muted .exit-end-price {
   color: inherit;
 }
-.idle-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 16px var(--pad);
-  border-style: dashed;
-  box-shadow: none;
-  background: transparent;
-}
-.idle-figure {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: none;
-  width: 180px;
-  opacity: 0.45;
-  filter: grayscale(1);
-}
-.idle-figure .sparkline {
-  height: 40px;
-}
-.idle-pct {
-  font-size: 24px;
-  font-weight: var(--fw-bold);
-  letter-spacing: -0.03em;
-  color: var(--muted);
-}
-.idle-text {
-  color: var(--muted);
-  font-size: var(--fs-title);
-  font-weight: var(--fw-bold);
-  line-height: 1.5;
-  text-wrap: balance;
-}
-
 /* --- 빈 상태·첫 실행 안내 --------------------------------------------------------- */
 .empty-state {
   display: flex;
@@ -1616,10 +1709,6 @@
   }
   .run-table > div:nth-last-child(2) {
     border-bottom: 1px solid var(--line);
-  }
-  .idle-card {
-    flex-direction: column;
-    align-items: flex-start;
   }
   .detail-mode {
     flex-basis: 100%;
