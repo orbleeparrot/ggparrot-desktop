@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { RunnerContext, type RunnerContextValue } from "../../state/context";
 import { makeState, slotCard } from "../../test/fixtures";
 import type { SlotCard } from "../../types";
-import { SlotCardView } from "./SlotCardView";
+import { amountOf, SlotCardView } from "./SlotCardView";
 
 afterEach(cleanup);
 
@@ -58,7 +58,7 @@ describe("키 칸 열고 닫기 · 잔고 · 안내 색", () => {
     expect(body.hidden).toBe(false);
   });
 
-  it("연결된 칸도 키 칸은 닫혀 있고, 오른쪽 끝에 잔고 · 확인 시각, 세 확인 띠", () => {
+  it("연결된 칸도 키 칸은 닫혀 있고, 오른쪽 끝에 금액 한 줄 · 이름 옆에 확인 시각 · 보유, 세 확인 띠", () => {
     withContext(
       <Slot
         slot={slotCard("upbit", {
@@ -73,9 +73,14 @@ describe("키 칸 열고 닫기 · 잔고 · 안내 색", () => {
       />,
     );
     expect(screen.getByRole("button", { name: /키 칸 펼치기/ }).getAttribute("aria-expanded")).toBe("false");
-    expect(screen.getByText("사용 가능 잔고")).toBeTruthy();
-    expect(screen.getByText("12,300 KRW")).toBeTruthy();
-    expect(screen.getByText(/4:40 확인 · 보유 BTC 0.01/)).toBeTruthy();
+    // 금액: 작은 라벨 '잔고' + 숫자 + 단위(전체 이름은 title), '+ BTC'를 붙이지 않음
+    const amount = document.querySelector<HTMLElement>(".slot-balance")!;
+    expect(amount.title).toBe("사용 가능 잔고");
+    expect(amount.textContent).toBe("잔고12,300KRW");
+    // 확인 시각 · 보유 코인은 이름 옆 상태 줄
+    const head = document.querySelector<HTMLElement>(".slot-head")!;
+    expect(head.textContent).toMatch(/4:40 확인/);
+    expect(head.textContent).toContain("보유 BTC 0.01");
     expect(screen.getByRole("list", { name: "키 확인 결과" }).textContent).toContain("주문 권한");
   });
 
@@ -113,5 +118,13 @@ describe("키 칸 열고 닫기 · 잔고 · 안내 색", () => {
     withContext(<Slot slot={slotCard("bithumb", { note: "키 저장소를 읽지 못했어요.", noteTone: "warn" })} />);
     expect(screen.getByRole("button", { name: /키 칸 펼치기/ })).toBeTruthy();
     expect(screen.getByText("키 저장소를 읽지 못했어요.").className).toContain("slot-why");
+  });
+});
+
+describe("금액 나누기", () => {
+  it("숫자와 단위를 나눔 — 단위는 작게 그림", () => {
+    expect(amountOf("1,234.5 USDT")).toEqual({ num: "1,234.5", unit: "USDT" });
+    expect(amountOf("12,300 KRW")).toEqual({ num: "12,300", unit: "KRW" });
+    expect(amountOf("확인 못 함")).toEqual({ num: "확인 못 함", unit: "" });
   });
 });

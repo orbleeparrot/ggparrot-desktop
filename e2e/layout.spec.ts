@@ -57,6 +57,11 @@ for (const vp of VIEWPORTS) {
 
     test("실행 목록 카드 — 같은 높이·글자 넘침·겹침 없음·긴 종목", async ({ page }, info) => {
       await open(page, "?demo=many");
+      // 대기 묶음은 처음엔 세 줄만 — 나머지는 [N개 모두 보기]로 펼침(시안 2절).
+      const idleTotal = Number(await page.locator("#run-group-idle .run-group-count").innerText());
+      await expect(page.locator("#run-group-idle .run-card")).toHaveCount(3);
+      await expect(page.locator(".run-card")).toHaveCount(24 - (idleTotal - 3));
+      await page.getByRole("button", { name: `${idleTotal}개 모두 보기` }).click();
       await expect(page.locator(".run-card")).toHaveCount(24);
       await snap(page, info, "run-list");
 

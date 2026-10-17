@@ -1,5 +1,6 @@
 // 거래소 연결 한 줄 — 왼쪽: 로고 · 이름 · 연결 상태, 그 아래 세 확인 띠(키 인증 → 허용 IP → 주문 권한)와 고칠 일 한 줄.
-// 오른쪽 끝: 잔고(연결 확인 때 읽은 값 · 확인 시각), 막혔으면 그 자리에 노란 [연결 도우미]. 맨 끝 ▾로 키 칸을 열고 닫음.
+// 오른쪽 끝: 금액 한 줄(작은 라벨 '잔고' · '증거금' + 큰 숫자 + 작은 단위), 막혔으면 그 자리에 노란 [연결 도우미]. 맨 끝 ▾로 키 칸을 열고 닫음.
+//   확인 시각 · 코인 보유(보유 BTC 0.01)는 금액 옆에 붙이지 않고 이름 옆 상태 줄에(10/18 — 세 줄로 쌓던 것 · '+ BTC'를 붙이던 것 대신).
 // - 키 칸(두 칸 · 기억하기 · 안내 · [다시 확인] · [연결 도우미])은 처음엔 모두 닫혀 있음 — 화면이 키 칸으로 가득하지 않게.
 // - 안내 색은 Rust가 주는 noteTone("warn"·"muted"). 없으면 막힘(blocked)·확인 실패·잔고·권한·허용 IP 문구로 짐작함.
 // - 막힌 이유가 따로 없으면(국내 거래소) 세 확인의 빨간 칸 이유와 이 기기 공인 IP로 한 줄을 만듦.
@@ -45,6 +46,17 @@ export function splitBalance(text: string): { label: string; value: string; rest
   return { label: m[1], value: m[2], rest: rest.join(" · ") };
 }
 
+/** 금액 칸 앞 작은 라벨 — '사용 가능 증거금' → 증거금, 그 밖은 잔고. */
+function shortLabel(label: string): string {
+  return label.includes("증거금") ? "증거금" : "잔고";
+}
+
+/** "1,234.5 USDT" → 숫자 · 단위(단위는 작게). 단위가 없으면 통째로 숫자. */
+export function amountOf(value: string): { num: string; unit: string } {
+  const m = /^(.*\d)\s+([A-Za-z]+)$/.exec(value.trim());
+  return m ? { num: m[1], unit: m[2] } : { num: value, unit: "" };
+}
+
 interface Props {
   slot: SlotCard;
   /** 키 칸을 열었는지 — 설정 화면이 들고 있음([설정에서 입력]으로 데려오면 그 칸을 엶). */
@@ -73,6 +85,7 @@ export function SlotCardView({ slot, open, onToggle }: Props) {
         ? `${BAD_TEXT[badKey]}${badKey === "ip" && ip ? ` — 이 기기 주소 ${ip}` : ""}`
         : "";
   const balance = slot.status === "connected" && slot.balance ? splitBalance(slot.balance) : null;
+  const amount = balance ? amountOf(balance.value) : null;
   const short = slot.status === "connected" && warn;
   const wizard = slot.wizardAvailable && (
     <button
@@ -109,6 +122,8 @@ export function SlotCardView({ slot, open, onToggle }: Props) {
             {slot.status === "checking" && <LoaderCircle size={12} className="spin" aria-hidden="true" />}
             {slot.headline}
           </span>
+          {balance && slot.checkedAt > 0 && <span className="slot-meta num">{formatClock(slot.checkedAt)} 확인</span>}
+          {balance?.rest && <span className="slot-meta num">{balance.rest}</span>}
         </div>
         {showChecks && <CheckStrip checks={slot.checks} />}
         {why && (
@@ -120,13 +135,10 @@ export function SlotCardView({ slot, open, onToggle }: Props) {
       </div>
       <div className="slot-side">
         {balance ? (
-          <div className={`slot-balance ${short ? "is-short" : ""}`}>
-            <span className="slot-balance-label">{balance.label}</span>
-            <span className="slot-balance-value num">{balance.value}</span>
-            <span className="slot-balance-time num">
-              {slot.checkedAt > 0 && `${formatClock(slot.checkedAt)} 확인`}
-              {balance.rest && `${slot.checkedAt > 0 ? " · " : ""}${balance.rest}`}
-            </span>
+          <div className={`slot-balance ${short ? "is-short" : ""}`} title={balance.label}>
+            <span className="slot-balance-label">{shortLabel(balance.label)}</span>
+            <span className="slot-balance-value num">{amount?.num}</span>
+            {amount?.unit && <span className="slot-balance-unit">{amount.unit}</span>}
           </div>
         ) : (
           !open && slot.status !== "connected" && wizard

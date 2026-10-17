@@ -32,8 +32,8 @@
   top: calc(-1 * var(--panel-pad-t));
   z-index: 3;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   margin: calc(-1 * var(--panel-pad-t)) calc(-1 * var(--panel-pad-r)) 0 calc(-1 * var(--panel-pad-l));
   padding: calc(var(--panel-pad-t) + 2px) calc(var(--panel-pad-r) + 4px) 8px calc(var(--panel-pad-l) + 4px);
   background: var(--bg);
@@ -43,31 +43,21 @@
 .run-list-panel.has-more-above .panel-head {
   box-shadow: 0 8px 8px -8px var(--edge-shadow);
 }
-.run-list-foot {
-  position: sticky;
-  bottom: calc(-1 * var(--pad));
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  margin: 0 calc(-1 * var(--panel-pad-r)) calc(-1 * var(--pad)) calc(-1 * var(--panel-pad-l));
-  padding: 0 var(--panel-pad-r) var(--pad) var(--panel-pad-l);
-  background: var(--bg);
-  transition: box-shadow 140ms var(--ease);
-}
-.run-list-panel.has-more-below .run-list-foot {
-  padding-top: 8px;
-  box-shadow: 0 -8px 8px -8px var(--edge-shadow);
-}
 .panel-title {
-  font-size: 12px;
+  font-size: var(--fs-body);
   font-weight: var(--fw-bold);
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  color: var(--ink);
 }
-.panel-count {
-  font-size: var(--fs-small);
-  font-weight: var(--fw-bold);
-  color: var(--muted);
+/* [+ 추가] — 머리 오른쪽 작은 단추(예전 아래쪽 큰 점선 단추 대신, 목록 자리를 차지하지 않게) */
+.panel-add {
+  flex: none;
+  margin-left: auto;
+  gap: 4px;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 10px;
+  border-color: var(--border);
+  background: var(--card);
 }
 /* 묶음 — 확인 필요(노란 칸 안의 카드) · 실행 중(흰 카드) · 대기(회색 칸의 한 줄 행). 머리마다 아이콘 · 이름 · 개수 · 선. */
 .run-groups {
@@ -184,7 +174,7 @@
 .run-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 /* 확인 필요 — 노란 칸 안에 카드 */
 .run-group.is-attention .run-list {
@@ -193,12 +183,31 @@
   border-radius: calc(var(--radius) + 4px);
   background: color-mix(in srgb, var(--warn-soft) 70%, var(--bg));
 }
-/* 대기 — 회색 칸에 한 줄 행 */
-.run-group.is-idle .run-list {
-  gap: 2px;
+/* 대기 — 회색 칸에 한 줄 행, 처음엔 세 줄만 보이고 [N개 모두 보기] */
+.run-idle-box {
+  display: flex;
+  flex-direction: column;
   padding: 4px;
   border-radius: calc(var(--radius) + 2px);
   background: color-mix(in srgb, var(--hover) 80%, var(--bg));
+}
+.run-group.is-idle .run-list {
+  gap: 2px;
+}
+.run-idle-more {
+  align-self: flex-start;
+  padding: 4px 8px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--info-ink);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.run-idle-more:hover {
+  text-decoration: underline;
 }
 /* 찾기 칸 — 매크로가 8개를 넘을 때 */
 .run-search {
@@ -236,7 +245,7 @@
 .run-card {
   position: relative;
   /* 고른 카드를 보이게 스크롤할 때 붙어 있는 머리·[+ 매크로 추가] 밑으로 숨지 않게 */
-  scroll-margin: 48px 0 76px;
+  scroll-margin: 48px 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
@@ -248,28 +257,27 @@
 .run-card:hover {
   border-color: color-mix(in srgb, var(--ink) 22%, var(--border));
 }
-/* 고른 카드 — 노란 테두리 · 둘레 빛. 가장자리 색 막대는 두지 않음. */
+/* 고른 카드 — 노란 테두리 + 안쪽 옅은 노란 테 · 아주 옅은 노란 바탕(시안 2절). 가장자리 색 막대는 두지 않음. */
 .run-card.is-selected {
   border-color: var(--brand-hover);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--brand) 28%, transparent),
-    var(--shadow);
+  background: color-mix(in srgb, var(--brand) 6%, var(--card));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 40%, transparent);
 }
 /* 카드는 두 줄(1줄 28px · 2줄 30px) — 글자는 줄바꿈하지 않아 카드 높이가 바뀌지 않음.
    고르기 버튼이 카드 전체이고, ×(1줄 오른쪽)·주 버튼(2줄 오른쪽)은 버튼 안에 비워 둔 자리 위에 놓인 형제.
    --act-w: 주 버튼 너비(종류마다 고정) — 2줄 글자가 이만큼 비켜 감. */
 .run-card {
-  --act-w: 28px;
-  --x-size: 28px;
-  --card-pad: 10px;
+  --act-w: 24px;
+  --x-size: 24px;
+  --card-pad: 9px;
   container: run-card / inline-size;
 }
 .run-card-select {
   display: grid;
-  grid-template-rows: 28px 30px;
-  row-gap: 4px;
+  grid-template-rows: 20px 24px;
+  row-gap: 3px;
   width: 100%;
-  padding: var(--card-pad) var(--card-pad) var(--card-pad) 16px;
+  padding: var(--card-pad) 11px var(--card-pad) 12px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
@@ -312,7 +320,7 @@
   grid-column: 4;
 }
 .run-card-symbol {
-  font-size: var(--fs-title);
+  font-size: 14px;
   font-weight: var(--fw-bold);
   letter-spacing: -0.01em;
   overflow: hidden;
@@ -354,7 +362,7 @@
   height: var(--x-size);
 }
 .run-card-pct {
-  font-size: var(--fs-title);
+  font-size: 14px;
   font-weight: var(--fw-bold);
   letter-spacing: -0.01em;
 }
@@ -381,10 +389,24 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  font-weight: var(--fw-regular);
+}
+.run-card-status.tone-ok,
+.run-card-status-rest.tone-ok,
+.run-row-status.tone-ok {
+  color: var(--muted);
+}
+.run-card-status:is(.tone-warn, .tone-danger),
+.run-card-status-rest:is(.tone-warn, .tone-danger),
+.run-row-status:is(.tone-warn, .tone-danger) {
   font-weight: var(--fw-bold);
 }
 .run-card-status.tone-muted .status-dot {
   background: var(--faint);
+}
+/* 글자는 회색이어도 점은 상태 색(실행 중 초록) — 점의 고리(is-live)도 같은 색 */
+.run-card-status.tone-ok .status-dot {
+  color: var(--ok);
 }
 /* 상태 뒷부분 — 칸이 글자보다 좁으면 둘째 줄로 밀려 가려짐(앞의 빈 ::before가 첫 줄을 지킴). 전체 문구는 title. */
 .run-card-status-rest {
@@ -393,7 +415,6 @@
   flex-wrap: wrap;
   height: 18px;
   overflow: hidden;
-  font-weight: var(--fw-bold);
 }
 /* 첫 줄 지킴이 — 한 줄 높이를 줘야 밀려난 글자가 둘째 줄(18px 아래)로 가서 가려짐(높이 0이면 둘째 줄이 맨 위에 붙어 보임) */
 .run-card-status-rest::before,
@@ -450,14 +471,14 @@
 .run-card-action {
   bottom: var(--card-pad);
   width: var(--act-w);
-  height: 28px;
+  height: 24px;
   opacity: 0;
   transition: opacity 120ms var(--ease);
 }
 .run-card-action .btn-sm {
   width: var(--act-w);
-  min-height: 28px;
-  height: 28px;
+  min-height: 24px;
+  height: 24px;
   padding: 0;
 }
 /* [▶] · [■]는 마우스를 올리거나 카드 안에 키보드 포커스가 있거나 종료 메뉴가 열렸을 때만. 도는 표시는 늘. */
@@ -515,13 +536,13 @@
   grid-template-rows: none;
   align-items: center;
   gap: 7px;
-  height: 38px;
-  padding: 0 12px 0 12px;
+  height: 34px;
+  padding: 0 8px;
 }
 .run-card.is-compact .run-card-symbol {
   flex: none;
   max-width: 45%;
-  font-size: var(--fs-body);
+  font-size: 12.5px;
 }
 .run-card.is-compact .run-card-mode {
   flex: none;
@@ -536,7 +557,7 @@
   white-space: nowrap;
 }
 .run-row-status {
-  font-weight: var(--fw-bold);
+  font-weight: var(--fw-regular);
 }
 .run-row-status.tone-muted {
   color: var(--muted);
@@ -2085,9 +2106,6 @@
   .panel-head {
     top: var(--header-h);
   }
-  .run-list-foot {
-    bottom: 0;
-  }
   .run-card {
     scroll-margin-top: calc(var(--header-h) + 48px);
   }
@@ -2129,6 +2147,10 @@
   .run-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+  /* 묶음에 하나뿐이면 한 줄을 다 씀 — 확인 필요 칸 오른쪽 절반이 비지 않게 */
+  .run-list > .run-card:only-child {
+    grid-column: 1 / -1;
   }
 }
 

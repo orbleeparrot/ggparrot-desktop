@@ -10,7 +10,7 @@
 // - 좁을 때 줄이는 순서는 run.css(.run-card-head·.run-card-meta)에서 정함 — 글자 길이를 재는 스크립트는 없음.
 //   전략은 세 글자쯤 보일 자리가 없으면 앞의 구분점(·)과 함께 통째로 숨음('· …'만 남지 않게).
 // - 주 단추·×는 고르기 버튼 밖의 형제 — 비워 둔 자리를 네모난 감싸개가 통째로 덮어 모서리를 눌러도 카드가 골라지지 않음.
-import { GripVertical, Timer, X } from "lucide-react";
+import { GripVertical, X } from "lucide-react";
 import { forwardRef, type KeyboardEvent, type PointerEventHandler } from "react";
 import { useRunnerContext } from "../../state/context";
 import { formatElapsed, formatPercent, toneOf } from "../../state/format";
@@ -120,7 +120,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
       <li className={cls}>
         {grip}
         <button type="button" {...selectProps}>
-          <ExchangeLogo exchange={m.exchange} size={18} />
+          <ExchangeLogo exchange={m.exchange} size={16} />
           <span className="sr-only">{m.exchangeLabel || m.exchangeName}</span>
           <span className="run-card-symbol num" title={m.symbol}>
             {m.symbol}
@@ -145,7 +145,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
       <button type="button" {...selectProps}>
         <span className="run-card-top">
           <span className="run-card-head">
-            <ExchangeLogo exchange={m.exchange} size={20} />
+            <ExchangeLogo exchange={m.exchange} size={18} />
             <span className="sr-only">{m.exchangeLabel || m.exchangeName}</span>
             <span className="run-card-symbol num" title={m.symbol}>
               {m.symbol}
@@ -166,7 +166,6 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
           )}
           {showElapsed && (
             <span className="run-card-elapsed num" title="경과 시간">
-              <Timer size={12} aria-hidden="true" />
               <span className="sr-only">경과 </span>
               {formatElapsed(elapsed)}
             </span>

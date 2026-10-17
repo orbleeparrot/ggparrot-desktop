@@ -28,6 +28,8 @@ interface Drag {
 export const SEARCH_FROM = 8;
 /** 대기 묶음을 접었는지 — 이 PC에만 기억. */
 export const IDLE_KEY = "ggp.runner.list.idle";
+/** 대기 묶음에서 처음 보이는 줄 수 — 더 있으면 [N개 모두 보기]. */
+export const IDLE_PEEK = 3;
 
 function readIdleOpen(): boolean {
   try {
@@ -65,8 +67,9 @@ function slotAt(list: HTMLElement | null, x: number, y: number): number | null {
 }
 
 /** 목록이 실제로 보이는 세로 범위 — 붙어 있는 머리 아래 ~ 붙어 있는 [+ 매크로 추가] 위. */
-function visibleBand(head: HTMLElement | null, foot: HTMLElement | null): [number, number] {
-  return [head?.getBoundingClientRect().bottom ?? 0, foot?.getBoundingClientRect().top ?? window.innerHeight];
+function visibleBand(head: HTMLElement | null, panel: HTMLElement | null): [number, number] {
+  const bottom = panel ? Math.min(panel.getBoundingClientRect().bottom, window.innerHeight) : window.innerHeight;
+  return [head?.getBoundingClientRect().bottom ?? 0, bottom];
 }
 
 /** 카드 전체가 보이게 가장 가까운 만큼만 스크롤(시험 환경 jsdom에는 scrollIntoView가 없음). */
@@ -88,7 +91,6 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
   const head = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const lists = useRef(new Map<GroupKey, HTMLUListElement>());
-  const foot = useRef<HTMLDivElement>(null);
   const pointer = useRef({ x: 0, y: 0 });
   // 끄는 카드의 묶음 — 가장자리 자동 스크롤(effect)이 읽음.
   const dragGroup = useRef<GroupKey>("running");
@@ -96,14 +98,21 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
   const [more, setMore] = useState({ above: false, below: false });
   const [query, setQuery] = useState("");
   const [idleOpen, setIdleOpen] = useState(readIdleOpen);
+  const [idleAll, setIdleAll] = useState(false);
   const runs = state.runs;
-  const running = runs.filter((r) => r.phase === "running").length;
   const searchable = runs.length > SEARCH_FROM;
   const searching = searchable && query.trim() !== "";
   const groups = groupRuns(searching ? runs.filter((r) => matches(r, query)) : runs);
   const idleShown = idleOpen || searching;
-  // 화면에 보이는 순서 — ↑·↓가 오가는 차례(접힌 대기 묶음은 뺌).
-  const visible = groups.flatMap((g) => (g.key === "idle" && !idleShown ? [] : g.items));
+  /** 묶음에서 보이는 카드 — 대기는 처음 IDLE_PEEK줄만(찾는 중 · 모두 보기 · 고른 카드가 뒤에 있으면 다). */
+  function shownOf(g: (typeof groups)[number]) {
+    if (g.key !== "idle") return g.items;
+    if (!idleShown) return [];
+    const at = g.items.findIndex((r) => r.id === selectedId);
+    return idleAll || searching || at >= IDLE_PEEK ? g.items : g.items.slice(0, IDLE_PEEK);
+  }
+  // 화면에 보이는 순서 — ↑·↓가 오가는 차례(접힌 대기 묶음 · 가려진 대기 줄은 뺌).
+  const visible = groups.flatMap((g) => shownOf(g));
   const canMove = runs.length > 1 && !searching;
   const dragging = drag !== null;
 
@@ -129,7 +138,7 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
       frame = requestAnimationFrame(() => {
         const r = body.current?.getBoundingClientRect();
         if (!r) return;
-        const [top, bottom] = visibleBand(head.current, foot.current);
+        const [top, bottom] = visibleBand(head.current, panel.current);
         const above = r.top < top - 1;
         const below = r.bottom > bottom + 1;
         setMore((prev) => (prev.above === above && prev.below === below ? prev : { above, below }));
@@ -158,7 +167,7 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
     const group = dragGroup.current;
     let frame = 0;
     function tick() {
-      const [top, bottom] = visibleBand(head.current, foot.current);
+      const [top, bottom] = visibleBand(head.current, panel.current);
       const { x, y } = pointer.current;
       const dy = edgeScrollSpeed(y, top, bottom);
       if (dy !== 0) {
@@ -264,9 +273,10 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
     >
       <div ref={head} className="panel-head">
         <h2 className="panel-title">내 매크로</h2>
-        <span className="panel-count num">
-          {running > 0 ? `${runs.length}개 중 ${running}개 실행 중` : `${runs.length}개`}
-        </span>
+        <button type="button" className="btn btn-ghost btn-sm panel-add" aria-label="매크로 추가" onClick={openLibrary}>
+          <Plus size={14} aria-hidden="true" />
+          추가
+        </button>
       </div>
       <div ref={body} className="run-groups">
         {searchable && (
@@ -285,6 +295,43 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
         {searching && groups.length === 0 && <p className="run-empty">찾는 매크로가 없어요.</p>}
         {groups.map((g) => {
           const open = g.key !== "idle" || idleShown;
+          const shown = shownOf(g);
+          const hidden = g.items.length - shown.length;
+          const list = (
+            <ul
+              id={`run-group-${g.key}-list`}
+              ref={(el) => {
+                if (el) lists.current.set(g.key, el);
+                else lists.current.delete(g.key);
+              }}
+              className={`run-list ${drag?.group === g.key ? "is-sorting" : ""}`}
+            >
+              {shown.map((slot, i) => (
+                <RunCard
+                  key={slot.id}
+                  ref={(el) => {
+                    if (el) refs.current.set(slot.id, el);
+                    else refs.current.delete(slot.id);
+                  }}
+                  slot={slot}
+                  selected={slot.id === selectedId}
+                  onKeyNav={onKeyNav}
+                  compact={g.key === "idle"}
+                  grab={
+                    canMove && g.items.length > 1
+                      ? {
+                          onPointerDown: (e) => onGrabStart(e, slot.id, g.key, i),
+                          onPointerMove: onGrabMove,
+                          onPointerUp: onGrabEnd,
+                          onPointerCancel: () => setDrag(null),
+                        }
+                      : undefined
+                  }
+                  sorting={sortingOf(g.key, i, shown.length, slot.id)}
+                />
+              ))}
+            </ul>
+          );
           return (
             <section
               key={g.key}
@@ -320,50 +367,22 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
                   </button>
                 )}
               </div>
-              {open && (
-                <ul
-                  id={`run-group-${g.key}-list`}
-                  ref={(el) => {
-                    if (el) lists.current.set(g.key, el);
-                    else lists.current.delete(g.key);
-                  }}
-                  className={`run-list ${drag?.group === g.key ? "is-sorting" : ""}`}
-                >
-                  {g.items.map((slot, i) => (
-                    <RunCard
-                      key={slot.id}
-                      ref={(el) => {
-                        if (el) refs.current.set(slot.id, el);
-                        else refs.current.delete(slot.id);
-                      }}
-                      slot={slot}
-                      selected={slot.id === selectedId}
-                      onKeyNav={onKeyNav}
-                      compact={g.key === "idle"}
-                      grab={
-                        canMove && g.items.length > 1
-                          ? {
-                              onPointerDown: (e) => onGrabStart(e, slot.id, g.key, i),
-                              onPointerMove: onGrabMove,
-                              onPointerUp: onGrabEnd,
-                              onPointerCancel: () => setDrag(null),
-                            }
-                          : undefined
-                      }
-                      sorting={sortingOf(g.key, i, g.items.length, slot.id)}
-                    />
-                  ))}
-                </ul>
-              )}
+              {open &&
+                (g.key === "idle" ? (
+                  <div className="run-idle-box">
+                    {list}
+                    {(hidden > 0 || (idleAll && g.items.length > IDLE_PEEK)) && !searching && (
+                      <button type="button" className="run-idle-more" onClick={() => setIdleAll((v) => !v)}>
+                        {idleAll ? "줄여 보기" : `${g.items.length}개 모두 보기`}
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  list
+                ))}
             </section>
           );
         })}
-      </div>
-      <div ref={foot} className="run-list-foot">
-        <button type="button" className="add-run" onClick={openLibrary}>
-          <Plus size={16} aria-hidden="true" />
-          매크로 추가
-        </button>
       </div>
     </nav>
   );
