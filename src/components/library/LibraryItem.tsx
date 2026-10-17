@@ -26,7 +26,7 @@ export function LibraryItem({ file, busy, onPick }: { file: LibraryFile; busy: b
         </span>
         {file.inUse > 0 && <span className="lib-inuse">실행 목록 {file.inUse}개</span>}
         <span className="lib-add" aria-hidden="true">
-          <Plus size={15} strokeWidth={2.6} />
+          <Plus size={14} strokeWidth={2.6} />
           추가
         </span>
         <span className="lib-meta">
