@@ -1094,13 +1094,6 @@
   padding: 10px var(--pad) 7px;
   overflow: hidden;
 }
-.status-card.is-running::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, var(--brand), color-mix(in srgb, var(--brand) 20%, transparent));
-}
 /* 서버 연결 — 점 색이 상태(목록 카드 상태 점과 같은 뜻): 연결됨 초록·다시 연결 중 주의·거절 빨강·확인 중 회색.
    글자는 연결됨이면 흐리게, 문제가 있으면 그 색으로. */
 .server-meta {
