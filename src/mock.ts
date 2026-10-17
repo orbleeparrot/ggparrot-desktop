@@ -1,6 +1,6 @@
 // 브라우저 미리보기용 mock 백엔드 — `window.__TAURI_INTERNALS__`가 없을 때만 ipc.ts가 불러옴.
 // 계약 v2(types.ts)를 그대로 흉내 냄: 실행 목록·모드·시작/실전 확인·실행 루프와 활동·종료·설정 키 칸·자동 연결 확인·
-// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | many | settings | applog | wizard | library | wait
+// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | many | settings | applog | wizard | library | wait | wait-rsi
 // | wizard-testnet | wizard-demo | wizard-live(바이낸스 도우미). many: 매크로 24개, 그중 몇 개는 실행 중.
 import type { Backend, ConfirmPayload, Unlisten } from "./ipc";
 import {
@@ -581,6 +581,7 @@ export function createMockBackend(
   if (demo === "running") seedRunning();
   if (demo === "pnl") seedPnl();
   if (demo === "wait") seedWait();
+  if (demo === "wait-rsi") seedWait("rsi");
   if (demo === "settings") seedSettings();
   if (demo === "many") seedMany();
   if (demo === "wizard") wizard.open(slotTarget("upbit", "upbit"), "ask");
@@ -622,7 +623,7 @@ export function createMockBackend(
 
   /** ?demo=wait — 진입 대기 검토용. 2026-10-17 빗썸 KRW-FORT 변동성 돌파(15분 · 20봉 평균 필터) 10:40 그대로:
    *  고가가 사는 선을 넘었지만 마감가가 20봉 평균 아래라 아직 안 삼(서버 entry_wait.py 계산 값). */
-  function seedWait() {
+  function seedWait(kind: "breakout" | "rsi" = "breakout") {
     const now = Date.now();
     const [, upbit] = m.runs;
     const fort = newRun(
@@ -693,6 +694,46 @@ export function createMockBackend(
       typical: { episodes: 30, span_ms: 177_300_000, avg_ms: 5_910_000, longest_ms: 42_300_000 },
       log: [],
     };
+    if (kind === "rsi") {
+      // 2026-10-17 업비트 KRW-GTC RSI(14) 40/70 · 15분 봉(서버 entry_wait.py 계산 값) — 내려가야 사는 값 눈금.
+      Object.assign(fort.macro, {
+        title: "GTC RSI",
+        symbol: "KRW-GTC",
+        baseAsset: "GTC",
+        strategy: "RSI 조건 매매",
+        summary: "15분 봉 RSI(14)가 40 아래로 내려가면 사고, 70 위로 오르면 팔아요.",
+      });
+      fort.fixedWait = {
+        ...fort.fixedWait,
+        rule: "F",
+        sentence: "RSI(14)가 40 아래로 내려가면 사요.",
+        headline: "RSI(14)가 40 아래로 내려가면 사요",
+        distance: "지금 RSI 64.5 · 24.5 더 내려가면",
+        gap: "RSI 64.5",
+        remain: "24.5",
+        touched: false,
+        reached: false,
+        conditions: [],
+        meter: {
+          from: { label: "청산 기준", value: "70" },
+          to: { label: "사는 선", value: "40" },
+          now: "64.5",
+          progress: 0.1831405585932231,
+        },
+        ladder: null,
+        scale: {
+          marks: [
+            { key: "line", label: "사는 선", value: "40", pos: 0.1154, main: true },
+            { key: "exit", label: "청산 기준", value: "70", pos: 0.8846, main: false },
+          ],
+          now: { label: "지금", value: "64.5", pos: 0.7437 },
+          zone: 0.1154,
+          zone_side: "below",
+        },
+        buy_line: null,
+        typical: { episodes: 9, span_ms: 166500000, avg_ms: 18500000, longest_ms: 51300000 },
+      };
+    }
     beginRun(say, fort, now - 3 * 60_000);
     goLive(fort);
     tickRun(say, fort, now);

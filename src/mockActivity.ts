@@ -164,6 +164,16 @@ export function mockEntryWait(at: number, tick: number): EntryWait {
       now: rsi.toFixed(1),
       progress: (70 - rsi) / 40,
     },
+    // 서버 _ladder 와 같은 눈금 — 30 · 70 · 지금 값에 15% 여유(24 ~ 76), 사는 구역은 30 아래.
+    scale: {
+      marks: [
+        { key: "line", label: "사는 선", value: "30", pos: (30 - 24) / 52, main: true },
+        { key: "exit", label: "청산 기준", value: "70", pos: (70 - 24) / 52, main: false },
+      ],
+      now: { label: "지금", value: rsi.toFixed(1), pos: (rsi - 24) / 52 },
+      zone: (30 - 24) / 52,
+      zone_side: "below",
+    },
     buy_line: null,
     next_check_ms: next,
     checks: Math.floor(tick / 12),

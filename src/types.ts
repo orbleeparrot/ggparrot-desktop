@@ -129,9 +129,13 @@ export interface EntryWait {
   ladder?: {
     marks: { key: string; label: string; value: string; pos: number; main: boolean }[];
     now: { label: string; value: string; pos: number };
-    /** 사는 구역(두 선 위)이 시작하는 곳 0~1. */
+    /** 사는 구역이 시작하는 곳 0~1. */
     zone: number;
+    /** 사는 구역이 선 위(올라가야 삼)인지 아래(내려가야 삼)인지. ladder 는 늘 위. */
+    zone_side?: "above" | "below";
   } | null;
+  /** ladder 와 같은 모양의 값 눈금(RSI · 밴드 · 지정가 · 눌림) — 왼쪽이 작은 값, 사는 구역 방향은 zone_side. (옛 서버엔 없음) */
+  scale?: EntryWait["ladder"];
   /** "지금 207.46 · +1.0% 더 오르면" */
   distance: string;
   /** 목록 카드 오른쪽 칸용 짧은 거리 — "+1.0%" · "RSI 13.7" · "곧 사요". */

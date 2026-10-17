@@ -43,7 +43,8 @@ const pct = (x: number) => `${Math.round(Math.min(1, Math.max(0, x)) * 1000) / 1
 /** 위치는 --at 하나 — 꼬리표는 끝에 가까울수록 안쪽으로 당김(left X% · translateX(-X%)). */
 const place = (x: number) => ({ "--at": pct(x) }) as CSSProperties;
 
-/** 가격 막대 — 사는 선 · 평균선을 같은 가격 축에 놓고 지금 점을 찍음. 사는 구역(두 선 위)은 초록. */
+/** 값 막대 — 선들(사는 선 · 평균선 · 청산 기준)을 같은 눈금(왼쪽이 작은 값)에 놓고 지금 점을 찍음.
+ *  사는 구역은 초록 — 올라가야 사면 선 오른쪽, 내려가야 사면(RSI · 지정가 · 눌림) 선 왼쪽. */
 function Ladder({ ladder }: { ladder: NonNullable<EntryWait["ladder"]> }) {
   const marks = [...ladder.marks].sort((a, b) => a.pos - b.pos);
   const close = marks.length > 1 && marks[1].pos - marks[0].pos < 0.3; // 이름표가 겹치면 둘째 줄로
@@ -57,7 +58,7 @@ function Ladder({ ladder }: { ladder: NonNullable<EntryWait["ladder"]> }) {
         지금 {ladder.now.value}
       </span>
       <div className="ew-ladder-track">
-        <i className="ew-ladder-zone" style={place(ladder.zone)} />
+        <i className={`ew-ladder-zone ${ladder.zone_side === "below" ? "is-below" : ""}`} style={place(ladder.zone)} />
         {marks.map((m) => (
           <i key={m.key} className={`ew-ladder-mark ${m.main ? "is-main" : ""}`} style={place(m.pos)} />
         ))}
@@ -92,10 +93,11 @@ export function EntryWaitHead({ wait }: { wait: EntryWait }) {
 export function EntryWaitDetail({ wait }: { wait: EntryWait }) {
   const at = pct(wait.meter?.progress ?? 0);
   const conds = wait.conditions ?? [];
+  const ladder = wait.scale ?? wait.ladder ?? null;
   return (
     <div className={`entry-wait-detail ${wait.reached ? "is-reached" : ""}`}>
-      {wait.ladder ? (
-        <Ladder ladder={wait.ladder} />
+      {ladder ? (
+        <Ladder ladder={ladder} />
       ) : (
         wait.meter && (
           <div
