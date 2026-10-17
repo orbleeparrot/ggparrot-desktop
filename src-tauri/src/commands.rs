@@ -28,17 +28,28 @@ pub fn get_activity(s: State<'_, S>, run_id: String) -> Vec<ActivityDto> {
     s.activity_of(&run_id)
 }
 
-/// 다른 위치의 파일을 골라 매크로 폴더로 가져오고 슬롯을 만듦.
+/// [파일에서 추가] — 다른 위치의 매크로 파일을 (여러 개) 골라 매크로 폴더로 가져옴.
+/// 하나를 가져왔으면 바로 실행 목록에도 넣고 그 슬롯 id를 돌려줌. 여러 개면 폴더 목록에만 나타남(None).
+/// 예전의 [폴더로 가져오기](여러 개 · 가져오기만)와 [골라서 실행 목록에 추가…](하나 · 추가까지)를 합친 것.
 #[tauri::command]
 pub async fn add_macro_file(s: State<'_, S>) -> R<Option<String>> {
-    let picked =
-        s.app.dialog().file().set_title("매크로 파일 선택").add_filter("껄무새 매크로", &["json"]).blocking_pick_file();
-    let Some(file) = picked else { return Ok(None) };
-    let path = file.into_path().map_err(|_| "매크로 파일을 읽지 못했어요.".to_string())?;
-    let (ok, errors) = s.inner().import_paths(&[path]);
-    match ok.first() {
-        Some(name) => s.inner().add_run_from_library(name).map(Some),
-        None => Err(errors.first().cloned().unwrap_or_else(|| "매크로 파일을 가져오지 못했어요.".into())),
+    let picked = s
+        .app
+        .dialog()
+        .file()
+        .set_title("매크로 파일 선택")
+        .add_filter("껄무새 매크로", &["json"])
+        .blocking_pick_files();
+    let Some(files) = picked else { return Ok(None) };
+    let paths: Vec<PathBuf> = files.into_iter().filter_map(|f| f.into_path().ok()).collect();
+    let (ok, errors) = s.inner().import_paths(&paths);
+    if ok.is_empty() {
+        return Err(errors.first().cloned().unwrap_or_else(|| "매크로 파일을 가져오지 못했어요.".into()));
+    }
+    s.warn_import_failures(&errors);
+    match ok.as_slice() {
+        [one] => s.inner().add_run_from_library(one).map(Some),
+        _ => Ok(None),
     }
 }
 
