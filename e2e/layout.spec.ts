@@ -195,13 +195,24 @@ for (const vp of VIEWPORTS) {
           const g = window.__geo;
           const btn = c.querySelector(".run-card-remove")!;
           const slot = c.querySelector(".run-card-x-slot");
+          // 글자 자리는 카드 기준 — 가리키거나 포커스를 줄 때 브라우저가 행을 화면 안으로 굴려도(WebKit) 같은 값.
+          const cb = g.box(c);
+          const at = (n: number) => Math.round(n * 100) / 100;
+          const inCard = (b: typeof cb) => ({
+            l: at(b.l - cb.l),
+            t: at(b.t - cb.t),
+            r: at(b.r - cb.l),
+            b: at(b.b - cb.t),
+            w: b.w,
+            h: b.h,
+          });
           return {
             compact: c.classList.contains("is-compact"),
             opacity: getComputedStyle(btn).opacity,
             events: getComputedStyle(btn).pointerEvents,
             btn: g.box(btn),
             slot: slot ? g.box(slot) : null,
-            texts: g.textBoxes(c.querySelector(".run-card-select")!).map((t) => `${t.text}@${g.fmt(t.box)}`),
+            texts: g.textBoxes(c.querySelector(".run-card-select")!).map((t) => `${t.text}@${g.fmt(inCard(t.box))}`),
           };
         });
       const before = await measure();
@@ -430,7 +441,10 @@ for (const vp of VIEWPORTS) {
         if (!title) return { inTitle: false, problems: ["펼치기 단추가 .act-line 밖에 있음"] };
         const lines = g.textBoxes(title).map((t) => t.box);
         // 접힌 줄은 한 줄 — 제목 · 둘째 말이 다음 줄로 꺾이지 않음.
-        const rows = new Set(lines.map((b) => Math.round(b.t)));
+        // 줄은 세로 가운데로 셈: 제목(13px) · 둘째 말(12px) 칸은 높이가 달라 위 끝이 1px 안쪽으로 어긋나고,
+        // 위 끝을 반올림하면 창 안 위치에 따라 같은 줄이 두 값으로 갈림(CI 글꼴 · WebKit). 반 줄(6px) 넘게 벌어질 때만 다른 줄.
+        const mids = lines.map((b) => (b.t + b.b) / 2).sort((a, b) => a - b);
+        const rows = mids.filter((m, i) => i === 0 || m - mids[i - 1] > 6).length;
         const last = lines.reduce((a, b) => (b.b > a.b || (b.b === a.b && b.r > a.r) ? b : a));
         const bb = g.box(btn);
         const mid = (bb.t + bb.b) / 2;
@@ -438,7 +452,7 @@ for (const vp of VIEWPORTS) {
         if (mid < last.t - 1 || mid > last.b + 1)
           problems.push(`› 세로 가운데 ${mid}가 제목 마지막 줄 ${g.fmt(last)} 밖`);
         if (bb.l < last.r - 1) problems.push(`› 왼쪽 ${bb.l}가 제목 글자 끝 ${last.r}보다 앞`);
-        if (rows.size > 1) problems.push(`접힌 줄이 ${rows.size}줄로 꺾임`);
+        if (rows > 1) problems.push(`접힌 줄이 ${rows}줄로 꺾임`);
         return { inTitle: true, problems };
       });
       expect(r.problems).toEqual([]);
