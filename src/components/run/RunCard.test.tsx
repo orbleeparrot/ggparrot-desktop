@@ -2,13 +2,13 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunnerContext, type RunnerContextValue } from "../../state/context";
 import { MODE_LABELS } from "../../state/runs";
-import { makeEntryWait, makeRun, makeSlot, makeState } from "../../test/fixtures";
+import { binanceMacro, makeEntryWait, makeRun, makeSlot, makeState, upbitMacro } from "../../test/fixtures";
 import type { RunSlot } from "../../types";
 import { RunCard } from "./RunCard";
 
 afterEach(cleanup);
 
-function renderCard(slot: RunSlot) {
+function renderCard(slot: RunSlot, { compact = false }: { compact?: boolean } = {}) {
   const value = {
     state: makeState(),
     select: vi.fn(),
@@ -19,7 +19,7 @@ function renderCard(slot: RunSlot) {
   const { container } = render(
     <RunnerContext.Provider value={value}>
       <ul>
-        <RunCard slot={slot} selected onKeyNav={vi.fn()} />
+        <RunCard slot={slot} selected onKeyNav={vi.fn()} compact={compact} />
       </ul>
     </RunnerContext.Provider>,
   );
@@ -123,5 +123,66 @@ describe("내 매크로 카드 — 진입 대기", () => {
     const run = makeRun({ entryWait: makeEntryWait({ gap: "" }) });
     const { card } = renderCard(makeSlot({ phase: "running", run, status: { text: "진입 대기", tone: "ok" } }));
     expect(card.querySelector(".run-card-wait")!.textContent).toBe("진입 대기");
+  });
+});
+
+describe("내 매크로 카드 — 코인 표시 · 종목", () => {
+  const select = (card: HTMLElement) => card.querySelector<HTMLElement>(".run-card-select")!;
+
+  for (const compact of [false, true]) {
+    const where = compact ? "한 줄 행" : "두 줄 카드";
+
+    it(`${where}: 종목은 기초 자산(BTC), 시장 쌍(KRW-BTC)은 어디에도 없음`, () => {
+      const { card } = renderCard(makeSlot({ macro: upbitMacro }), { compact });
+      expect(card.querySelector(".run-card-symbol")?.textContent).toBe("BTC");
+      expect(select(card).textContent).not.toContain("KRW");
+      // 풍선 도움말도 거래소 + 종목(잘렸을 때 전체를 봄)
+      expect(card.querySelector(".run-card-name")?.getAttribute("title")).toBe("업비트 BTC");
+      expect(card.querySelector("[title*='KRW']")).toBeNull();
+    });
+
+    it(`${where}: 바이낸스 선물은 종목 옆에 '선물 N배', 시장 쌍(BTCUSDT · USDT)은 없음`, () => {
+      const { card } = renderCard(makeSlot({ macro: binanceMacro }), { compact });
+      expect(card.querySelector(".run-card-symbol")?.textContent).toBe("BTC");
+      expect(card.querySelector(".run-card-tag")?.textContent).toBe("선물 3배");
+      expect(select(card).textContent).not.toContain("USDT");
+    });
+
+    it(`${where}: 코인 로고 모서리의 거래소 로고가 거래소 이름으로 읽혀 카드 이름이 '업비트 BTC …'`, () => {
+      const { card } = renderCard(makeSlot({ macro: upbitMacro }), { compact });
+      const ex = within(select(card)).getByRole("img", { name: "업비트" });
+      expect(ex.closest(".coin-mark")).not.toBeNull();
+      expect(select(card).querySelector(".coin-mark-logo")?.getAttribute("alt")).toBe("");
+    });
+  }
+
+  it("현물 · 1배 선물: 현물은 작은 글자 없음, 배수를 모르는 선물은 '선물'만", () => {
+    const spot = renderCard(makeSlot({ macro: upbitMacro }));
+    expect(spot.card.querySelector(".run-card-tag")).toBeNull();
+    cleanup();
+    const one = renderCard(makeSlot({ macro: { ...binanceMacro, leverage: 1 } }));
+    expect(one.card.querySelector(".run-card-tag")?.textContent).toBe("선물");
+  });
+
+  it("거래소를 모르는 매크로: 작은 로고 대신 거래소 원문을 가려진 글자로", () => {
+    const macro = { ...binanceMacro, exchange: null, exchangeLabel: "", exchangeName: "kucoin" };
+    const { card } = renderCard(makeSlot({ macro }));
+    expect(card.querySelector(".coin-mark-ex")).toBeNull();
+    expect(card.querySelector(".sr-only")?.textContent).toBe("kucoin");
+  });
+
+  it("코인 로고는 바이낸스 CDN → 설정의 서버 사본 → 글자 배지", () => {
+    const { card } = renderCard(makeSlot({ macro: { ...upbitMacro, symbol: "KRW-B3", baseAsset: "B3" } }));
+    const logo = () => card.querySelector<HTMLImageElement>(".coin-mark-logo");
+    expect(logo()?.getAttribute("src")).toContain("bin.bnbstatic.com");
+    fireEvent.error(logo()!);
+    expect(logo()?.getAttribute("src")).toBe(`${makeState().settings.serverBase}/api/coin-logo/B3.png`);
+    fireEvent.error(logo()!);
+    expect(card.querySelector(".coin-mark-letters")?.textContent).toBe("B3");
+  });
+
+  it("빼기 · 시작 단추 이름은 정확한 시장(시장 쌍) 그대로", () => {
+    renderCard(makeSlot({ macro: upbitMacro }));
+    expect(screen.getByRole("button", { name: "KRW-BTC 목록에서 빼기" })).toBeTruthy();
   });
 });

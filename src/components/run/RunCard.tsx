@@ -1,8 +1,11 @@
 // '내 매크로' 카드 하나. 고르기 버튼(카드 전체)·작은 주 단추·빼기(×)·순서 손잡이(왼쪽 끝, 두 개 이상일 때).
 // - 확인 필요 · 실행 중: 두 줄 카드
-//   - 1줄: 거래소 로고 · 종목 · 숏 · 모드(실전 · 테스트넷만) …… 오른쪽 칸(실행 중: 손익 %, 대기·끝남: × 자리, 시작·종료 중: 비움)
+//   - 1줄: 코인 표시(코인 로고 + 모서리 거래소 로고) · 종목 · 선물 배수 · 숏 · 모드(실전 · 테스트넷만)
+//     …… 오른쪽 칸(실행 중: 손익 %, 대기·끝남: × 자리, 시작·종료 중: 비움)
 //   - 2줄: ● 상태 · 경과(실행 중·끝남) · 전략 …… 작은 주 단추 자리
-// - 대기(compact): 한 줄 행 — 로고 · 종목 · 숏 · 모드 · 상태 · 전략 …… [▶] · [×] 자리. 시작 전이라 손익이 없어 카드가 필요 없음.
+// - 대기(compact): 한 줄 행 — 코인 표시 · 종목 · 선물 배수 · 숏 · 모드 · 상태 · 전략 …… [▶] · [×] 자리. 시작 전이라 손익이 없어 카드가 필요 없음.
+// - 종목은 기초 자산(B3)만 크게 — 시장 쌍(KRW-B3)은 거래소 로고와 겹치는 정보라 뺌(runs.ts coinTicker).
+//   바이낸스 선물만 '선물 3배'를 옆에 작게 붙임. 빼기 단추 이름처럼 정확한 시장을 밝혀야 하는 곳은 시장 쌍을 씀.
 // - 배지는 기본이 아닌 것만(롱 · 모의는 생략) — 배지가 많으면 정작 다른 점이 안 보임.
 // - [▶] · [■] · [×]는 마우스를 올리거나 키보드 포커스가 있을 때만 보임.
 //   - 두 줄 카드는 자리를 늘 비워 둠(글자가 움직이지 않게)
@@ -14,9 +17,18 @@ import { GripVertical, X } from "lucide-react";
 import { forwardRef, type KeyboardEvent, type PointerEventHandler } from "react";
 import { useRunnerContext } from "../../state/context";
 import { formatElapsed, formatPercent, toneOf } from "../../state/format";
-import { isIdle, isLive, primaryAction, SIDE_LABELS, statusParts } from "../../state/runs";
-import type { RunSlot } from "../../types";
-import { ExchangeLogo } from "../ExchangeLogo";
+import {
+  coinName,
+  coinTicker,
+  futuresTag,
+  isIdle,
+  isLive,
+  primaryAction,
+  SIDE_LABELS,
+  statusParts,
+} from "../../state/runs";
+import type { MacroInfo, RunSlot } from "../../types";
+import { CoinMark } from "../CoinMark";
 import { ModeBadge } from "./ModeBadge";
 import { RunAction } from "./RunAction";
 import { useElapsed } from "./useElapsed";
@@ -58,6 +70,31 @@ function End({ slot }: { slot: RunSlot }) {
   );
 }
 
+/**
+ * 종목 칸 — 코인 표시(작은 거래소 로고가 거래소 이름으로 읽힘) · 종목(줄임표로 줄어듦) · 선물 배수(줄지 않음).
+ * 거래소를 모르는 매크로는 작은 로고가 없어 거래소 원문을 가려진 글자로 둠. 카드 이름은 "업비트 B3 …"으로 읽힘.
+ */
+function Coin({ m, compact, serverBase }: { m: MacroInfo; compact: boolean; serverBase: string }) {
+  const tag = futuresTag(m);
+  return (
+    <>
+      <CoinMark
+        base={coinTicker(m)}
+        exchange={m.exchange}
+        exchangeLabel={m.exchangeLabel || m.exchangeName}
+        size={compact ? 20 : 32}
+        badge={compact ? 10 : 14}
+        serverBase={serverBase}
+      />
+      {!m.exchange && m.exchangeName && <span className="sr-only">{m.exchangeName}</span>}
+      <span className="run-card-name" title={coinName(m)}>
+        <span className="run-card-symbol num">{coinTicker(m)}</span>
+        {tag && <span className="run-card-tag">{tag}</span>}
+      </span>
+    </>
+  );
+}
+
 /** 기본이 아닌 것만 배지 — 숏 · 실전 · 테스트넷. */
 function Badges({ slot }: { slot: RunSlot }) {
   return (
@@ -72,7 +109,8 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
   { slot, selected, onKeyNav, grab, sorting = "", compact = false },
   ref,
 ) {
-  const { select, askRemove } = useRunnerContext();
+  const { state, select, askRemove } = useRunnerContext();
+  const serverBase = state.settings.serverBase;
   const elapsed = useElapsed(slot.run);
   const m = slot.macro;
   const live = isLive(slot);
@@ -120,11 +158,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
       <li className={cls}>
         {grip}
         <button type="button" {...selectProps}>
-          <ExchangeLogo exchange={m.exchange} size={16} />
-          <span className="sr-only">{m.exchangeLabel || m.exchangeName}</span>
-          <span className="run-card-symbol num" title={m.symbol}>
-            {m.symbol}
-          </span>
+          <Coin m={m} compact serverBase={serverBase} />
           <Badges slot={slot} />
           <span className="run-row-line" title={`${slot.status.text} · ${strategyTitle}`}>
             <span className={`run-row-status tone-${slot.status.tone}`}>{slot.status.text}</span>
@@ -145,11 +179,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
       <button type="button" {...selectProps}>
         <span className="run-card-top">
           <span className="run-card-head">
-            <ExchangeLogo exchange={m.exchange} size={18} />
-            <span className="sr-only">{m.exchangeLabel || m.exchangeName}</span>
-            <span className="run-card-symbol num" title={m.symbol}>
-              {m.symbol}
-            </span>
+            <Coin m={m} compact={false} serverBase={serverBase} />
             <Badges slot={slot} />
           </span>
           <End slot={slot} />

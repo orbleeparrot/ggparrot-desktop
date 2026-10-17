@@ -95,6 +95,7 @@
 - `Debug` 출력에 키가 찍히지 않게, 키를 담는 타입은 `Debug`를 직접 구현.
 - 저장소에 비밀을 커밋하지 않음. `.env*`·인증서·서명 키는 `.gitignore`로 막혀 있고, CI가 gitleaks로 전체 기록을 검사. 테스트용 가짜 토큰은 실제 토큰 모양을 통째로 적지 말고 실행 중에 붙여 만듦.
 - 웹뷰 권한(`capabilities/default.json`)은 메인 창·이벤트·창 조작만. 원격 페이지에는 IPC를 열지 않음.
+- 화면 CSP(`tauri.conf.json`의 `security.csp`)의 `img-src`는 앱 안 파일·`data:`와 코인 로고 두 곳(`https://bin.bnbstatic.com`·기본 서버 `https://gg-parrot.onrender.com`)만. 다른 원격 주소는 넣지 않음(`CoinMark.tsx`).
 
 ## 6. 커밋·브랜치·PR
 

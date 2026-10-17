@@ -1,10 +1,12 @@
-// 상세 머리줄 — 뒤로(한 열)·거래소 로고·종목(실전·테스트넷이면 모드 배지), 아래 한 줄은 줄글 대신 칩
-// (거래소 시장 · 방향 배수 · 전략 · 봉 간격 · 출처). 오른쪽 끝은 웹 실행 기록·거래소 종목 화면 단추.
+// 상세 머리줄 — 뒤로(한 열)·코인 표시(코인 로고 + 모서리 거래소 로고)·종목(실전·테스트넷이면 모드 배지),
+// 아래 한 줄은 줄글 대신 칩(거래소 시장 · 방향 배수 · 전략 · 봉 간격 · 출처). 오른쪽 끝은 웹 실행 기록·거래소 종목 화면 단추.
+// - 종목은 기초 자산(B3)만 크게 — 시장 쌍(KRW-B3)은 빼고, 거래소 · 현물/선물은 아래 칩이 말함(runs.ts coinTicker).
+// - 제목(상세 영역의 이름)은 "업비트 B3"로 읽힘 — 거래소 이름은 제목 안 가려진 글자로, 코인 표시는 장식으로 둠(두 번 읽히지 않게).
 import { ArrowLeft, Check, ExternalLink } from "lucide-react";
 import { useRunnerContext } from "../../state/context";
-import { MARKET_LABELS, MODE_LABELS, SIDE_LABELS } from "../../state/runs";
+import { coinTicker, MARKET_LABELS, MODE_LABELS, SIDE_LABELS } from "../../state/runs";
 import type { MacroInfo, RunSlot } from "../../types";
-import { ExchangeLogo } from "../ExchangeLogo";
+import { CoinMark } from "../CoinMark";
 
 /** 출처 칩 — 서버가 알려 준 출처(서명 확인 등)가 있으면 그게 더 정확함. 서명된 원본·웹 매크로는 체크. */
 function originChip(slot: RunSlot): { text: string; tone: "ok" | "warn" | "" } {
@@ -25,8 +27,9 @@ function shortMarket(label: string): string {
 }
 
 export function DetailHeader({ slot, onBack }: { slot: RunSlot; onBack?: () => void }) {
-  const { ok } = useRunnerContext();
+  const { ok, state } = useRunnerContext();
   const m = slot.macro;
+  const ticker = coinTicker(m);
   const origin = originChip(slot);
   const chips = [
     `${m.exchangeLabel || m.exchangeName} ${MARKET_LABELS[m.market]}`,
@@ -42,10 +45,18 @@ export function DetailHeader({ slot, onBack }: { slot: RunSlot; onBack?: () => v
           <ArrowLeft size={18} />
         </button>
       )}
-      <ExchangeLogo exchange={m.exchange} size={34} />
+      <CoinMark
+        base={ticker}
+        exchange={m.exchange}
+        exchangeLabel=""
+        size={44}
+        badge={18}
+        serverBase={state.settings.serverBase}
+      />
       <div className="detail-name">
         <h2 id="detail-title" className="detail-title">
-          <span className="num">{m.symbol}</span>
+          <span className="sr-only">{m.exchangeLabel || m.exchangeName}</span>{" "}
+          <span className="detail-ticker num">{ticker}</span>
           {slot.mode !== "mock" && <span className={`mode-badge mode-${slot.mode}`}>{MODE_LABELS[slot.mode]}</span>}
         </h2>
         <ul className="detail-chips" aria-label="매크로 정보" title={`매크로 파일: ${m.title}`}>

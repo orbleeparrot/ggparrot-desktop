@@ -88,9 +88,11 @@ describe("매크로 추가", () => {
       makeState({ runs: [makeSlot(), makeSlot({ id: "run-2", macro: upbitMacro, modeChoices: ["mock", "live"] })] }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    const selected = document.querySelector('[aria-current="true"]');
-    expect(selected?.textContent).toContain("KRW-BTC");
-    expect(screen.getByRole("heading", { level: 2, name: /KRW-BTC/ })).toBeTruthy();
+    // 카드 · 제목은 기초 자산(BTC)과 거래소(코인 로고 모서리 · 제목 안 가려진 글자)로 알아봄 — 시장 쌍은 보이지 않음.
+    const selected = document.querySelector<HTMLElement>('[aria-current="true"]')!;
+    expect(within(selected).getByRole("img", { name: "업비트" })).toBeTruthy();
+    expect(selected.querySelector(".run-card-symbol")?.textContent).toBe("BTC");
+    expect(screen.getByRole("heading", { level: 2, name: /^업비트 BTC/ })).toBeTruthy();
     await waitFor(() =>
       expect(calledWith("get_activity").some((c) => (c[1] as { runId: string }).runId === "run-2")).toBe(true),
     );
@@ -327,7 +329,7 @@ describe("종료 · 이동", () => {
   it("실행 중이면 모드 세그먼트 대신 모드 배지 — 조작 줄은 배지와 종료 단추뿐, 대기면 세그먼트", async () => {
     current = makeState({ runs: [makeSlot({ phase: "running", mode: "live", run: makeRun() })] });
     render(<App />);
-    const detail = await screen.findByRole("region", { name: /BTCUSDT/ });
+    const detail = await screen.findByRole("region", { name: /^바이낸스 BTC/ });
     const row = detail.querySelector(".detail-controls")!;
     expect(within(row as HTMLElement).queryByRole("radiogroup")).toBeNull();
     expect(row.querySelector(".detail-mode-badge")?.textContent).toBe("실전으로 실행 중");
@@ -340,10 +342,10 @@ describe("종료 · 이동", () => {
   it("runner:navigate 와 ⌘/Ctrl+, 로 화면을 바꾼다", async () => {
     current = makeState({ runs: [makeSlot(), makeSlot({ id: "run-9", macro: upbitMacro })] });
     render(<App />);
-    await screen.findByRole("heading", { level: 2, name: /BTCUSDT/ });
+    await screen.findByRole("heading", { level: 2, name: /^바이낸스 BTC/ });
     await waitFor(() => expect(handlers.has(EV_NAVIGATE)).toBe(true));
     act(() => handlers.get(EV_NAVIGATE)!({ to: "run:run-9" }));
-    expect(await screen.findByRole("heading", { level: 2, name: /KRW-BTC/ })).toBeTruthy();
+    expect(await screen.findByRole("heading", { level: 2, name: /^업비트 BTC/ })).toBeTruthy();
     fireEvent.keyDown(window, { key: ",", ctrlKey: true });
     expect(await screen.findByRole("heading", { name: "설정" })).toBeTruthy();
     fireEvent.keyDown(window, { key: "Escape" });
