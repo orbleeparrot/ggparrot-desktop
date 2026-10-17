@@ -248,21 +248,12 @@
 .run-card:hover {
   border-color: color-mix(in srgb, var(--ink) 22%, var(--border));
 }
+/* 고른 카드 — 노란 테두리 · 둘레 빛. 가장자리 색 막대는 두지 않음. */
 .run-card.is-selected {
   border-color: var(--brand-hover);
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--brand) 28%, transparent),
     var(--shadow);
-}
-.run-card.is-selected::before {
-  content: "";
-  position: absolute;
-  left: -1px;
-  top: 12px;
-  bottom: 12px;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--brand-hover);
 }
 /* 카드는 두 줄(1줄 28px · 2줄 30px) — 글자는 줄바꿈하지 않아 카드 높이가 바뀌지 않음.
    고르기 버튼이 카드 전체이고, ×(1줄 오른쪽)·주 버튼(2줄 오른쪽)은 버튼 안에 비워 둔 자리 위에 놓인 형제.
