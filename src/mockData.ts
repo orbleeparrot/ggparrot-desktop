@@ -63,8 +63,25 @@ function macro(over: Partial<MacroInfo> & Pick<MacroInfo, "title" | "exchange" |
     orderCap: quote === "USDT" ? 100 : 150_000,
     risk: ["손절 평단 대비 가격 -3%", "하루 최대 손실 5%(수수료 포함)"],
     exits: EXITS.two,
+    interval: intervalOf(over.summary ?? ""),
     ...over,
+    riskItems: riskItemsOf(over.risk ?? ["손절 평단 대비 가격 -3%", "하루 최대 손실 5%(수수료 포함)"]),
   };
+}
+
+/** 안전 설정 한 줄 → 이름 · 값 — Rust macro_info::risk_items와 같은 낱말로 나눔(미리보기용). */
+function riskItemsOf(risk: string[]): MacroInfo["riskItems"] {
+  const names = ["하루 최대 손실", "최대 보유", "손절"];
+  return risk.map((r) => {
+    const label = names.find((n) => r.startsWith(n)) ?? r;
+    return { label, value: r.slice(label.length).trim() };
+  });
+}
+
+/** 견본 설명의 봉 간격("4시간 봉에서 …") — 실제 앱은 매크로의 candle_interval을 Rust가 읽음. */
+function intervalOf(summary: string): string {
+  if (summary.startsWith("일봉")) return "1일";
+  return /^(\d+(?:분|시간))\s?봉/.exec(summary)?.[1] ?? "";
 }
 
 /** 청산 기준 견본 — Rust exits.rs(웹 positionExits.js)가 만드는 값과 같은 모양. */

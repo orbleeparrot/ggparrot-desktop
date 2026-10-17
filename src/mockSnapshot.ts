@@ -76,7 +76,7 @@ function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
   if (!idle) return no("");
   const slot = keySlotOf(r)!;
   if (r.mode !== "mock" && !filled(m, slot))
-    return no(`${SLOT_LABELS[slot]} API 키가 필요해요. 설정에서 입력하세요.`, { kind: "key", slot });
+    return no(`${SLOT_LABELS[slot]} 거래소 키가 필요해요. 설정 › 거래소 연결에서 넣어 주세요.`, { kind: "key", slot });
   if (!m.member) return no("회원 키가 필요해요. 설정 › 껄무새 계정에서 입력하세요.", { kind: "member" });
   const conflict = conflictMessage(m, r);
   if (conflict) return no(conflict);
@@ -93,21 +93,20 @@ function statusOf(m: Model, r: MockRun): RunSlot["status"] {
       return { text: "종료 처리 중", tone: "warn" };
     case "running":
       // Rust degraded()와 같은 차례 — 결과 모름 → 잔고 부족 → 서버 재시도.
-      if (r.run?.uncertain) return { text: "포지션 확인 필요", tone: "danger" };
+      if (r.run?.uncertain) return { text: "실행 중 · 주문 결과 확인 필요", tone: "danger" };
       if (r.run?.fundsShort) return { text: "실행 중 · 잔고 부족 · 주문 못 함", tone: "warn" };
       if (r.run && !r.run.online) return { text: "실행 중 · 서버 재시도 중", tone: "warn" };
       if (r.run?.entryWait && !r.run.inPosition) return { text: "진입 대기", tone: "ok" };
       return { text: "실행 중", tone: "ok" };
     default: {
+      // Rust Run::status_line과 같은 말 — 끝남 · 대기 중 · 시작 전 확인 필요.
       if (r.run?.finished)
         return r.run.finished.status === "error"
-          ? { text: `오류로 끝남`, tone: "danger" }
-          : { text: `종료됨 · ${r.run.finished.note}`, tone: "muted" };
-      const ready = readinessOf(m, r);
-      if (ready.canStart) return { text: "시작 전", tone: "muted" };
-      if (ready.needs?.kind === "key") return { text: "키가 필요해요", tone: "warn" };
-      if (ready.needs?.kind === "member") return { text: "회원 키가 필요해요", tone: "warn" };
-      return { text: "지금은 시작할 수 없어요", tone: "warn" };
+          ? { text: `종료됨 · ${r.run.finished.note || "오류로 멈춤"}`, tone: "danger" }
+          : { text: `종료됨 · ${r.run.finished.note || "종료"}`, tone: "muted" };
+      return readinessOf(m, r).canStart
+        ? { text: "대기 중", tone: "muted" }
+        : { text: "시작 전 확인 필요", tone: "warn" };
     }
   }
 }
@@ -168,8 +167,50 @@ export function slotCard(m: Model, slot: KeySlot): SlotCard {
     checks: checksOf(m, slot),
     wizardAvailable: true,
     inUseBy: m.runs.filter((r) => isActive(r) && r.mode !== "mock" && keySlotOf(r) === slot).length,
+    ...balanceOf(k.status, slot),
   };
 }
+
+/** 확인하며 읽은 잔고 견본 — 실제 앱은 연결 확인 때 거래소에서 읽은 한 줄(Rust balance_note). */
+const MOCK_BALANCE: Record<KeySlot, string> = {
+  binance: "사용 가능 증거금 1,234.5 USDT",
+  binance_testnet: "사용 가능 잔고 10,000 USDT",
+  binance_demo: "사용 가능 증거금 5,000 USDT",
+  upbit: "사용 가능 잔고 12,300 KRW · 보유 BTC 0.01",
+  bithumb: "사용 가능 잔고 250,000 KRW",
+};
+
+function balanceOf(status: SlotCard["status"], slot: KeySlot): Pick<SlotCard, "balance" | "checkedAt"> {
+  if (status !== "connected") return { balance: "", checkedAt: status === "blocked" ? Date.now() - 60_000 : 0 };
+  return { balance: MOCK_BALANCE[slot], checkedAt: Date.now() - 2 * 60_000 };
+}
+
+/** Rust Run::needs_attention과 같은 기준 — 실행 중 심각한 저하 · 잔고 부족(모의 빼고), 실전 · 테스트넷이 오류로 끝남. */
+function attentionOf(r: MockRun): boolean {
+  if (r.mode === "mock") return false;
+  const d = r.run;
+  if (!d) return false;
+  if (d.finished) return d.finished.status === "error";
+  if (r.phase !== "running") return false;
+  return (
+    d.uncertain ||
+    d.closeFailures > 0 ||
+    (d.priceStaleSince > 0 && d.inPosition) ||
+    d.authFailed ||
+    d.rejected !== 0 ||
+    d.fundsShort
+  );
+}
+
+/** Rust is_waiting_macro와 같은 규칙 묶음(B · F · G · I · J) — 견본은 전략 이름으로 셈. 트레일링(E)은 눌림 진입 견본만. */
+const WAITING_STRATEGIES = [
+  "지정가 밴드 매매",
+  "RSI 조건 매매",
+  "볼린저밴드",
+  "변동성 돌파",
+  "이동평균 크로스",
+  "트레일링 스탑",
+];
 
 function syncWizard(m: Model): WizardState | null {
   const w = m.wizard;
@@ -187,8 +228,8 @@ function syncWizard(m: Model): WizardState | null {
 export function snapshot(m: Model): AppState {
   const active = m.runs.filter(isActive);
   const offline = active.some((r) => r.run && !r.run.online);
-  // 잔고 부족은 기다려도 풀리지 않음 — Rust처럼 '확인 필요'로 셈(모의는 빼고).
-  const attention = active.filter((r) => r.run?.fundsShort && r.mode !== "mock").length;
+  // Rust처럼 목록의 '확인 필요' 묶음과 같은 기준으로 셈.
+  const attention = m.runs.filter(attentionOf).length;
   const status: AppState["status"] = active.length
     ? attention
       ? { text: `실행 중 ${active.length}개 · 확인 필요 ${attention}개`, tone: "danger" }
@@ -214,6 +255,8 @@ export function snapshot(m: Model): AppState {
       marketPage: marketPageOf(r)?.label ?? "",
       webRunPage: Boolean(r.run?.sessionId),
       status: statusOf(m, r),
+      attention: attentionOf(r),
+      waits: WAITING_STRATEGIES.includes(r.macro.strategy),
     })),
     settings: {
       slots: SLOT_ORDER.map((s) => slotCard(m, s)),

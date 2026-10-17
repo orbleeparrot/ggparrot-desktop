@@ -185,8 +185,13 @@ impl Core {
     ) -> Option<ConnectedSlot> {
         let view = check_view(slot.exchange().as_str(), result.ok, &result.error_name);
         let connected = view.connected;
-        self.slot_mut(slot).check =
-            Some(KeyCheckRecord { fingerprint: fp, reason: result.reason.clone(), view, checked_at: now_ms() });
+        self.slot_mut(slot).check = Some(KeyCheckRecord {
+            fingerprint: fp,
+            reason: result.reason.clone(),
+            view,
+            checked_at: now_ms(),
+            balance: result.balance.clone(),
+        });
         if !connected || !self.remember_supported {
             return None;
         }

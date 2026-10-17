@@ -31,6 +31,8 @@ export const binanceMacro: MacroInfo = {
   capitalLocked: "",
   orderCap: 100,
   risk: ["손절 평단 대비 가격 -3%"],
+  riskItems: [{ label: "손절", value: "평단 대비 가격 -3%" }],
+  interval: "4시간",
   exits: {
     sl: { pct: 3, label: "손절 -3%" },
     tp: { pct: 5, label: "익절 +5%" },
@@ -70,7 +72,9 @@ export function makeSlot(over: Partial<RunSlot> = {}): RunSlot {
     webLinked: false,
     marketPage: "바이낸스에서 보기",
     webRunPage: false,
-    status: { text: "시작 전", tone: "muted" },
+    status: { text: "대기 중", tone: "muted" },
+    attention: false,
+    waits: false,
     ...over,
   };
 }
@@ -134,6 +138,8 @@ export function slotCard(slot: KeySlot, over: Partial<SlotCard> = {}): SlotCard 
     checks: { auth: "wait", ip: "wait", order: "wait" },
     wizardAvailable: true,
     inUseBy: 0,
+    balance: "",
+    checkedAt: 0,
     ...over,
   };
 }
