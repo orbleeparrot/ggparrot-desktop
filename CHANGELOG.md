@@ -27,6 +27,7 @@
 
 - 서버 `entry_wait`의 `headline` · `ladder` · `conditions` · `touched` · `remain` · `last_bar`를 읽어요. 옛 서버는 없으니 예전처럼 조건 문장과 막대 하나를 보여요.
 - 디자인 검토용 견본 `?demo=wait`(2026-10-17 KRW-FORT 10:40 상황) 추가.
+- 자동 업데이트(tauri-plugin-updater)의 zip 기능을 껐어요. 업데이트 파일이 Windows setup.exe · macOS .app.tar.gz 라 쓰지 않았고, zip 4.x 보안 권고(RUSTSEC-2026-0367 · 0368 · 0369)가 cargo audit 를 막았어요. 고친 zip 9.x 를 쓰는 updater 는 아직 없어요.
 
 ## [0.20.3]
 
