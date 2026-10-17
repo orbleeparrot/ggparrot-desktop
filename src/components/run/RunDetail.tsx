@@ -1,17 +1,19 @@
-// 오른쪽 상세 — 머리줄(종목·방향·거래소)·모드·시작/종료·막힌 이유·상태 카드·활동 기록.
+// 오른쪽 상세 — 머리줄(종목·칩)·모드·시작/종료·막힌 이유·상태 카드(끝났으면 결과 카드)·활동 기록.
 // - 대기·끝남: 모드 세그먼트 + [시작]. 그 밖(확인·시작·실행·종료 중): 모드를 바꿀 수 없어 세그먼트 대신
-//   "실전으로 실행 중" 배지와 매크로 설명 한 줄을 두고 오른쪽에 종료 단추.
+//   상태 한 줄(RunBar — "실전으로 실행 중" · 경과 · 서버 연결)을 두고 오른쪽에 종료 단추.
 import { CircleAlert, LoaderCircle, Play, Settings } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
-import { isIdle, MODE_LABELS, primaryAction, runningModeText, settingsTargetOf, stopChoices } from "../../state/runs";
+import { isIdle, primaryAction, settingsTargetOf, stopChoices } from "../../state/runs";
 import type { Activity, RunSlot } from "../../types";
 import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
 import { DetailHeader } from "./DetailHeader";
+import { FinishedCard } from "./FinishedCard";
 import { IdleCard } from "./IdleCard";
 import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
+import { RunBar } from "./RunBar";
 import { StatusCard } from "./StatusCard";
 
 interface Props {
@@ -64,26 +66,6 @@ function Controls({ slot }: { slot: RunSlot }) {
   );
 }
 
-/** 실행 중 조작 줄 왼쪽 — 모드 배지와 매크로 설명 한 줄(전체는 마우스를 올리면). */
-function RunningMode({ slot }: { slot: RunSlot }) {
-  const summary = slot.macro.summary;
-  return (
-    <div className="detail-running">
-      <span
-        className={`detail-mode-badge mode-${slot.mode}`}
-        title={`${MODE_LABELS[slot.mode]} 모드 — 실행 중에는 모드를 바꿀 수 없어요`}
-      >
-        {runningModeText(slot.mode, slot.phase)}
-      </span>
-      {summary && (
-        <p className="detail-running-summary" title={summary}>
-          {summary}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export function RunDetail({
   slot,
   activity,
@@ -113,7 +95,7 @@ export function RunDetail({
             <ModeSegment slot={slot} />
           </div>
         ) : (
-          <RunningMode slot={slot} />
+          <RunBar slot={slot} />
         )}
         <Controls slot={slot} />
       </div>
@@ -131,7 +113,7 @@ export function RunDetail({
         </div>
       )}
       <MacroNotes slot={slot} blockerShown={showBlocker} />
-      {/* 실행 중이면 설명은 조작 줄 안(RunningMode). 끝난 뒤에는 한 줄로 줄여 상태 카드를 밀어내지 않게. */}
+      {/* 실행 중에는 설명을 두지 않음(청산 막대가 기준을 그림으로 보임). 끝난 뒤에는 한 줄로 줄여 결과 카드를 밀어내지 않게. */}
       {m.summary && idle && (
         <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>
           {m.summary}
@@ -139,16 +121,17 @@ export function RunDetail({
       )}
       {idle && <CapitalRow slot={slot} />}
 
-      {slot.run ? (
+      {slot.run && !slot.run.finished ? (
         <StatusCard
           run={slot.run}
           macro={m}
           mode={slot.mode}
           phase={slot.phase}
-          status={slot.status}
           prices={prices}
           priceTimes={priceTimes}
         />
+      ) : slot.run?.finished && idle ? (
+        <FinishedCard run={slot.run} macro={m} mode={slot.mode} activity={activity} />
       ) : (
         <IdleCard />
       )}

@@ -1,5 +1,6 @@
-// 활동 한 줄 — 시각·종류 아이콘·굵은 제목(끝에 작은 [›] 펼치기)·흐린 둘째 줄·펼친 원문. 원문 줄(dev)은 작고 흐린 고정폭 한 줄.
-// - 펼치기 단추는 제목 끝에 붙여 둠 — 따로 한 줄을 차지하지 않고, 제목이 줄바꿈돼도 마지막 낱말 옆에 따라붙음.
+// 활동 한 줄 — 시각(시:분) · 종류 배지(아이콘 + 이름) · 굵은 제목 · 흐린 둘째 말(같은 줄 오른쪽) · 끝에 [›] 펼치기.
+// - 한 건이 한 줄 — 제목·둘째 말은 줄임표로 줄고, 다 보려면 펼침(펼치면 둘째 말 전체와 원문).
+// - 펼치기 단추는 줄 안 맨 끝 — 따로 한 줄을 차지하지 않음. 초까지의 시각은 시각에 마우스를 올리면 보임.
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -16,7 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createElement, memo, useId, useState } from "react";
-import { formatClockMillis, formatClockSeconds } from "../../state/format";
+import { formatClock, formatClockMillis, formatClockSeconds } from "../../state/format";
 import type { Activity, ActivityKind } from "../../types";
 
 const ICONS: Record<Exclude<ActivityKind, "connection">, LucideIcon> = {
@@ -52,18 +53,14 @@ function iconOf(a: Activity): LucideIcon {
 /** fresh: 화면을 연 뒤에 들어온 줄 — 살짝 떠오르며 나타남(처음 불러온 기록은 그대로). */
 export const ActivityItem = memo(function ActivityItem({ item, fresh = false }: { item: Activity; fresh?: boolean }) {
   const [open, setOpen] = useState(false);
-  const rawId = useId();
-  // 초까지 늘 보임 — 같은 분의 여러 줄을 구분함. 순서는 시각이 아니라 Rust의 일련번호(id)로 정함(mergeActivity).
-  const time = (
-    <time className="act-time num" dateTime={new Date(item.at).toISOString()} title={formatClockMillis(item.at)}>
-      {formatClockSeconds(item.at)}
-    </time>
-  );
+  const moreId = useId();
 
   if (item.dev) {
     return (
       <li className="act act-dev">
-        {time}
+        <time className="act-time num" dateTime={new Date(item.at).toISOString()} title={formatClockMillis(item.at)}>
+          {formatClockSeconds(item.at)}
+        </time>
         <span className="act-dev-mark" aria-hidden="true" />
         <span className="act-dev-text">{item.title}</span>
       </li>
@@ -72,38 +69,41 @@ export const ActivityItem = memo(function ActivityItem({ item, fresh = false }: 
 
   const fill = item.kind === "start" || item.kind === "stop";
   // 아이콘은 표에서 고른 컴포넌트 — 렌더마다 새로 만드는 게 아니라 createElement로 그림.
-  const icon = createElement(iconOf(item), { size: 14, strokeWidth: 2.4, fill: fill ? "currentColor" : "none" });
+  const icon = createElement(iconOf(item), { size: 12, strokeWidth: 2.6, fill: fill ? "currentColor" : "none" });
+  // 펼칠 게 있는 줄만 [›] — 둘째 말이 길어 잘리거나 원문이 있을 때 다 보여 줌.
+  const expandable = !!item.raw || !!item.detail;
   return (
-    <li className={`act kind-${item.kind} ${fresh ? "is-fresh" : ""}`} data-tone={item.tone}>
-      {time}
-      <span className="act-icon" aria-hidden="true">
+    <li className={`act kind-${item.kind} ${open ? "is-open" : ""} ${fresh ? "is-fresh" : ""}`} data-tone={item.tone}>
+      <time className="act-time num" dateTime={new Date(item.at).toISOString()} title={formatClockSeconds(item.at)}>
+        {formatClock(item.at)}
+      </time>
+      <span className="act-kind">
         {icon}
+        {KIND_LABELS[item.kind]}
       </span>
-      <div className="act-body">
-        <p className="act-title">
-          <span className="sr-only">{KIND_LABELS[item.kind]}: </span>
-          {item.title}
-          {item.raw && (
-            <button
-              type="button"
-              className="act-toggle"
-              aria-expanded={open}
-              aria-controls={rawId}
-              aria-label={open ? "접기" : "자세히 보기"}
-              title={open ? "접기" : "자세히 보기"}
-              onClick={() => setOpen(!open)}
-            >
-              <ChevronRight size={13} strokeWidth={2.6} className={`chevron ${open ? "is-open" : ""}`} />
-            </button>
-          )}
-        </p>
-        {item.detail && <p className="act-detail">{item.detail}</p>}
-        {item.raw && open && (
-          <pre id={rawId} className="act-raw">
-            {item.raw}
-          </pre>
+      <p className="act-line">
+        <span className="act-title">{item.title}</span>
+        {item.detail && !open && <span className="act-detail">{item.detail}</span>}
+        {expandable && (
+          <button
+            type="button"
+            className="act-toggle"
+            aria-expanded={open}
+            aria-controls={moreId}
+            aria-label={open ? "접기" : "자세히 보기"}
+            title={open ? "접기" : "자세히 보기"}
+            onClick={() => setOpen(!open)}
+          >
+            <ChevronRight size={13} strokeWidth={2.6} className={`chevron ${open ? "is-open" : ""}`} />
+          </button>
         )}
-      </div>
+      </p>
+      {open && (
+        <div id={moreId} className="act-more">
+          {item.detail && <p className="act-detail-full">{item.detail}</p>}
+          {item.raw && <pre className="act-raw">{item.raw}</pre>}
+        </div>
+      )}
     </li>
   );
 });

@@ -228,7 +228,7 @@ for (const vp of VIEWPORTS) {
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });
 
-    test("상세 조작 줄 — 실행 중: 세그먼트 없이 모드 배지·설명 한 줄 + 종료 단추, 큰 빈 자리 없음", async ({
+    test("상세 조작 줄 — 실행 중: 세그먼트 없이 상태 한 줄(모드 배지 · 경과 · 서버) + 종료 단추, 큰 빈 자리 없음", async ({
       page,
     }, info) => {
       await open(page, "?demo=running&open=1");
@@ -237,11 +237,16 @@ for (const vp of VIEWPORTS) {
       const r = await page.evaluate(() => {
         const g = window.__geo;
         const row = document.querySelector(".detail-controls")!;
-        const left = row.querySelector(".detail-running")!;
+        const left = row.querySelector(".run-bar")!;
         const badge = left.querySelector(".detail-mode-badge")!;
-        const summary = left.querySelector(".detail-running-summary");
         const btns = Array.from(row.querySelectorAll(".btn"));
-        const owners = [badge, summary, ...btns].filter((el): el is Element => !!el).map((el) => g.box(el));
+        // 상태 한 줄의 칸(배지 · 저하 칩 · 경과 · 봉 마감 · 서버)은 각자 한 줄 — 칸 밖 글자가 없어야 함.
+        const owners = [...Array.from(left.children), ...btns].map((el) => g.box(el));
+        const wrapped = Array.from(left.children)
+          .filter(
+            (el) => g.textBoxes(el).length > 1 && new Set(g.textBoxes(el).map((t) => Math.round(t.box.t))).size > 1,
+          )
+          .map((el) => el.className);
         const stray = g
           .textBoxes(row)
           .filter((t) => !owners.some((o) => g.inside(t.box, o, 1)))
@@ -257,14 +262,14 @@ for (const vp of VIEWPORTS) {
           btn: firstBtn,
           row: g.box(row),
           pad,
-          summaryTruncatedOk: !summary || getComputedStyle(summary).textOverflow === "ellipsis",
+          wrapped,
         };
       });
       expect(r.segmented, "실행 중 세그먼트").toBe(0);
       expect(r.badge).toMatch(/^(모의로|테스트넷으로|실전으로) (실행 중|시작하는 중)$/);
       expect(r.children, "조작 줄 칸 수(배지 칸·단추)").toBe(2);
       expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
-      expect(r.summaryTruncatedOk, "설명 한 줄은 줄임표").toBe(true);
+      expect(r.wrapped, "두 줄로 꺾인 칸").toEqual([]);
       // 왼쪽 칸이 단추 앞까지 채움 — 큰 빈 자리 없음(같은 줄일 때).
       if (Math.abs(r.left.t - r.btn.t) < r.btn.h)
         expect(r.btn.l - r.left.r, `왼쪽 칸 끝 ${r.left.r} · 단추 ${r.btn.l}`).toBeLessThanOrEqual(24);
@@ -375,16 +380,18 @@ for (const vp of VIEWPORTS) {
       expect(problems).toEqual([]);
     });
 
-    test("활동 기록 — › 펼치기 단추가 제목 줄 안에 있고 aria-expanded가 바뀜", async ({ page }) => {
+    test("활동 기록 — 한 건 한 줄, › 펼치기 단추가 그 줄 끝에 있고 aria-expanded가 바뀜", async ({ page }) => {
       await open(page, wide ? "?demo=many" : "?demo=many&open=1");
       const toggle = page.locator(".act-toggle").first();
       await toggle.waitFor();
       await toggle.scrollIntoViewIfNeeded();
       const r = await toggle.evaluate((btn) => {
         const g = window.__geo;
-        const title = btn.closest(".act-title");
-        if (!title) return { inTitle: false, problems: ["펼치기 단추가 .act-title 밖에 있음"] };
+        const title = btn.closest(".act-line");
+        if (!title) return { inTitle: false, problems: ["펼치기 단추가 .act-line 밖에 있음"] };
         const lines = g.textBoxes(title).map((t) => t.box);
+        // 접힌 줄은 한 줄 — 제목 · 둘째 말이 다음 줄로 꺾이지 않음.
+        const rows = new Set(lines.map((b) => Math.round(b.t)));
         const last = lines.reduce((a, b) => (b.b > a.b || (b.b === a.b && b.r > a.r) ? b : a));
         const bb = g.box(btn);
         const mid = (bb.t + bb.b) / 2;
@@ -392,6 +399,7 @@ for (const vp of VIEWPORTS) {
         if (mid < last.t - 1 || mid > last.b + 1)
           problems.push(`› 세로 가운데 ${mid}가 제목 마지막 줄 ${g.fmt(last)} 밖`);
         if (bb.l < last.r - 1) problems.push(`› 왼쪽 ${bb.l}가 제목 글자 끝 ${last.r}보다 앞`);
+        if (rows.size > 1) problems.push(`접힌 줄이 ${rows.size}줄로 꺾임`);
         return { inTitle: true, problems };
       });
       expect(r.problems).toEqual([]);

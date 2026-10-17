@@ -230,7 +230,9 @@ describe("활동 기록 · 개발자 로그", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(toggle.getAttribute("aria-label")).toBe("접기");
-    expect(screen.getByText("BUY 체결: id=abc 수량=0.00122").id).toBe(toggle.getAttribute("aria-controls"));
+    // 펼친 칸(둘째 말 전체 · 원문)이 단추가 가리키는 칸 안에 있음.
+    const more = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
+    expect(more?.contains(screen.getByText("BUY 체결: id=abc 수량=0.00122"))).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "설정" }));
     fireEvent.click(await screen.findByRole("switch", { name: "개발자 로그 보기" }));
