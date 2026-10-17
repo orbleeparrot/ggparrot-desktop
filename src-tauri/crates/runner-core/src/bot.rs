@@ -228,6 +228,42 @@ pub fn rehearsal_amounts(m: &Value, exchange_name: &str, broker: Option<&Arc<dyn
     }
 }
 
+/// 마틴게일(H)이 국내 거래소 최소 주문 금액에 걸린 리허설 문구 — 투자 금액이 아니라 어느 칸이 작은지 말함.
+/// 거래소 문구("매크로 투자 금액을 … 올리세요")는 투자 금액이 충분해도 그렇게 말해 엉뚱한 칸을 가리켰다(2026-10-17 업비트
+/// 47,000원 · 처음 살 금액 4,700원). 마틴게일이 아니거나 최소 금액 미달이 아니거나 바이낸스면 None(거래소 문구 그대로 —
+/// 바이낸스는 종목마다 최소 금액이 달라 거래소 문구가 정확함).
+pub fn martingale_min_order_reason(m: &Value, exchange_name: &str, error_name: &str) -> Option<String> {
+    if !error_name.starts_with("under_min_total") || !Exchange::parse(exchange_name).is_some_and(Exchange::is_domestic)
+    {
+        return None;
+    }
+    if m.get("rule_type").and_then(Value::as_str).map(str::to_uppercase).as_deref() != Some("H") {
+        return None;
+    }
+    let empty = Value::Object(Default::default());
+    let params = m.get("params").filter(|v| v.is_object()).unwrap_or(&empty);
+    let base = crate::money::positive(params.get("base_order_size"));
+    let scale = match crate::money::positive(params.get("safety_order_volume_scale")) {
+        x if x > 0.0 => x,
+        _ => 1.0,
+    };
+    let steps = crate::money::positive(params.get("max_safety_orders")).trunc() as i32;
+    let safety = crate::money::positive(params.get("safety_order_size")) * scale.min(1.0).powi((steps - 1).max(0));
+    let (field, amount) = if safety > 0.0 && steps > 0 && safety < base {
+        ("추가매수 금액", safety)
+    } else {
+        ("처음 살 금액", base)
+    };
+    let won = |x: f64| format!("{}원", grouped(x, 0));
+    Some(format!(
+        "{field} {}이 {} 최소 주문 금액 {}보다 적어요. 웹 직접 만들기에서 처음 살 금액 · 첫 추가매수 금액을 {} 이상으로 올리세요.",
+        won(amount),
+        exchange_label(exchange_name),
+        won(5000.0),
+        won(5000.0)
+    ))
+}
+
 pub struct Bot {
     pub macro_: Value,
     credentials: Credentials,
