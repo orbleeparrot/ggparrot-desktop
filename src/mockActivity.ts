@@ -253,6 +253,14 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
     refreshPnl(r);
     return;
   }
+  if (r.fixedWait) {
+    // ?demo=wait — 신호 · 매수 없이 고정한 진입 대기 값만 보임.
+    // 원화 반올림(round)을 쓰면 26.2 가 26 으로 굳어 그래프가 안 그려짐 — 소수 셋째 자리까지만.
+    const base = Number(r.fixedWait.meter?.now ?? run.price);
+    run.price = Math.round(base * (1 + (Math.random() - 0.5) * 0.004) * 1000) / 1000;
+    Object.assign(run, { online: true, updatedAt: at, offlineSince: 0, entryWait: r.fixedWait });
+    return;
+  }
   run.online = !r.offline && t % 13 !== 9;
   run.updatedAt = at;
   run.offlineSince = run.online ? 0 : run.offlineSince || at;

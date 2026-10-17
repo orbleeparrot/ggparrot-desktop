@@ -1,5 +1,6 @@
 // 브라우저 미리보기용 mock 백엔드의 데이터 — 견본 매크로·매크로 폴더·모델. Rust의 규칙을 흉내만 냄(실제 규칙은 Rust가 소유).
 import type {
+  EntryWait,
   Exchange,
   KeySlot,
   LibraryFile,
@@ -265,6 +266,8 @@ export interface MockRun {
   holdPrice?: number;
   /** 미리보기 스크린샷용(?demo=many) — 서버 연결이 계속 끊긴 상태('실행 중 · 서버 재시도 중'). */
   offline?: boolean;
+  /** 미리보기 스크린샷용(?demo=wait) — 서버가 보낸 것처럼 고정한 진입 대기 값(신호 · 매수 없이). */
+  fixedWait?: EntryWait;
 }
 
 export interface MockFile {

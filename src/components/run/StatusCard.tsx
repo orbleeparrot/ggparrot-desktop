@@ -2,7 +2,8 @@
 // - 1040×720 창에서 아래 활동 기록이 세 줄 넘게 보이도록 낮게 짬(그래프 46px·막대 한 줄·표 줄 간격 좁힘).
 // 상태 라벨은 목록 카드와 같은 slot.status를 씀(서버 끊김·시세 끊김을 두 곳이 다르게 말하지 않게).
 // 손익은 수수료 반영 값(지금 정리하면) — Rust 봇이 계산해 보냄. 서버·웹 기록은 수수료 전 금액임.
-import { TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import { useState } from "react";
 import {
   formatAgo,
   formatAmount,
@@ -18,10 +19,34 @@ import {
 import { trailSpanLabel } from "../../state/priceTrail";
 import { labelOf, serverCell, STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus, Tone } from "../../types";
-import { EntryWaitFacts, EntryWaitHead } from "./EntryWait";
+import { closeText, EntryWaitDetail, EntryWaitHead } from "./EntryWait";
 import { ExitBar } from "./ExitBar";
 import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
+
+// 현재가 · 평단 · 투입금 · 수량 · 수수료 · 실현손익 표는 처음엔 접어 둔다(웹 내 에이전트와 같게). 펼친 상태는 이 PC에만 기억.
+export const DETAILS_KEY = "ggp.runner.status.details";
+
+function useDetailsOpen(): [boolean, () => void] {
+  const [open, setOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(DETAILS_KEY) === "open";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setOpen((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(DETAILS_KEY, next ? "open" : "closed");
+      } catch {
+        // 저장소를 못 쓰면 이 화면에서만 펼친다.
+      }
+      return next;
+    });
+  return [open, toggle];
+}
 
 /** 웹(껄무새 내 에이전트) 기록과 이 카드의 손익이 다른 이유. */
 export const WEB_GROSS_NOTE = "웹 기록은 수수료 전 금액이에요";
@@ -46,6 +71,7 @@ export function StatusCard({
 }) {
   // 실행 중에는 1초마다 다시 그림 — 서버 소식이 끊긴 지 얼마인지도 이 시각으로 셈.
   const { now, elapsed } = useRunClock(run);
+  const [detailsOpen, toggleDetails] = useDetailsOpen();
   const label = labelOf(run, phase, status);
   const live = !run.finished && phase === "running" && status.tone === "ok";
   const toneClass = run.finished ? "" : `tone-${status.tone as Tone}`;
@@ -85,6 +111,11 @@ export function StatusCard({
         <span className="status-meta num" title="경과 시간">
           경과 {formatElapsed(elapsed)}
         </span>
+        {waiting && run.entryWait && closeText(run.entryWait, now) && (
+          <span className="status-meta num" title={`${run.entryWait.interval_label} 봉이 끝날 때 조건을 다시 봐요`}>
+            {closeText(run.entryWait, now)}
+          </span>
+        )}
         {!run.finished && (
           <span className={`status-meta server-meta ${server.tone}`} title="서버 연결">
             <span className="server-dot" aria-hidden="true" />
@@ -97,7 +128,7 @@ export function StatusCard({
         <div className="pnl" aria-live="polite">
           <span className="eyebrow">
             {waiting
-              ? `진입 조건${mock ? " · 모의" : ""}`
+              ? `${run.entryWait?.interval_label ?? ""} 봉${mock ? " · 모의" : ""}`
               : mock
                 ? "평가손익 · 지금 정리하면 · 모의"
                 : "평가손익 · 지금 정리하면"}
@@ -141,7 +172,7 @@ export function StatusCard({
         </div>
       </div>
 
-      {waiting && run.entryWait && <EntryWaitFacts wait={run.entryWait} now={now} />}
+      {waiting && run.entryWait && <EntryWaitDetail wait={run.entryWait} />}
 
       {!run.finished && (
         <ExitBar
@@ -153,65 +184,74 @@ export function StatusCard({
         />
       )}
 
-      <dl className="run-table">
-        <div>
-          <dt>현재가</dt>
-          <dd className="num">
-            {run.updatedAt === 0 && !run.finished ? (
-              "—"
-            ) : (
-              <>
-                {formatPrice(run.price, q)} <span className="unit">{q}</span>
-                {!run.finished && run.dayChangePct !== null && (
-                  <span
-                    className={`day-change tone-${toneOf(run.dayChangePct)}`}
-                    title="전일 종가 대비 등락률(거래소 기준)"
-                  >
-                    {" "}
-                    전일 {formatPercent(run.dayChangePct)}
-                  </span>
-                )}
-                {!run.finished && (run.priceStaleSince > 0 || stale) && (
-                  <span className={`price-age ${stale || run.priceStaleSince > 0 ? "tone-warn" : ""}`}>
-                    {" "}
-                    · {run.priceStaleSince > 0 ? "마지막 확인 가격" : `${formatAgo(age)} 갱신`}
-                  </span>
-                )}
-              </>
-            )}
-          </dd>
-        </div>
-        <div>
-          <dt>평단</dt>
-          <dd className="num">{holding ? `${formatPrice(run.entryPrice, q)} ${q}` : "—"}</dd>
-        </div>
-        <div>
-          <dt title="지금 포지션에 들어간 돈 — 수량×평단 + 진입 수수료">투입금</dt>
-          <dd className="num">{run.inPosition && run.invested > 0 ? formatAmount(run.invested, q) : "없음"}</dd>
-        </div>
-        <div>
-          <dt>보유 수량</dt>
-          <dd className="num" title={run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : undefined}>
-            {run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : "없음"}
-          </dd>
-        </div>
-        <div>
-          <dt>낸 수수료</dt>
-          <dd className={`num ${run.fees === null ? "is-unknown" : ""}`}>{feeText}</dd>
-        </div>
-        <div>
-          <dt title={WEB_GROSS_NOTE}>{mock ? "이번 실행 실현손익 · 모의" : "이번 실행 실현손익"}</dt>
-          <dd className={`num tone-${toneOf(realized, moneyDigits(q))}`} title={WEB_GROSS_NOTE}>
-            {formatMoney(realized, q)}
-            {realizedNote && <span className="realized-note">{realizedNote}</span>}
-          </dd>
-        </div>
-      </dl>
+      <button type="button" className="run-details-toggle" aria-expanded={detailsOpen} onClick={toggleDetails}>
+        <span>{detailsOpen ? "자세히 접기" : "현재가 · 평단 · 수량 자세히"}</span>
+        {detailsOpen ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+      </button>
 
-      <p className="run-foot">
-        {run.realizedNet !== null || run.unrealizedFeeAware ? "손익은 수수료를 반영했어요 · " : ""}
-        {WEB_GROSS_NOTE}
-      </p>
+      {detailsOpen && (
+        <>
+          <dl className="run-table">
+            <div>
+              <dt>현재가</dt>
+              <dd className="num">
+                {run.updatedAt === 0 && !run.finished ? (
+                  "—"
+                ) : (
+                  <>
+                    {formatPrice(run.price, q)} <span className="unit">{q}</span>
+                    {!run.finished && run.dayChangePct !== null && (
+                      <span
+                        className={`day-change tone-${toneOf(run.dayChangePct)}`}
+                        title="전일 종가 대비 등락률(거래소 기준)"
+                      >
+                        {" "}
+                        전일 {formatPercent(run.dayChangePct)}
+                      </span>
+                    )}
+                    {!run.finished && (run.priceStaleSince > 0 || stale) && (
+                      <span className={`price-age ${stale || run.priceStaleSince > 0 ? "tone-warn" : ""}`}>
+                        {" "}
+                        · {run.priceStaleSince > 0 ? "마지막 확인 가격" : `${formatAgo(age)} 갱신`}
+                      </span>
+                    )}
+                  </>
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>평단</dt>
+              <dd className="num">{holding ? `${formatPrice(run.entryPrice, q)} ${q}` : "—"}</dd>
+            </div>
+            <div>
+              <dt title="지금 포지션에 들어간 돈 — 수량×평단 + 진입 수수료">투입금</dt>
+              <dd className="num">{run.inPosition && run.invested > 0 ? formatAmount(run.invested, q) : "없음"}</dd>
+            </div>
+            <div>
+              <dt>보유 수량</dt>
+              <dd className="num" title={run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : undefined}>
+                {run.inPosition ? `${formatQty(run.qty)} ${macro.baseAsset}` : "없음"}
+              </dd>
+            </div>
+            <div>
+              <dt>낸 수수료</dt>
+              <dd className={`num ${run.fees === null ? "is-unknown" : ""}`}>{feeText}</dd>
+            </div>
+            <div>
+              <dt title={WEB_GROSS_NOTE}>{mock ? "이번 실행 실현손익 · 모의" : "이번 실행 실현손익"}</dt>
+              <dd className={`num tone-${toneOf(realized, moneyDigits(q))}`} title={WEB_GROSS_NOTE}>
+                {formatMoney(realized, q)}
+                {realizedNote && <span className="realized-note">{realizedNote}</span>}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="run-foot">
+            {run.realizedNet !== null || run.unrealizedFeeAware ? "손익은 수수료를 반영했어요 · " : ""}
+            {WEB_GROSS_NOTE}
+          </p>
+        </>
+      )}
       {run.note && <p className="run-note">{run.note}</p>}
     </section>
   );
