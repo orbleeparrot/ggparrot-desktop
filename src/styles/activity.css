@@ -1,6 +1,7 @@
-/* 활동 기록 — 밝은 카드·왼쪽 시각·가운데 실(타임라인) 위의 종류 아이콘·제목(끝에 펼치기)/둘째 줄/원문. */
+/* 활동 기록 — 밝은 카드. 한 건이 한 줄: 시각 · 종류 배지 · 굵은 제목 · 흐린 둘째 말(줄임표) · 끝에 [›] 펼치기. */
 .feed {
-  --act-time-w: 78px;
+  --act-time-w: 62px;
+  --act-kind-w: 58px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -83,26 +84,23 @@
   padding: 28px var(--pad);
   color: var(--muted);
   text-align: center;
+  text-wrap: balance;
+  word-break: keep-all;
 }
 .feed-list {
   position: relative;
 }
-/* 타임라인 실 — 아이콘 칸 가운데를 지남. */
-.feed-list::before {
-  content: "";
-  position: absolute;
-  top: 14px;
-  bottom: 14px;
-  left: calc(var(--pad) + var(--act-time-w) + 10px + 12px);
-  width: 1px;
-  background: var(--border);
-}
 .act {
   position: relative;
   display: grid;
-  grid-template-columns: var(--act-time-w) 24px minmax(0, 1fr);
+  grid-template-columns: var(--act-time-w) var(--act-kind-w) minmax(0, 1fr);
+  align-items: center;
   column-gap: 10px;
-  padding: 7px var(--pad) 7px var(--pad);
+  min-height: 38px;
+  padding: 4px 10px 4px var(--pad);
+}
+.act + .act {
+  border-top: 1px solid var(--line);
 }
 .act.is-fresh {
   animation: act-in 220ms var(--ease);
@@ -114,46 +112,76 @@
   }
 }
 .act-time {
-  padding-top: 3px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+/* 종류 배지 — 아이콘 + 이름(시작 · 진입 · 정리 · 신호 · 손절 · 안내 …), 칸 폭은 모두 같음 */
+.act-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--hover);
   color: var(--muted);
   font-size: 11.5px;
   font-weight: var(--fw-bold);
   white-space: nowrap;
-  text-align: right;
 }
-.act-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--hover);
-  color: var(--muted);
-  box-shadow: 0 0 0 3px var(--card);
-}
-.act-body {
+/* 제목 · 둘째 말 · [›] 한 줄 — 제목은 제 너비를 먼저 받고, 둘째 말은 남는 자리에서 오른쪽 맞춤으로 줄어듦 */
+.act-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
-  padding-top: 2px;
 }
 .act-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-weight: var(--fw-bold);
   line-height: 1.45;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .act-detail {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 펼치면 제목은 다 보이게 줄바꿈하고, 아래에 둘째 말 전체 · 원문 */
+.act.is-open .act-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.act-more {
+  grid-column: 3;
+  min-width: 0;
+  padding: 0 0 6px;
+}
+.act-detail-full {
   color: var(--muted);
   font-size: var(--fs-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-/* 제목 끝의 [›] — 보이는 건 작게, 눌리는 곳은 24px. 줄 높이를 늘리지 않게 위아래 음수 여백. */
+/* 줄 끝의 [›] — 보이는 건 작게, 눌리는 곳은 24px. */
 .act-toggle {
   display: inline-grid;
   place-items: center;
+  flex: none;
   width: 24px;
   height: 24px;
-  margin: -4px 0 -4px 2px;
+  margin: 0 0 0 auto;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -187,33 +215,33 @@
   user-select: text;
 }
 
-/* 종류별 아이콘 색 */
-.kind-start .act-icon {
+/* 종류별 배지 색 */
+.kind-start .act-kind {
   background: var(--brand-soft);
   color: var(--brand-deep);
 }
-.kind-signal .act-icon {
+.kind-signal .act-kind {
   background: var(--info-soft);
   color: var(--info-ink);
 }
-.kind-buy .act-icon,
-.kind-sell[data-tone="ok"] .act-icon,
-.kind-connection[data-tone="ok"] .act-icon {
+.kind-buy .act-kind,
+.kind-sell[data-tone="ok"] .act-kind,
+.kind-connection[data-tone="ok"] .act-kind {
   background: var(--ok-soft);
   color: var(--ok-ink);
 }
-.kind-sell[data-tone="danger"] .act-icon,
-.kind-stop_loss .act-icon,
-.kind-error .act-icon {
+.kind-sell[data-tone="danger"] .act-kind,
+.kind-stop_loss .act-kind,
+.kind-error .act-kind {
   background: var(--danger-soft);
   color: var(--danger-ink);
 }
-.kind-blocked .act-icon,
-.kind-connection[data-tone="warn"] .act-icon {
+.kind-blocked .act-kind,
+.kind-connection[data-tone="warn"] .act-kind {
   background: var(--warn-soft);
   color: var(--warn-ink);
 }
-.kind-sell .act-icon {
+.kind-sell .act-kind {
   background: var(--hover);
   color: var(--ink);
 }
@@ -232,8 +260,10 @@
   padding-top: 1px;
   padding-bottom: 1px;
 }
+.act-dev {
+  min-height: 0;
+}
 .act-dev .act-time {
-  padding-top: 0;
   font-weight: var(--fw-regular);
   font-family: var(--mono);
   font-size: 10.5px;
@@ -288,16 +318,10 @@
   }
 }
 @media (max-width: 480px) {
-  .feed {
-    --act-time-w: 70px;
-  }
   .act {
     column-gap: 8px;
   }
-  .act-time {
-    font-size: 10.5px;
-  }
-  .feed-list::before {
-    left: calc(var(--pad) + var(--act-time-w) + 8px + 12px);
+  .act-detail {
+    display: none;
   }
 }

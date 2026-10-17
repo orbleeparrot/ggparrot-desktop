@@ -1,7 +1,7 @@
 // 키 확인 결과 — 키 인증·허용 IP·주문 권한. ok ✓ 초록·bad ✕ 빨강·wait … 회색·na 확인 불가.
 // notes가 있으면(바이낸스 '필요 없음'·'IP 제한 없음' 등) bad·na의 설명 글자를 그것으로 바꿈.
 // - CheckRows: 세 줄(연결 도우미 결과 — 자리가 넉넉하고 설명이 중요)
-// - CheckChips: 한 줄 칩(설정의 거래소 연결 카드 — 세로 자리를 아낌, 설명은 칩의 title)
+// - 설정 · 시작 전 확인의 한 줄 띠는 components/CheckStrip(이어 붙인 한 줄)
 import { Check, LoaderCircle, Minus, X } from "lucide-react";
 import type { Check as CheckState, WizardState } from "../types";
 
@@ -19,33 +19,6 @@ function Icon({ state, spinning }: { state: CheckState; spinning: boolean }) {
   if (state === "bad") return <X size={13} strokeWidth={3} />;
   if (state === "na") return <Minus size={13} strokeWidth={3} />;
   return <span className="wz-wait">…</span>;
-}
-
-function explain(key: (typeof ROWS)[number][0], state: CheckState, notes?: WizardState["notes"]): string {
-  if (state === "bad") return notes?.[key] || BAD_TEXT[key];
-  if (state === "na") return notes?.[key] || "확인 불가";
-  if (state === "wait") return "대기";
-  return "정상";
-}
-
-export function CheckChips({ checks, notes }: { checks: WizardState["checks"]; notes?: WizardState["notes"] }) {
-  return (
-    <ul className="check-chips" aria-label="키 확인 결과">
-      {ROWS.map(([key, label]) => {
-        const state = checks[key];
-        const why = explain(key, state, notes);
-        return (
-          <li key={key} className={`check-chip check-${state}`} title={`${label}: ${why}`}>
-            <span className="check-chip-icon" aria-hidden="true">
-              <Icon state={state} spinning={false} />
-            </span>
-            {label}
-            <span className="sr-only">: {why}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
 }
 
 export function CheckRows({

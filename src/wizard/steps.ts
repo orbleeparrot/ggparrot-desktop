@@ -75,9 +75,10 @@ export function footFor(w: WizardState): { left?: FootButton; right?: FootButton
       // 바이낸스 실거래는 허용 IP·주문 권한이 마지막 단계 — 걸고 나면 바로 연결을 확인함.
       if (!nextStage(w))
         return { left: back, right: { label: "연결 확인", action: "check", primary: true, enabled: w.keysReady } };
-      return { left: back, right: { label: "다음", action: "next", enabled: true } };
+      return { left: back, right: { label: "다음", action: "next", primary: true, enabled: true } };
     case "perm":
-      return { left: back, right: { label: "다음", action: "next", enabled: true } };
+      // [다음]은 오른쪽 주 단추 — [이전](왼쪽 보조)과 무게가 같으면 어느 쪽이 앞으로인지 헷갈림.
+      return { left: back, right: { label: "다음", action: "next", primary: true, enabled: true } };
     case "keys":
     case "existing":
       return { left: back, right: { label: "직접 입력", action: "manual", enabled: true } };

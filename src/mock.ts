@@ -637,6 +637,7 @@ export function createMockBackend(
         symbol: "KRW-FORT",
         baseAsset: "FORT",
         strategy: "변동성 돌파",
+        interval: "15분",
         summary: "15분 봉 변동폭의 0.6배를 넘어 오르고 20봉 평균 위에서 마감하면 사요.",
         exits: {
           sl: null,
@@ -701,6 +702,7 @@ export function createMockBackend(
         symbol: "KRW-GTC",
         baseAsset: "GTC",
         strategy: "RSI 조건 매매",
+        interval: "15분",
         summary: "15분 봉 RSI(14)가 40 아래로 내려가면 사고, 70 위로 오르면 팔아요.",
       });
       fort.fixedWait = {

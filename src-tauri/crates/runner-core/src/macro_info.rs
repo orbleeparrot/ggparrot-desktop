@@ -84,6 +84,46 @@ pub fn risk_summary(m: &Value) -> Vec<String> {
     out
 }
 
+/// 안전 설정을 이름 · 값 두 칸으로 — 화면의 칸 표(투자 금액 옆)에 씀. 문구는 [`risk_summary`]와 같은 낱말.
+/// ("손절", "평단 대비 가격 -3%") · ("하루 최대 손실", "5%(수수료 포함)") · ("최대 보유", "24시간").
+pub fn risk_items(m: &Value) -> Vec<(String, String)> {
+    let Some(risk) = m.get("risk").filter(|r| r.is_object()) else { return vec![] };
+    let num = |k: &str| risk.get(k).and_then(Value::as_f64).filter(|v| v.is_finite() && *v > 0.0);
+    let mut out = vec![];
+    if let Some(v) = num("stop_loss_pct") {
+        out.push(("손절".into(), format!("평단 대비 가격 -{}%", pct_text(v))));
+    }
+    if let Some(v) = num("daily_max_loss_pct") {
+        out.push(("하루 최대 손실".into(), format!("{}%(수수료 포함)", pct_text(v))));
+    }
+    if let Some(v) = num("max_holding_hours") {
+        out.push(("최대 보유".into(), format!("{}시간", pct_text(v))));
+    }
+    out
+}
+
+/// 봉 간격(`candle_interval`)의 이름 — "4h" → "4시간"(서버 entry_wait.py INTERVAL_LABEL과 같음).
+/// 매크로에 없거나 모르는 값이면 "" — 봉을 쓰지 않는 매크로에 간격을 지어 보이지 않음.
+pub fn candle_interval_label(m: &Value) -> &'static str {
+    match m.get("candle_interval").and_then(Value::as_str).map(str::trim).unwrap_or("") {
+        "1m" => "1분",
+        "3m" => "3분",
+        "5m" => "5분",
+        "15m" => "15분",
+        "30m" => "30분",
+        "1h" => "1시간",
+        "2h" => "2시간",
+        "4h" => "4시간",
+        "6h" => "6시간",
+        "8h" => "8시간",
+        "12h" => "12시간",
+        "1d" => "1일",
+        "3d" => "3일",
+        "1w" => "1주",
+        _ => "",
+    }
+}
+
 /// %·시간 값을 소수 둘째 자리까지, 끝의 0 없이 — 5·2.5·0.33 (웹 `fmtPct`와 같음).
 pub fn pct_text(v: f64) -> String {
     let s = crate::money::round_away(v, 2).normalize().to_string();
@@ -116,6 +156,32 @@ pub fn set_initial_capital(m: &mut Value, amount: f64) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn risk_items_split_name_and_value_with_the_same_words() {
+        let m = json!({"risk": {"stop_loss_pct": 3, "daily_max_loss_pct": 5, "max_holding_hours": 24, "cooldown_minutes": 30}});
+        let pairs: Vec<(String, String)> = risk_items(&m);
+        assert_eq!(
+            pairs,
+            vec![
+                ("손절".to_string(), "평단 대비 가격 -3%".to_string()),
+                ("하루 최대 손실".to_string(), "5%(수수료 포함)".to_string()),
+                ("최대 보유".to_string(), "24시간".to_string()),
+            ]
+        );
+        let joined: Vec<String> = pairs.iter().map(|(k, v)| format!("{k} {v}")).collect();
+        assert_eq!(joined, risk_summary(&m), "한 줄 요약과 같은 낱말");
+        assert!(risk_items(&json!({"risk": {"stop_loss_pct": 0}})).is_empty());
+        assert!(risk_items(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn candle_interval_label_matches_server_names_and_hides_unknown() {
+        assert_eq!(candle_interval_label(&json!({"candle_interval": "4h"})), "4시간");
+        assert_eq!(candle_interval_label(&json!({"candle_interval": "1d"})), "1일");
+        assert_eq!(candle_interval_label(&json!({"candle_interval": "7h"})), "");
+        assert_eq!(candle_interval_label(&json!({})), "", "없으면 지어 보이지 않음");
+    }
 
     #[test]
     fn rule_and_label() {

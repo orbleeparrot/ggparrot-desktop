@@ -28,7 +28,9 @@ describe("투자 금액", () => {
   it("금액과 1회 주문 상한을 보이고, 바꾸면 set_run_capital 을 보낸다", async () => {
     const ctx = withContext(<CapitalRow slot={makeSlot({ macro: binanceMacro })} />);
     expect(screen.getByText("500 USDT")).toBeTruthy();
-    expect(screen.getByText(/한 번에는 최대 100 USDT까지만 주문해요/)).toBeTruthy();
+    // 줄글 대신 칸 — 이름 · 값.
+    expect(screen.getByText("한 번에 최대").nextElementSibling?.textContent).toBe("100 USDT");
+    expect(screen.getByText("손절").nextElementSibling?.textContent).toBe("평단 대비 가격 -3%");
     fireEvent.click(screen.getByRole("button", { name: "바꾸기" }));
     expect(screen.getByText(/수정된 파일/)).toBeTruthy();
     const input = screen.getByLabelText("투자 금액(USDT)");
@@ -49,8 +51,10 @@ describe("투자 금액", () => {
 
   it("웹에서 연결한 매크로 · 실행 중에는 바꿀 수 없다", () => {
     withContext(<CapitalRow slot={makeSlot({ macro: upbitMacro })} />);
-    expect((screen.getByRole("button", { name: "바꾸기" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/웹에서 고친 뒤 다시 연결하세요/)).toBeTruthy();
+    const button = screen.getByRole("button", { name: "바꾸기" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    // 바꿀 수 없는 이유는 단추의 풍선 도움말.
+    expect(button.title).toContain("웹에서 고친 뒤 다시 연결하세요");
     cleanup();
     withContext(<CapitalRow slot={makeSlot({ macro: binanceMacro, phase: "running" })} />);
     expect((screen.getByRole("button", { name: "바꾸기" }) as HTMLButtonElement).disabled).toBe(true);
@@ -65,8 +69,9 @@ describe("투자 금액", () => {
     await waitFor(() => expect(ctx.ok).toHaveBeenCalledWith("set_run_capital", { runId: "run-1", amount: null }));
   });
 
-  it("투자 금액이 없는 매크로면 아무것도 그리지 않는다", () => {
+  it("투자 금액이 없는 매크로면 그 칸만 빠지고 나머지 칸은 그대로", () => {
     withContext(<CapitalRow slot={makeSlot({ macro: { ...binanceMacro, capital: null } })} />);
     expect(screen.queryByText("투자 금액")).toBeNull();
+    expect(screen.getByText("한 번에 최대")).toBeTruthy();
   });
 });

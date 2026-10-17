@@ -134,6 +134,11 @@ impl Core {
                 capital_locked: if r.capital_locked() { CAPITAL_LOCKED.into() } else { String::new() },
                 order_cap: runner_core::types::order_cap(quote),
                 risk: runner_core::macro_info::risk_summary(m),
+                risk_items: runner_core::macro_info::risk_items(m)
+                    .into_iter()
+                    .map(|(label, value)| RiskItemDto { label, value })
+                    .collect(),
+                interval: runner_core::macro_info::candle_interval_label(m).into(),
                 exits: runner_core::exits::exit_rules(m),
             },
             mode: r.mode,
@@ -146,6 +151,8 @@ impl Core {
             market_page: r.market_page().map(|p| p.label).unwrap_or_default(),
             web_run_page: r.web_run_url().is_some(),
             status: StatusDto { text: status.0, tone: status.1.into() },
+            attention: r.needs_attention(),
+            waits: runner_core::server::is_waiting_macro(m),
         }
     }
 
@@ -258,6 +265,11 @@ impl Core {
             }
             _ => ChecksDto::waiting(),
         };
+        // 잔고 · 확인 시각 — 지금 키의 확인 결과에서만(키를 바꾸면 지난 잔고를 보이지 않음).
+        let (balance, checked_at) = match check {
+            SlotStatus::Done(c) | SlotStatus::Busy(Some(c)) => (c.balance.clone(), c.checked_at),
+            _ => (String::new(), 0),
+        };
         let (a, sec) = ex.field_labels();
         SlotDto {
             slot: s,
@@ -280,6 +292,8 @@ impl Core {
                 .iter()
                 .filter(|r| r.running() && r.key_slot() == Some(s) && r.mode != RunMode::Mock)
                 .count(),
+            balance,
+            checked_at,
         }
     }
 
@@ -593,6 +607,10 @@ pub(crate) struct MacroDto {
     order_cap: f64,
     /// 이 앱이 로컬에서 지키는 안전 설정(예: "손절 평단 대비 가격 -3%"). 없으면 [].
     risk: Vec<String>,
+    /// 같은 안전 설정을 이름 · 값 두 칸으로(시작 전 칸 표·실전 시작 확인).
+    risk_items: Vec<RiskItemDto>,
+    /// 봉 간격 이름("4시간"). 매크로에 없으면 "".
+    interval: String,
     /// 청산 기준(익절·손절·트레일링, 평단 대비 가격 %) — 상태 카드의 청산 기준 막대·요약.
     exits: runner_core::exits::ExitRules,
 }
@@ -630,6 +648,17 @@ pub(crate) struct RunDto {
     /// 껄무새 웹에서 이 실행 기록을 열 수 있는지 여부. 주소는 `open_run_web_page`가 만듦.
     web_run_page: bool,
     status: StatusDto,
+    /// 사람이 확인해야 하는 실행인지(`Run::needs_attention`) — 머리줄 '확인 필요 N개'와 같은 기준. 목록의 '확인 필요' 묶음.
+    attention: bool,
+    /// 조건을 기다리는 매크로인지(`is_waiting_macro`) — 시작 전 화면의 '바로 사지 않아요'.
+    waits: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RiskItemDto {
+    label: String,
+    value: String,
 }
 
 #[derive(Serialize)]
@@ -717,6 +746,10 @@ pub(crate) struct SlotDto {
     checks: ChecksDto,
     wizard_available: bool,
     in_use_by: usize,
+    /// 마지막 확인에서 읽은 잔고 한 줄("사용 가능 잔고 12,300 KRW"). 읽지 않았으면 "".
+    balance: String,
+    /// 마지막 확인 시각(epoch ms). 확인한 적 없으면 0.
+    checked_at: i64,
 }
 
 #[derive(Serialize)]

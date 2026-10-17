@@ -86,6 +86,8 @@ pub struct KeyCheckRecord {
     pub view: CheckView,
     /// 확인한 시각(ms). 오래된 '연결됨'은 지금도 맞다는 보장이 없어 따로 알림.
     pub checked_at: i64,
+    /// 확인하며 읽은 잔고 한 줄(`PreflightResult::balance`, "사용 가능 잔고 12,300 KRW"). 읽지 않았으면 "".
+    pub balance: String,
 }
 
 /// 키 칸의 '연결됨'을 이만큼 지나면 오래된 결과라고 덧붙임(시작할 때는 늘 다시 확인함).

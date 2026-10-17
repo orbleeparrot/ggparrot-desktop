@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { keyStoreName } from "../../platform";
 import { useRunnerContext } from "../../state/context";
 import type { SettingsSection, SettingsTarget } from "../../state/runs";
-import { arrangeSlots, slotInUse, slotOrder, wideSlots } from "../../state/slots";
+import { arrangeSlots, isPractice, slotInUse, slotOrder } from "../../state/slots";
 import type { SlotCard } from "../../types";
 import { AboutSection } from "./AboutSection";
 import { AppLogSection } from "./AppLogSection";
@@ -48,7 +48,7 @@ export function SettingsScreen({
   const [order] = useState(() => slotOrder(state.settings.slots));
   const slots = arrangeSlots(state.settings.slots, order);
   const slotTarget = target?.target.kind === "slot" ? { slot: target.target.slot, seq: target.seq } : null;
-  // 펼친 '쓰지 않는 칸'. [설정에서 입력]으로 데려오면(번호가 바뀌면) 그 칸을 펼침 — 렌더 중에 맞춰
+  // 키 칸을 연 거래소. 처음엔 모두 닫힘. [설정에서 입력]으로 데려오면(번호가 바뀌면) 그 칸을 엶 — 렌더 중에 맞춰
   // 같은 커밋에서 키 칸이 생기게 함(goToSettings가 바로 찾음).
   const [opened, setOpened] = useState<ReadonlySet<SlotCard["slot"]>>(() => new Set());
   const [seenSeq, setSeenSeq] = useState<number | undefined>(undefined);
@@ -56,8 +56,9 @@ export function SettingsScreen({
     setSeenSeq(slotTarget.seq);
     if (!opened.has(slotTarget.slot)) setOpened(new Set(opened).add(slotTarget.slot));
   }
-  const expanded = slots.map((s) => slotInUse(s) || opened.has(s.slot));
-  const wide = wideSlots(expanded);
+  // 쓰지 않는 연습 칸(바이낸스 테스트넷 · 데모)은 아래 '연습 칸'에 낮게.
+  const main = slots.filter((s) => !isPractice(s) || slotInUse(s));
+  const practice = slots.filter((s) => isPractice(s) && !slotInUse(s));
   const toggleSlot = (slot: SlotCard["slot"], open: boolean) => {
     const next = new Set(opened);
     if (open) next.add(slot);
@@ -162,17 +163,31 @@ export function SettingsScreen({
                 : `기억한 키는 이 기기의 ${keyStoreName()}에 보관해요.`}
             </p>
             <StorageWarning />
-            <div className="slot-grid">
-              {slots.map((s, i) => (
+            <div className="slot-list">
+              {main.map((s) => (
                 <SlotCardView
                   key={s.slot}
                   slot={s}
                   open={opened.has(s.slot)}
                   onToggle={(open) => toggleSlot(s.slot, open)}
-                  wide={wide[i]}
                 />
               ))}
             </div>
+            {practice.length > 0 && (
+              <>
+                <h4 className="slot-list-title">연습 칸</h4>
+                <div className="slot-list is-practice">
+                  {practice.map((s) => (
+                    <SlotCardView
+                      key={s.slot}
+                      slot={s}
+                      open={opened.has(s.slot)}
+                      onToggle={(open) => toggleSlot(s.slot, open)}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </Section>
           <MemberSection />
           <LibrarySection />

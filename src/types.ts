@@ -41,6 +41,10 @@ export interface MacroInfo {
   orderCap: number;
   /** 이 앱이 로컬에서 지키는 안전 설정(예: "손절 평단 대비 가격 -3%"). 서버 연결이 끊겨도 지킴. */
   risk: string[];
+  /** 같은 안전 설정을 이름 · 값 두 칸으로 — ("손절", "평단 대비 가격 -3%")·("하루 최대 손실", "5%(수수료 포함)"). */
+  riskItems: { label: string; value: string }[];
+  /** 봉 간격 이름("4시간"). 매크로에 없으면 "". */
+  interval: string;
   /** 청산 기준(익절·손절·트레일링, 평단 대비 가격 %) — 웹 positionExits.js `exitRules`와 같은 값·문구. */
   exits: ExitRules;
 }
@@ -193,6 +197,10 @@ export interface RunSlot {
   webRunPage: boolean;
   /** 카드 머리 한 줄 상태. */
   status: { text: string; tone: Tone };
+  /** 사람이 확인해야 하는 실행 — 머리줄 '확인 필요 N개'와 같은 기준. 목록의 '확인 필요' 묶음. */
+  attention: boolean;
+  /** 조건을 기다리는 매크로(바로 사지 않음) — 시작 전 화면의 '바로 사지 않아요' 줄. */
+  waits: boolean;
 }
 
 export interface SlotCard {
@@ -217,6 +225,10 @@ export interface SlotCard {
   wizardAvailable: boolean;
   /** 이 칸의 키로 실행 중인 매크로 수. 키는 언제든 바꿀 수 있고, 실행 중인 매크로는 시작할 때의 키를 계속 씀. */
   inUseBy: number;
+  /** 마지막 확인에서 읽은 잔고 한 줄("사용 가능 잔고 12,300 KRW · 보유 BTC 0.01"). 읽지 않았으면 "". */
+  balance: string;
+  /** 마지막 확인 시각(epoch ms). 확인한 적 없으면 0. */
+  checkedAt: number;
 }
 
 export interface SettingsState {

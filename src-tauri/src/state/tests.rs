@@ -150,6 +150,42 @@ fn edited_capital_shows_as_modified_and_unsupported_macros_cannot_start() {
     assert!(blocked["blocker"].as_str().unwrap().contains("정기 분할매수"));
 }
 
+#[test]
+fn macro_cells_waiting_flag_and_slot_balance_reach_the_screen() {
+    let mut c = core();
+    let mut r = run("a", "BTCUSDT", "binance");
+    r.macro_ = json!({
+        "symbol": "BTCUSDT", "exchange": "binance", "rule_type": "F", "candle_interval": "4h",
+        "risk": {"stop_loss_pct": 3, "daily_max_loss_pct": 5},
+    });
+    c.runs.push(r);
+    let mut grid = run("b", "ETHUSDT", "binance");
+    grid.macro_ = json!({"symbol": "ETHUSDT", "exchange": "binance", "rule_type": "D"});
+    c.runs.push(grid);
+    let v = serde_json::to_value(c.render("0.20.6")).unwrap();
+    let m = &v["runs"][0]["macro"];
+    assert_eq!(m["interval"], "4시간");
+    assert_eq!(m["riskItems"][0]["label"], "손절");
+    assert_eq!(m["riskItems"][0]["value"], "평단 대비 가격 -3%");
+    assert_eq!(m["riskItems"][1]["value"], "5%(수수료 포함)");
+    assert_eq!((v["runs"][0]["waits"].as_bool(), v["runs"][1]["waits"].as_bool()), (Some(true), Some(false)));
+    assert_eq!(v["runs"][0]["attention"], false, "대기 중은 확인 필요가 아님");
+    assert_eq!(v["runs"][1]["macro"]["interval"], "", "봉 간격이 없으면 지어 보이지 않음");
+
+    upbit_checked(&mut c, true, "", "", 0);
+    c.slot_mut(KeySlot::Upbit).check.as_mut().unwrap().balance = "사용 가능 잔고 12,300 KRW".into();
+    let slot = serde_json::to_value(c.render_slot(KeySlot::Upbit)).unwrap();
+    assert_eq!(slot["balance"], "사용 가능 잔고 12,300 KRW");
+    assert!(slot["checkedAt"].as_i64().unwrap() > 0);
+    c.slot_mut(KeySlot::Upbit).keys.api_secret = "other".into();
+    let changed = serde_json::to_value(c.render_slot(KeySlot::Upbit)).unwrap();
+    assert_eq!(
+        (changed["balance"].as_str(), changed["checkedAt"].as_i64()),
+        (Some(""), Some(0)),
+        "키를 바꾸면 지난 잔고를 보이지 않음"
+    );
+}
+
 fn running(c: &mut Core, i: usize) -> &mut RunData {
     let sym = c.runs[i].symbol();
     c.runs[i].bot = Some(runner_core::bot::BotHandle::idle_for_tests(&sym));
@@ -850,6 +886,7 @@ fn upbit_checked(c: &mut Core, ok: bool, error_name: &str, reason: &str, age_ms:
         reason: reason.into(),
         view: check_view("upbit", ok, error_name),
         checked_at: now_ms() - age_ms,
+        balance: String::new(),
     });
 }
 
@@ -881,6 +918,7 @@ fn slot_notes_say_whether_the_user_must_act() {
         reason: "바이낸스에서 키를 거절했어요. 키 · 허용 IP · 권한 설정을 확인하세요.".into(),
         view: check_view("binance", false, "binance_access"),
         checked_at: now_ms(),
+        balance: String::new(),
     });
     assert_eq!(slot_note(&c, KeySlot::Binance).2, "warn");
 

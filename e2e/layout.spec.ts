@@ -1,6 +1,7 @@
 // 화면 배치 검사 — 가짜 백엔드 견본(?demo=…)을 창 크기별로 띄워 겹침·넘침·높이·정렬을 잼.
 // - 픽셀 비교 없음. 위반은 "무엇이 · 어디서 · 몇 px"로 모아 빈 배열인지만 확인함.
 // - 창 크기: 넓은 두 칸(1100), 좁은 격자(800·720 — 640~899px). 앱의 최소 창 너비가 720이라 그보다 좁게는 보지 않음.
+//   상세 두 칸(상태 | 활동 기록, 1360px~)은 맨 아래 1440×900에서 따로 봄.
 // - 화면마다 스크린샷을 결과(test-results·HTML 보고서)에 붙임 — 사람이 훑어보는 용도.
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { installGeometry } from "./geometry";
@@ -63,15 +64,23 @@ for (const vp of VIEWPORTS) {
         const g = window.__geo;
         const out: string[] = [];
         const cards = Array.from(document.querySelectorAll<HTMLElement>(".run-card"));
-        const heights = cards.map((c) => g.box(c).h);
-        const min = Math.min(...heights);
-        const max = Math.max(...heights);
-        if (max - min > 1) out.push(`카드 높이가 다름: ${min}~${max}px (${heights.join(",")})`);
+        // 두 줄 카드(확인 필요 · 실행 중)끼리, 한 줄 행(대기)끼리 높이가 같음.
+        for (const [what, sel] of [
+          ["두 줄 카드", ".run-card:not(.is-compact)"],
+          ["한 줄 행", ".run-card.is-compact"],
+        ] as const) {
+          const heights = Array.from(document.querySelectorAll<HTMLElement>(sel)).map((c) => g.box(c).h);
+          if (!heights.length) continue;
+          const min = Math.min(...heights);
+          const max = Math.max(...heights);
+          if (max - min > 1) out.push(`${what} 높이가 다름: ${min}~${max}px (${heights.join(",")})`);
+        }
 
         cards.forEach((card, i) => {
           const name = `카드 ${i + 1}(${card.querySelector(".run-card-symbol")?.textContent})`;
           const cb = g.box(card);
-          const blockers = [".run-card-action", ".run-card-remove-slot"]
+          // 한 줄 행의 [▶] · [×]는 가리킬 때 글자 끝 위에 겹쳐 뜨는 게 설계 — 두 줄 카드만 비켜 감을 잼.
+          const blockers = (card.classList.contains("is-compact") ? [] : [".run-card-action", ".run-card-remove-slot"])
             .map((s) => card.querySelector(s))
             .filter((el): el is Element => !!el && g.shown(el))
             .map((el) => ({ cls: el.className, box: g.box(el) }));
@@ -117,34 +126,52 @@ for (const vp of VIEWPORTS) {
       await open(page, "?demo=many");
       const rows = await page.evaluate(() => {
         const g = window.__geo;
-        return Array.from(document.querySelectorAll<HTMLElement>(".run-card")).map((card) => {
-          const sym = card.querySelector<HTMLElement>(".run-card-symbol")!;
-          const head = card.querySelector<HTMLElement>(".run-card-head")!;
-          const top = card.querySelector<HTMLElement>(".run-card-top")!;
-          const end = top.lastElementChild !== head ? top.lastElementChild : null;
-          const mode = card.querySelector<HTMLElement>(".run-card-mode")!;
-          const badge = mode.querySelector<HTMLElement>(".mode-badge")!;
-          const visibleText = g.textBoxes(sym).reduce((w, t) => w + t.box.w, 0);
-          const gap = parseFloat(getComputedStyle(top).columnGap) || 0;
-          const room = (end && g.shown(end) ? g.box(end).l : g.box(top).r) - gap;
-          return {
-            symbol: sym.textContent ?? "",
-            visibleText,
-            truncated: sym.scrollWidth > sym.clientWidth,
-            ellipsis: getComputedStyle(sym).textOverflow === "ellipsis",
-            // 배지가 둘째 줄로 밀려(가려져) 점만 남았는지.
-            collapsed: g.box(badge).t - g.box(mode).t > 4 || g.box(mode).w < g.box(badge).w - 0.5,
-            headRight: g.box(head).r,
-            room: Math.round(room * 100) / 100,
-            badgeInside: g.inside(g.box(badge), g.box(mode)),
-          };
-        });
+        // 모드 배지는 기본(모의)이 아닌 두 줄 카드에만 — 점으로 줄어드는 규칙은 그 카드들로 잼.
+        return Array.from(document.querySelectorAll<HTMLElement>(".run-card:not(.is-compact):has(.run-card-mode)")).map(
+          (card) => {
+            const sym = card.querySelector<HTMLElement>(".run-card-symbol")!;
+            const head = card.querySelector<HTMLElement>(".run-card-head")!;
+            const top = card.querySelector<HTMLElement>(".run-card-top")!;
+            const end = top.lastElementChild !== head ? top.lastElementChild : null;
+            const mode = card.querySelector<HTMLElement>(".run-card-mode")!;
+            const badge = mode.querySelector<HTMLElement>(".mode-badge")!;
+            const visibleText = g.textBoxes(sym).reduce((w, t) => w + t.box.w, 0);
+            const gap = parseFloat(getComputedStyle(top).columnGap) || 0;
+            const room = (end && g.shown(end) ? g.box(end).l : g.box(top).r) - gap;
+            return {
+              symbol: sym.textContent ?? "",
+              visibleText,
+              truncated: sym.scrollWidth > sym.clientWidth,
+              ellipsis: getComputedStyle(sym).textOverflow === "ellipsis",
+              // 배지가 둘째 줄로 밀려(가려져) 점만 남았는지.
+              collapsed: g.box(badge).t - g.box(mode).t > 4 || g.box(mode).w < g.box(badge).w - 0.5,
+              headRight: g.box(head).r,
+              room: Math.round(room * 100) / 100,
+              badgeInside: g.inside(g.box(badge), g.box(mode)),
+            };
+          },
+        );
       });
       const problems: string[] = [];
-      for (const s of ["1000SHIBUSDT", "BTCDOMUSDT", "KRW-SHIB"]) {
+      for (const s of ["1000SHIBUSDT"]) {
         const r = rows.find((x) => x.symbol === s);
         if (!r) problems.push(`${s} 카드가 없음`);
         else if (r.visibleText < 40) problems.push(`${s}: 보이는 글자 폭 ${r.visibleText}px — 거의 잘림`);
+      }
+      // 대기 묶음의 한 줄 행도 긴 종목이 거의 다 보임(넓은 창은 목록이 따로 굴러가니 행마다 보이게 굴린 뒤 잼).
+      const compact = await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>(".run-card.is-compact .run-card-symbol")).map((sym) => {
+          sym.scrollIntoView({ block: "nearest" });
+          return {
+            symbol: sym.textContent ?? "",
+            visible: window.__geo.textBoxes(sym).reduce((w, t) => w + t.box.w, 0),
+          };
+        }),
+      );
+      for (const s of ["BTCDOMUSDT", "KRW-SHIB"]) {
+        const r = compact.find((x) => x.symbol === s);
+        if (!r) problems.push(`${s} 행이 없음`);
+        else if (r.visible < 40) problems.push(`${s}: 보이는 글자 폭 ${r.visible}px — 거의 잘림`);
       }
       for (const r of rows) {
         if (r.truncated && !r.ellipsis) problems.push(`${r.symbol}: 잘리는데 줄임표 없음`);
@@ -158,7 +185,7 @@ for (const vp of VIEWPORTS) {
       expect(problems).toEqual([]);
     });
 
-    test("× 단추 — 가리킬 때·포커스일 때만 보이고 자리는 늘 비워 둠", async ({ page }) => {
+    test("× 단추 — 가리킬 때·포커스일 때만 보이고, 숨어 있을 때는 눌리지 않음", async ({ page }) => {
       await open(page, "?demo=many");
       const card = page.locator(".run-card.has-remove").first();
       await card.scrollIntoViewIfNeeded();
@@ -168,19 +195,37 @@ for (const vp of VIEWPORTS) {
           const g = window.__geo;
           const btn = c.querySelector(".run-card-remove")!;
           const slot = c.querySelector(".run-card-x-slot");
+          // 글자 자리는 카드 기준 — 가리키거나 포커스를 줄 때 브라우저가 행을 화면 안으로 굴려도(WebKit) 같은 값.
+          const cb = g.box(c);
+          const at = (n: number) => Math.round(n * 100) / 100;
+          const inCard = (b: typeof cb) => ({
+            l: at(b.l - cb.l),
+            t: at(b.t - cb.t),
+            r: at(b.r - cb.l),
+            b: at(b.b - cb.t),
+            w: b.w,
+            h: b.h,
+          });
           return {
+            compact: c.classList.contains("is-compact"),
             opacity: getComputedStyle(btn).opacity,
+            events: getComputedStyle(btn).pointerEvents,
             btn: g.box(btn),
             slot: slot ? g.box(slot) : null,
-            texts: g.textBoxes(c.querySelector(".run-card-select")!).map((t) => `${t.text}@${g.fmt(t.box)}`),
+            texts: g.textBoxes(c.querySelector(".run-card-select")!).map((t) => `${t.text}@${g.fmt(inCard(t.box))}`),
           };
         });
       const before = await measure();
       expect(before.opacity, "가리키기 전 × 투명").toBe("0");
-      expect(before.slot, "× 자리(.run-card-x-slot)가 있음").not.toBeNull();
-      expect(before.slot!.w).toBeGreaterThanOrEqual(before.btn.w - 0.5);
-      expect(Math.abs(before.slot!.l - before.btn.l), "× 자리와 × 단추 가로 위치").toBeLessThanOrEqual(1);
-      expect(Math.abs(before.slot!.t - before.btn.t), "× 자리와 × 단추 세로 위치").toBeLessThanOrEqual(1);
+      if (before.compact) {
+        // 한 줄 행 — 자리를 비우지 않고 겹쳐 뜸. 숨어 있을 때는 눌리지 않음(행을 고르는 클릭을 가로채지 않게).
+        expect(before.events, "숨은 × 는 눌리지 않음").toBe("none");
+      } else {
+        expect(before.slot, "× 자리(.run-card-x-slot)가 있음").not.toBeNull();
+        expect(before.slot!.w).toBeGreaterThanOrEqual(before.btn.w - 0.5);
+        expect(Math.abs(before.slot!.l - before.btn.l), "× 자리와 × 단추 가로 위치").toBeLessThanOrEqual(1);
+        expect(Math.abs(before.slot!.t - before.btn.t), "× 자리와 × 단추 세로 위치").toBeLessThanOrEqual(1);
+      }
 
       await card.locator(".run-card-symbol").hover();
       const hovered = await measure();
@@ -195,7 +240,7 @@ for (const vp of VIEWPORTS) {
       expect(focused.texts, "포커스여도 글자 자리가 그대로").toEqual(before.texts);
     });
 
-    test("상세 조작 줄 — 대기(시작 단추): 세그먼트·주 단추 같은 높이·가운데·모드 설명 줄 없음", async ({
+    test("상세 조작 줄 — 대기(시작 단추): 세그먼트·주 단추 같은 높이·가운데, 모드 설명은 그 아래 한 줄", async ({
       page,
     }, info) => {
       await open(page, "?open=1");
@@ -206,11 +251,16 @@ for (const vp of VIEWPORTS) {
         const row = document.querySelector(".detail-controls")!;
         const seg = row.querySelector(".segmented")!;
         const btn = row.querySelector(".detail-start, .detail-stop .btn, .btn")!;
-        const hints = Array.from(
-          document.querySelectorAll(".run-detail [class*='mode-hint'], .run-detail [class*='mode-note']"),
-        )
-          .filter((el) => g.shown(el))
-          .map((el) => el.className);
+        // 모드 설명(MODE_NOTES)은 조작 줄 밖, 같은 카드 안 아래 한 줄.
+        const notes = Array.from(document.querySelectorAll(".run-detail .mode-note")).filter((el) => g.shown(el));
+        const note = notes[0];
+        const noteLines = note ? new Set(g.textBoxes(note).map((t) => Math.round(t.box.t))).size : 0;
+        const hints = {
+          count: notes.length,
+          below: note ? g.box(note).t >= g.box(row).b - 1 : false,
+          inCard: note ? note.parentElement === row.parentElement : false,
+          lines: noteLines,
+        };
         // 조작 줄 안에 세그먼트·단추 말고 보이는 글자가 있는지(설명 줄).
         const owners = [seg, ...Array.from(row.querySelectorAll(".btn"))].map((el) => g.box(el));
         const stray = g
@@ -223,12 +273,12 @@ for (const vp of VIEWPORTS) {
       const segMid = (r.seg.t + r.seg.b) / 2;
       const btnMid = (r.btn.t + r.btn.b) / 2;
       expect(Math.abs(segMid - btnMid), `세로 가운데 세그먼트 ${segMid} · 단추 ${btnMid}`).toBeLessThanOrEqual(1);
-      expect(r.hints, "모드 설명 줄").toEqual([]);
+      expect(r.hints, "모드 설명 줄").toEqual({ count: 1, below: true, inCard: true, lines: 1 });
       expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });
 
-    test("상세 조작 줄 — 실행 중: 세그먼트 없이 모드 배지·설명 한 줄 + 종료 단추, 큰 빈 자리 없음", async ({
+    test("상세 조작 줄 — 실행 중: 세그먼트 없이 상태 한 줄(모드 배지 · 경과 · 서버) + 종료 단추, 큰 빈 자리 없음", async ({
       page,
     }, info) => {
       await open(page, "?demo=running&open=1");
@@ -237,11 +287,16 @@ for (const vp of VIEWPORTS) {
       const r = await page.evaluate(() => {
         const g = window.__geo;
         const row = document.querySelector(".detail-controls")!;
-        const left = row.querySelector(".detail-running")!;
+        const left = row.querySelector(".run-bar")!;
         const badge = left.querySelector(".detail-mode-badge")!;
-        const summary = left.querySelector(".detail-running-summary");
         const btns = Array.from(row.querySelectorAll(".btn"));
-        const owners = [badge, summary, ...btns].filter((el): el is Element => !!el).map((el) => g.box(el));
+        // 상태 한 줄의 칸(배지 · 저하 칩 · 경과 · 봉 마감 · 서버)은 각자 한 줄 — 칸 밖 글자가 없어야 함.
+        const owners = [...Array.from(left.children), ...btns].map((el) => g.box(el));
+        const wrapped = Array.from(left.children)
+          .filter(
+            (el) => g.textBoxes(el).length > 1 && new Set(g.textBoxes(el).map((t) => Math.round(t.box.t))).size > 1,
+          )
+          .map((el) => el.className);
         const stray = g
           .textBoxes(row)
           .filter((t) => !owners.some((o) => g.inside(t.box, o, 1)))
@@ -257,14 +312,14 @@ for (const vp of VIEWPORTS) {
           btn: firstBtn,
           row: g.box(row),
           pad,
-          summaryTruncatedOk: !summary || getComputedStyle(summary).textOverflow === "ellipsis",
+          wrapped,
         };
       });
       expect(r.segmented, "실행 중 세그먼트").toBe(0);
       expect(r.badge).toMatch(/^(모의로|테스트넷으로|실전으로) (실행 중|시작하는 중)$/);
       expect(r.children, "조작 줄 칸 수(배지 칸·단추)").toBe(2);
       expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
-      expect(r.summaryTruncatedOk, "설명 한 줄은 줄임표").toBe(true);
+      expect(r.wrapped, "두 줄로 꺾인 칸").toEqual([]);
       // 왼쪽 칸이 단추 앞까지 채움 — 큰 빈 자리 없음(같은 줄일 때).
       if (Math.abs(r.left.t - r.btn.t) < r.btn.h)
         expect(r.btn.l - r.left.r, `왼쪽 칸 끝 ${r.left.r} · 단추 ${r.btn.l}`).toBeLessThanOrEqual(24);
@@ -375,16 +430,21 @@ for (const vp of VIEWPORTS) {
       expect(problems).toEqual([]);
     });
 
-    test("활동 기록 — › 펼치기 단추가 제목 줄 안에 있고 aria-expanded가 바뀜", async ({ page }) => {
+    test("활동 기록 — 한 건 한 줄, › 펼치기 단추가 그 줄 끝에 있고 aria-expanded가 바뀜", async ({ page }) => {
       await open(page, wide ? "?demo=many" : "?demo=many&open=1");
       const toggle = page.locator(".act-toggle").first();
       await toggle.waitFor();
       await toggle.scrollIntoViewIfNeeded();
       const r = await toggle.evaluate((btn) => {
         const g = window.__geo;
-        const title = btn.closest(".act-title");
-        if (!title) return { inTitle: false, problems: ["펼치기 단추가 .act-title 밖에 있음"] };
+        const title = btn.closest(".act-line");
+        if (!title) return { inTitle: false, problems: ["펼치기 단추가 .act-line 밖에 있음"] };
         const lines = g.textBoxes(title).map((t) => t.box);
+        // 접힌 줄은 한 줄 — 제목 · 둘째 말이 다음 줄로 꺾이지 않음.
+        // 줄은 세로 가운데로 셈: 제목(13px) · 둘째 말(12px) 칸은 높이가 달라 위 끝이 1px 안쪽으로 어긋나고,
+        // 위 끝을 반올림하면 창 안 위치에 따라 같은 줄이 두 값으로 갈림(CI 글꼴 · WebKit). 반 줄(6px) 넘게 벌어질 때만 다른 줄.
+        const mids = lines.map((b) => (b.t + b.b) / 2).sort((a, b) => a - b);
+        const rows = mids.filter((m, i) => i === 0 || m - mids[i - 1] > 6).length;
         const last = lines.reduce((a, b) => (b.b > a.b || (b.b === a.b && b.r > a.r) ? b : a));
         const bb = g.box(btn);
         const mid = (bb.t + bb.b) / 2;
@@ -392,6 +452,7 @@ for (const vp of VIEWPORTS) {
         if (mid < last.t - 1 || mid > last.b + 1)
           problems.push(`› 세로 가운데 ${mid}가 제목 마지막 줄 ${g.fmt(last)} 밖`);
         if (bb.l < last.r - 1) problems.push(`› 왼쪽 ${bb.l}가 제목 글자 끝 ${last.r}보다 앞`);
+        if (rows > 1) problems.push(`접힌 줄이 ${rows}줄로 꺾임`);
         return { inTitle: true, problems };
       });
       expect(r.problems).toEqual([]);
@@ -432,58 +493,51 @@ for (const vp of VIEWPORTS) {
       } else {
         await expect(page.locator(".settings-nav")).toBeHidden();
       }
-      // 쓰지 않는 칸은 한 줄로 접힘 — 쓰는 칸 뒤에 오고, 높이가 낮고, 펼치기 단추가 aria-expanded를 바꿈.
+      // 거래소마다 같은 폭의 한 줄 — 키 칸은 처음엔 모두 닫힘. 쓰지 않는 연습 칸은 뒤 '연습 칸'에 낮게, 머리는 한 줄.
       const slots = await page.evaluate(() =>
-        Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => ({
-          id: el.id,
-          collapsed: el.classList.contains("is-collapsed"),
-          h: el.getBoundingClientRect().height,
-          // 머리 칸들의 세로 가운데 차이 — 한 줄이면 몇 px 안쪽.
-          midSpread: (() => {
-            const mids = Array.from(el.querySelectorAll(".slot-head > *")).map((c) => {
-              const r = c.getBoundingClientRect();
-              return (r.top + r.bottom) / 2;
-            });
-            return Math.max(...mids) - Math.min(...mids);
-          })(),
-        })),
+        Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => {
+          const list = el.closest(".slot-list")!.getBoundingClientRect();
+          const r = el.getBoundingClientRect();
+          const mids = Array.from(el.querySelectorAll(".slot-head > *")).map((c) => {
+            const b = c.getBoundingClientRect();
+            return (b.top + b.bottom) / 2;
+          });
+          const side = el.querySelector(".slot-side")!.getBoundingClientRect();
+          const toggle = el.querySelector(".slot-toggle")!.getBoundingClientRect();
+          return {
+            id: el.id,
+            practice: !!el.closest(".slot-list.is-practice"),
+            open: el.querySelector(".slot-toggle")!.getAttribute("aria-expanded") === "true",
+            h: r.height,
+            fullWidth: Math.abs(r.width - list.width) <= 2,
+            midSpread: Math.max(...mids) - Math.min(...mids),
+            // 잔고 · [연결 도우미] 칸은 ▾ 바로 왼쪽(오른쪽 끝)에 붙음.
+            sideGap: toggle.left - side.right,
+          };
+        }),
       );
-      const firstCollapsed = slots.findIndex((x) => x.collapsed);
-      expect(firstCollapsed, "접힌 칸이 있음(?demo=settings 테스트넷 · 데모)").toBeGreaterThan(0);
+      const firstPractice = slots.findIndex((x) => x.practice);
+      expect(firstPractice, "연습 칸이 있음(?demo=settings 테스트넷 · 데모)").toBeGreaterThan(0);
       expect(
-        slots.slice(firstCollapsed).every((x) => x.collapsed),
-        "쓰는 칸이 앞, 접힌 칸이 뒤",
+        slots.slice(firstPractice).every((x) => x.practice),
+        "쓰는 칸이 앞, 연습 칸이 뒤",
       ).toBe(true);
-      for (const x of slots.filter((y) => y.collapsed)) {
-        expect(x.h, `${x.id} 접힌 높이`).toBeLessThanOrEqual(56);
+      for (const x of slots) {
+        expect(x.open, `${x.id} 키 칸은 처음엔 닫힘`).toBe(false);
+        expect(x.fullWidth, `${x.id} 목록 폭을 다 씀`).toBe(true);
         expect(x.midSpread, `${x.id} 머리 칸이 한 줄(세로 가운데 차이)`).toBeLessThanOrEqual(4);
+        expect(x.sideGap, `${x.id} 오른쪽 칸과 ▾ 사이`).toBeLessThanOrEqual(24);
       }
-      // 펼치면 is-collapsed가 빠지므로 칸 id로 붙잡음.
-      const firstId = slots[firstCollapsed].id;
+      for (const x of slots.filter((y) => y.practice)) expect(x.h, `${x.id} 연습 칸 높이`).toBeLessThanOrEqual(56);
+      const firstId = slots[0].id;
       const toggle = page.locator(`#${firstId} .slot-toggle`);
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await toggle.click();
       await expect(toggle).toHaveAttribute("aria-expanded", "true");
       await expect(page.locator(`#${await toggle.getAttribute("aria-controls")}`)).toBeVisible();
-      // 펼친 칸은 반쪽 폭으로 홀로 남지 않음 — 같은 줄에 짝이 있거나 한 줄을 다 씀(옆이 비지 않게).
-      // 펼친 칸이 짝수면 하나 더 펼쳐 홀수(짝 없는 칸이 생기는 경우)를 만듦.
-      const openCount = await page.locator(".slot-card:not(.is-collapsed)").count();
-      if (openCount % 2 === 0) await page.locator(".slot-card.is-collapsed .slot-toggle").first().click();
-      expect((await page.locator(".slot-card:not(.is-collapsed)").count()) % 2).toBe(1);
-      const lonely = await page.evaluate(() => {
-        const grid = document.querySelector(".slot-grid")!.getBoundingClientRect();
-        const cards = Array.from(document.querySelectorAll<HTMLElement>(".slot-card")).map((el) => ({
-          id: el.id,
-          r: el.getBoundingClientRect(),
-        }));
-        return cards
-          .filter(({ r }) => r.width < grid.width - 2)
-          .filter(({ id, r }) => !cards.some((o) => o.id !== id && Math.abs(o.r.top - r.top) < 2))
-          .map(({ id }) => id);
-      });
-      expect(lonely, "짝 없이 반쪽 폭인 칸").toEqual([]);
-      // 연결됨이어도 고쳐야 할 안내(업비트 잔고 부족)는 주의 색 줄.
-      await expect(page.locator("#settings-slot-upbit .note-warn")).toContainText("잔고가 모자라요");
+      // 연결됨이어도 고쳐야 할 안내(업비트 잔고 부족)는 주의 색 줄, 잔고는 오른쪽 끝에 주의 색.
+      await expect(page.locator("#settings-slot-upbit .slot-why")).toContainText("잔고가 모자라요");
+      await expect(page.locator("#settings-slot-upbit .slot-balance.is-short")).toContainText("KRW");
 
       const log = page.locator(".applog-scroll");
       await log.scrollIntoViewIfNeeded();
@@ -538,6 +592,28 @@ for (const vp of VIEWPORTS) {
           if (hit && t.contains(hit)) out.push(`토스트 ${g.fmt(tb)}가 시트 ${g.fmt(sb)} 위에 겹쳐 그려짐`);
           return out;
         });
+      });
+      expect(r).toEqual([]);
+    });
+
+    test("알림 토스트 — 연결 도우미가 열려 있어도 어두운 막 위에 보임", async ({ page }, info) => {
+      // '이미 발급받았어요'를 고르면 API 관리 페이지를 열었다는 알림이 뜸(도우미는 키 넣기 단계로 길어짐).
+      await open(page, "?demo=wizard");
+      await page.locator(".wizard").waitFor();
+      await page.getByRole("button", { name: /이미 발급받았어요/ }).click();
+      const toast = page.locator(".toast").first();
+      await toast.waitFor();
+      await snap(page, info, "wizard-toast");
+      const r = await toast.evaluate((el) => {
+        const g = window.__geo;
+        const tb = g.box(el);
+        const out: string[] = [];
+        if (!g.inside(tb, { l: 0, t: 0, r: innerWidth, b: innerHeight, w: innerWidth, h: innerHeight }))
+          out.push(`토스트 ${g.fmt(tb)}가 창 밖`);
+        // 토스트 가운데에서 토스트가 잡혀야 함 — 막 뒤에 깔려 있으면 막이 잡힘.
+        const hit = document.elementFromPoint((tb.l + tb.r) / 2, (tb.t + tb.b) / 2);
+        if (!hit || !el.contains(hit)) out.push(`토스트 ${g.fmt(tb)}가 막 뒤에 깔림(잡힌 것: ${hit?.className})`);
+        return out;
       });
       expect(r).toEqual([]);
     });
@@ -618,5 +694,64 @@ test.describe("1040x720 — 상태 카드 높이", () => {
     );
     expect(measured, "활동 기록 세 줄 이상인 실행을 잰 수").toBeGreaterThan(0);
     expect(problems).toEqual([]);
+  });
+});
+
+// 넓은 창(1360px~) — 상세가 '상태 | 활동 기록' 두 칸. 활동 기록이 오른쪽 칸을 위아래로 다 차지하고,
+// 활동 기록 머리줄은 일부러 두 줄(제목 · [기록 복사] / 거르기 칩), 돈 칸 넷은 한 줄에 글자가 잘리지 않음.
+test.describe("1440x900 — 넓은 창 두 칸", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("상태 | 활동 기록 두 칸 · 머리줄 두 줄 · 돈 칸 한 줄", async ({ page }, info) => {
+    const problems: string[] = [];
+    for (const q of ["?demo=running&open=1", "?demo=wait&open=1", "?demo=pnl&open=1"]) {
+      await open(page, q);
+      await page.locator(".run-detail > .feed").waitFor();
+      await snap(page, info, `wide${q.replace(/[^a-z]+/g, "-")}`);
+      problems.push(...(await horizontalOverflow(page, q)));
+      const found = await page.evaluate((where) => {
+        const g = window.__geo;
+        const out: string[] = [];
+        const one = (sel: string) => g.box(document.querySelector(sel)!);
+        const main = one(".detail-main");
+        const feed = one(".run-detail > .feed");
+        const detail = one(".run-detail");
+        if (feed.l < main.r) out.push(`${where}: 활동 기록 ${g.fmt(feed)}가 왼쪽 칸 ${g.fmt(main)} 오른쪽에 있지 않음`);
+        if (feed.t - detail.t > 20 || detail.b - feed.b > 20)
+          out.push(`${where}: 활동 기록 ${g.fmt(feed)}가 상세 ${g.fmt(detail)}의 위아래를 다 차지하지 않음`);
+        const title = one(".feed-title");
+        const copy = one(".feed-copy");
+        if (Math.abs((title.t + title.b) / 2 - (copy.t + copy.b) / 2) > 4)
+          out.push(`${where}: 제목 ${g.fmt(title)}과 [기록 복사] ${g.fmt(copy)}가 다른 줄`);
+        const chips = Array.from(document.querySelectorAll(".feed-chip")).map((c) => g.box(c));
+        if (new Set(chips.map((c) => Math.round(c.t))).size !== 1) out.push(`${where}: 거르기 칩이 두 줄 이상`);
+        if (chips.some((c) => c.t < title.b)) out.push(`${where}: 거르기 칩이 제목 줄에 걸침`);
+        const cells = Array.from(document.querySelectorAll(".money-cells:not(.is-compact) > .money-cell"));
+        if (cells.length && new Set(cells.map((c) => Math.round(g.box(c).t))).size !== 1)
+          out.push(`${where}: 돈 칸 ${cells.length}개가 한 줄에 안 들어감`);
+        for (const c of cells)
+          for (const e of Array.from(c.querySelectorAll("dt, dd")))
+            if (g.box(e).r > g.box(c).r + 0.5)
+              out.push(`${where}: 돈 칸 '${c.querySelector("dt")?.textContent}' 글자가 칸 밖`);
+        return out;
+      }, q);
+      problems.push(...found);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  test("알림 토스트 — 연결 도우미 아래에 틈이 있으면 패널을 피해 아래에 뜸", async ({ page }, info) => {
+    await open(page, "?demo=wizard");
+    await page.locator(".wizard").waitFor();
+    await page.getByRole("button", { name: /이미 발급받았어요/ }).click();
+    await page.locator(".toasts.at-bottom .toast").first().waitFor();
+    await snap(page, info, "wizard-toast-wide");
+    const r = await page.evaluate(() => {
+      const g = window.__geo;
+      const tb = g.box(document.querySelector(".toast")!);
+      const wb = g.box(document.querySelector(".wizard")!);
+      return g.overlaps(tb, wb) ? [`토스트 ${g.fmt(tb)}가 도우미 ${g.fmt(wb)}와 겹침`] : [];
+    });
+    expect(r).toEqual([]);
   });
 });

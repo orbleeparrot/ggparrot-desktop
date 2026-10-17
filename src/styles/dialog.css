@@ -43,7 +43,6 @@
   width: min(560px, 100%);
   padding: 22px 24px 20px;
   border-radius: 16px 16px 0 0;
-  border-top: 4px solid var(--live);
   animation: sheet-in 240ms var(--ease);
 }
 @keyframes sheet-in {
@@ -108,6 +107,103 @@
 }
 .dialog-body p + p:not(.dialog-meta) {
   margin-top: 6px;
+}
+/* 시트 본문 — 제목 바로 아래 테두리 칸들(회색 줄글 없이). 칸 사이 간격은 본문 gap으로. */
+.dialog-sheet .dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dialog-sheet .dialog-body p + p:not(.dialog-meta) {
+  margin-top: 0;
+}
+/* '이 매크로는 바로 사지 않아요' 칸 — 실전 시작 확인 시트 안에서 따로 또렷하게(연한 노랑). */
+.wait-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 60%, var(--border));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--brand-soft) 60%, var(--card));
+}
+.wait-box-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.02em;
+}
+.wait-box-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--brand) 60%, var(--border));
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--brand-deep);
+}
+.wait-box-sentence {
+  color: var(--ink);
+}
+.wait-box .ew-facts {
+  margin-top: 4px;
+  border-top-color: color-mix(in srgb, var(--brand) 45%, var(--border));
+}
+/* 종료 확인 칸 — 평가손익 · 정리할 수량 · 할 일 · 되돌릴 수 없어요 */
+.sheet-box {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sheet-box-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+}
+.sheet-box-row + .sheet-box-row {
+  border-top: 1px solid var(--line);
+}
+.sheet-box-row b {
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+.sheet-box-row b.tone-up {
+  color: var(--ok-ink);
+}
+.sheet-box-row b.tone-down {
+  color: var(--danger-ink);
+}
+.sheet-box-row.is-figure b {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.sheet-box-row.is-figure small {
+  margin-left: 6px;
+  font-size: var(--fs-body);
+}
+.sheet-box-row.is-text {
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-regular);
+  line-height: 1.55;
+}
+.sheet-box-row.is-warn {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+  background: var(--warn-soft);
+  color: var(--warn-ink);
 }
 /* 대화상자는 연결 도우미·매크로 추가 시트보다 위. */
 .scrim-dialog,

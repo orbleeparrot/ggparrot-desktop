@@ -37,15 +37,7 @@ export function arrangeSlots(slots: SlotCard[], order: SlotCard["slot"][]): Slot
     .map((x) => x.s);
 }
 
-/**
- * 두 칸씩 놓이는 거래소 칸에서 한 줄을 다 쓸 칸 — 펼친 칸이 이어진 묶음에서 짝이 없는 마지막 칸(홀수 번째).
- * 펼친 칸 하나만 반쪽 폭으로 놓여 옆이 비는 것을 막음. 접힌 칸은 CSS가 늘 한 줄로 둠.
- */
-export function wideSlots(expanded: readonly boolean[]): boolean[] {
-  let run = 0;
-  return expanded.map((open, i) => {
-    run = open ? run + 1 : 0;
-    const lastOfRun = !expanded[i + 1];
-    return open && lastOfRun && run % 2 === 1;
-  });
+/** 연습 칸(바이낸스 테스트넷 · 데모) — 쓰지 않으면 설정 아래 '연습 칸'에 낮게 둠. */
+export function isPractice(s: Pick<SlotCard, "slot">): boolean {
+  return s.slot === "binance_testnet" || s.slot === "binance_demo";
 }

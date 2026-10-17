@@ -113,13 +113,47 @@ describe("실전 확인 시트", () => {
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "실전으로 시작" }));
     const sheet = await screen.findByRole("dialog", { name: "바이낸스 실전으로 시작할까요?" });
-    expect(sheet.textContent).toContain("실제 자금으로 주문해요.");
+    // 제목 바로 아래는 칸 — Rust가 보낸 설명 글(회색 줄글)은 다시 적지 않음.
+    expect(sheet.textContent).not.toContain("실제 자금으로 주문해요.");
+    expect(within(sheet).getByText("투자 금액")).toBeTruthy();
+    expect(within(sheet).getByText("한 번에 최대")).toBeTruthy();
+    expect(within(sheet).queryByText("이 매크로는 바로 사지 않아요")).toBeNull();
     expect(document.activeElement?.textContent).toBe("취소");
     fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
     await waitFor(() =>
       expect(calledWith("start_run_confirmed")).toEqual([["start_run_confirmed", { runId: "run-1" }]]),
     );
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("기다리는 실전 매크로는 한 장에 '바로 사지 않아요' 칸 · 숫자 세 칸 · 알림 — 안내 시트를 따로 띄우지 않음", async () => {
+    current = makeState({ runs: [makeSlot({ mode: "live", waits: true })] });
+    startReply = { kind: "confirm_live", title: "바이낸스 실전으로 시작할까요?", message: "실제 자금으로 주문해요." };
+    vi.mocked(call).mockImplementation((async (cmd: string) => {
+      if (cmd === "get_state") return current;
+      if (cmd === "get_activity") return history;
+      if (cmd === "get_app_log") return appLog;
+      if (cmd === "entry_preview")
+        return {
+          waiting: true,
+          sentence: "RSI(14)가 30 아래로 내려가면 사요.",
+          typical: { episodes: 21, span_ms: 5 * 3_600_000, avg_ms: 14 * 60_000, longest_ms: 52 * 60_000 },
+        };
+      if (cmd === "start_run") return startReply;
+      if (cmd === "start_run_confirmed") return { kind: "started" };
+      return undefined;
+    }) as typeof call);
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "실전으로 시작" }));
+    const sheet = await screen.findByRole("dialog", { name: "바이낸스 실전으로 시작할까요?" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    const box = within(sheet).getByRole("region", { name: "이 매크로는 바로 사지 않아요" });
+    expect(box.textContent).toContain("RSI(14)가 30 아래로 내려가면 사요. 조건이 맞을 때만 사요.");
+    expect(within(box).getByText("21번 진입")).toBeTruthy();
+    fireEvent.click(within(sheet).getByRole("checkbox", { name: "사면 알림으로 알려 주기" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
+    await waitFor(() => expect(calledWith("start_run_confirmed")).toHaveLength(1));
+    expect(calledWith("set_entry_notify")).toEqual([["set_entry_notify", { runId: "run-1", on: false }]]);
   });
 
   it("검사가 끝난 뒤 온 runner:confirm 도 같은 시트 · Esc 로 닫으면 시작하지 않는다", async () => {
@@ -134,7 +168,7 @@ describe("실전 확인 시트", () => {
 });
 
 describe("막힌 이유 → 설정", () => {
-  it("[설정에서 입력] 은 설정을 열고 그 키 칸에 포커스를 둔다", async () => {
+  it("키가 없으면 [시작] 자리가 [○○ 키 연결하기] — 누르면 그 칸의 연결 도우미를 연다", async () => {
     current = makeState({
       runs: [
         makeSlot({
@@ -149,10 +183,12 @@ describe("막힌 이유 → 설정", () => {
       ],
     });
     render(<App />);
-    expect(await screen.findByText("바이낸스 테스트넷 API 키가 필요해요. 설정에서 입력하세요.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "설정에서 입력" }));
-    expect(await screen.findByRole("heading", { name: "설정" })).toBeTruthy();
-    await waitFor(() => expect(document.activeElement?.id).toBe("slot-binance_testnet-access"));
+    fireEvent.click(await screen.findByRole("button", { name: "바이낸스 테스트넷 키 연결하기" }));
+    await waitFor(() =>
+      expect(calledWith("wizard_open")).toEqual([["wizard_open", { exchange: "binance", slot: "binance_testnet" }]]),
+    );
+    // 막힌 이유 띠는 따로 두지 않음.
+    expect(screen.queryByText("바이낸스 테스트넷 API 키가 필요해요. 설정에서 입력하세요.")).toBeNull();
   });
 
   it("blocked 답은 대화상자로, 필요한 칸이 있으면 [설정에서 입력] 도 준다", async () => {
@@ -169,7 +205,7 @@ describe("막힌 이유 → 설정", () => {
 });
 
 describe("지원하지 않는 거래소", () => {
-  it("대기 중이면 막힌 이유 상자에만 한 번 적는다", async () => {
+  it("대기 중이면 '시작 전 확인'의 막힌 줄에만 한 번 적는다", async () => {
     const sentence = "이 앱이 지원하지 않는 거래소(okx)예요. 바이낸스 · 업비트 · 빗썸 매크로만 실행할 수 있어요.";
     current = makeState({
       runs: [
@@ -180,10 +216,10 @@ describe("지원하지 않는 거래소", () => {
       ],
     });
     render(<App />);
-    expect(await screen.findByRole("note")).toBeTruthy();
+    const checks = await screen.findByRole("region", { name: "시작 전 확인" });
     const detail = document.getElementById("run-detail")!;
     expect(detail.textContent!.split("지원하지 않는 거래소")).toHaveLength(2);
-    expect(within(screen.getByRole("note")).getByText(sentence)).toBeTruthy();
+    expect(within(checks).getByText(sentence)).toBeTruthy();
   });
 });
 
@@ -230,7 +266,9 @@ describe("활동 기록 · 개발자 로그", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(toggle.getAttribute("aria-label")).toBe("접기");
-    expect(screen.getByText("BUY 체결: id=abc 수량=0.00122").id).toBe(toggle.getAttribute("aria-controls"));
+    // 펼친 칸(둘째 말 전체 · 원문)이 단추가 가리키는 칸 안에 있음.
+    const more = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
+    expect(more?.contains(screen.getByText("BUY 체결: id=abc 수량=0.00122"))).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "설정" }));
     fireEvent.click(await screen.findByRole("switch", { name: "개발자 로그 보기" }));
@@ -253,6 +291,10 @@ describe("종료 · 이동", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "청산 후 종료" }));
     const dlg = await screen.findByRole("dialog", { name: "청산 후 종료할까요?" });
     expect(dlg.textContent).toContain("보유 포지션을 시장가로 정리한 뒤 종료해요.");
+    // 제목 바로 아래 칸 — 지금 정리하면 얼마인지 · 정리할 수량 · 되돌릴 수 없음.
+    expect(within(dlg).getByText("평가손익 · 지금 정리하면")).toBeTruthy();
+    expect(within(dlg).getByText("정리할 수량").nextElementSibling?.textContent).toBe("1 BTC · 시장가");
+    expect(within(dlg).getByText("되돌릴 수 없어요")).toBeTruthy();
     fireEvent.click(within(dlg).getByRole("button", { name: "청산 후 종료" }));
     await waitFor(() =>
       expect(calledWith("stop_run")).toEqual([["stop_run", { runId: "run-1", mode: "close_and_stop" }]]),
