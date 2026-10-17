@@ -167,10 +167,12 @@
   flex: none;
   color: var(--info);
 }
+/* 오른쪽 칸 — 두 줄에 걸쳐 카드 세로 가운데 */
 .lib-inuse,
 .lib-add {
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 1 / 3;
+  align-self: center;
   justify-self: end;
   white-space: nowrap;
 }
@@ -205,7 +207,7 @@
   display: none;
 }
 .lib-meta {
-  grid-column: 2 / 4;
+  grid-column: 2;
   display: flex;
   align-items: center;
   gap: 6px;

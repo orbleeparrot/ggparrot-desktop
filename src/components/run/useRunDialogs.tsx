@@ -213,7 +213,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
           cancel={{ label: "취소" }}
           confirm={{
             label: stopChoice?.label ?? "종료",
-            className: stopChoice?.danger ? "btn-danger-solid" : "btn-primary",
+            className: "btn-danger-solid",
             run: () => void act("stop_run", { runId: stopAsk.runId, mode: stopAsk.mode }),
           }}
           large

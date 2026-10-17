@@ -74,11 +74,12 @@ function Controls({ slot }: { slot: RunSlot }) {
   if (action.kind === "stop") {
     return (
       <div className="detail-stop">
-        {stopChoices(slot).map((c) => (
+        {stopChoices(slot).map((c, i, all) => (
           <button
             key={c.mode}
             type="button"
-            className={`btn ${c.danger ? "btn-danger" : "btn-ghost"} btn-lg`}
+            // 끝내는 단추는 빨간 채움 — 두 개면 '매크로만 종료'(포지션은 그대로)만 보조 단추
+            className={`btn ${all.length > 1 && i === 0 ? "btn-ghost" : "btn-danger-solid"} btn-lg`}
             onClick={() => askStop(slot.id, c.mode)}
           >
             {c.label}
