@@ -116,45 +116,48 @@ export function RunDetail({
 
   return (
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
-      <DetailHeader slot={slot} onBack={onBack} />
+      {/* 넓은 창(1360px~)에서는 왼쪽 칸 — 활동 기록이 오른쪽 칸을 위아래로 다 차지함. 그보다 좁으면 감싸개 없이 한 줄로 쌓임(run.css). */}
+      <div className="detail-main">
+        <DetailHeader slot={slot} onBack={onBack} />
 
-      {/* 세그먼트(또는 실행 중 상태 한 줄)와 주 버튼은 한 줄. 대기 중에는 그 아래에 고른 모드의 설명 한 줄. */}
-      <div className="detail-mode-card">
-        <div className={`detail-controls ${idle ? "" : "is-running"}`}>
-          {idle ? (
-            <div className="detail-mode">
-              <ModeSegment slot={slot} />
-            </div>
-          ) : (
-            <RunBar slot={slot} />
-          )}
-          <Controls slot={slot} />
+        {/* 세그먼트(또는 실행 중 상태 한 줄)와 주 버튼은 한 줄. 대기 중에는 그 아래에 고른 모드의 설명 한 줄. */}
+        <div className="detail-mode-card">
+          <div className={`detail-controls ${idle ? "" : "is-running"}`}>
+            {idle ? (
+              <div className="detail-mode">
+                <ModeSegment slot={slot} />
+              </div>
+            ) : (
+              <RunBar slot={slot} />
+            )}
+            <Controls slot={slot} />
+          </div>
+          {idle && <p className={`mode-note mode-${slot.mode}`}>{MODE_NOTES[slot.mode]}</p>}
         </div>
-        {idle && <p className={`mode-note mode-${slot.mode}`}>{MODE_NOTES[slot.mode]}</p>}
+
+        <MacroNotes slot={slot} blockerShown={blockerShown} />
+        {/* 실행 중에는 설명을 두지 않음(청산 막대가 기준을 그림으로 보임). 끝난 뒤에는 한 줄로 줄여 결과 카드를 밀어내지 않게. */}
+        {m.summary && idle && (
+          <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>
+            {m.summary}
+          </p>
+        )}
+        {idle && <CapitalRow slot={slot} />}
+
+        {slot.run && !slot.run.finished ? (
+          <StatusCard
+            run={slot.run}
+            macro={m}
+            mode={slot.mode}
+            phase={slot.phase}
+            prices={prices}
+            priceTimes={priceTimes}
+          />
+        ) : slot.run?.finished && idle ? (
+          <FinishedCard run={slot.run} macro={m} mode={slot.mode} activity={activity} />
+        ) : null}
+        {showChecks && <PreStartChecks slot={slot} />}
       </div>
-
-      <MacroNotes slot={slot} blockerShown={blockerShown} />
-      {/* 실행 중에는 설명을 두지 않음(청산 막대가 기준을 그림으로 보임). 끝난 뒤에는 한 줄로 줄여 결과 카드를 밀어내지 않게. */}
-      {m.summary && idle && (
-        <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>
-          {m.summary}
-        </p>
-      )}
-      {idle && <CapitalRow slot={slot} />}
-
-      {slot.run && !slot.run.finished ? (
-        <StatusCard
-          run={slot.run}
-          macro={m}
-          mode={slot.mode}
-          phase={slot.phase}
-          prices={prices}
-          priceTimes={priceTimes}
-        />
-      ) : slot.run?.finished && idle ? (
-        <FinishedCard run={slot.run} macro={m} mode={slot.mode} activity={activity} />
-      ) : null}
-      {showChecks && <PreStartChecks slot={slot} />}
 
       <ActivityFeed
         runId={slot.id}

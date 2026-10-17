@@ -676,6 +676,10 @@
   padding: 14px var(--pad) var(--pad);
   overflow-y: auto;
 }
+/* 상태 쪽 감싸개 — 평소에는 없는 것처럼(자식이 .run-detail 한 줄에 그대로 쌓임). 넓은 창(1360px~)에서만 왼쪽 칸이 됨(아래 '넓은 창 두 칸'). */
+.detail-main {
+  display: contents;
+}
 .detail-head {
   display: flex;
   align-items: center;
@@ -911,12 +915,14 @@
   border-radius: var(--radius);
   background: var(--line);
 }
+/* 칸 폭은 고르게 나누되(flex-basis 0) 글자 폭보다 좁아지지 않음(max-content) — '평단 대비 가격 -3%'가 칸 끝에서 잘리지 않게.
+   한 줄에 다 안 들어가면 글자 폭 기준으로 다음 줄로 넘어감. */
 .money-cell {
   display: grid;
   align-content: start;
   gap: 2px;
   flex: 1 1 0;
-  min-width: 128px;
+  min-width: max-content;
   padding: 9px 12px 10px;
   background: var(--card);
 }
@@ -2040,6 +2046,47 @@
   }
   .first-hero {
     width: 140px;
+  }
+}
+
+/* --- 넓은 창 두 칸 ---------------------------------------------------------------
+   1360px부터 상세를 '상태 | 활동 기록' 두 칸으로 — 상태 아래로 활동 기록이 길게 이어지지 않고 한 화면에 다 보이게.
+   - 왼쪽(.detail-main): 머리줄 · 시작/종료 줄 · 상태 카드(또는 결과 카드 · 시작 전 확인). 길면 왼쪽 칸만 굴러감.
+   - 오른쪽: 활동 기록이 위아래를 다 차지하고 안에서 굴러감. 폭은 40%(360~560px).
+   - 1360부터인 까닭: 왼쪽이 565px은 돼야 돈 칸 넷(투자 금액 · 한 번에 최대 · 손절 · 하루 최대 손실)이 한 줄에 들어감
+     (1360 → 577px · 1366 노트북 → 580px · 1440 → 625px). 1280에서 나누면 넷째 칸만 아래로 떨어짐.
+   - 왼쪽 칸 안쪽 4px 여백은 끝에 붙은 단추의 포커스 테두리가 스크롤 영역에 잘리지 않게(바깥 -4px로 자리는 그대로). */
+@media (min-width: 1360px) {
+  .run-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(360px, 40%, 560px);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: var(--pad);
+    overflow: hidden;
+  }
+  .detail-main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+    min-width: 0;
+    min-height: 0;
+    margin: -4px;
+    padding: 4px;
+    overflow-y: auto;
+  }
+  .run-detail > .feed {
+    min-height: 0;
+  }
+  /* 오른쪽 활동 기록은 폭이 좁아 머리줄을 일부러 두 줄로: 제목 · [기록 복사] / 거르기 칩.
+     셋을 한 줄에 두면 폭에 따라 [기록 복사]만 둘째 줄로 떨어짐. */
+  .run-detail .feed-filters {
+    order: 1;
+    flex-basis: 100%;
+  }
+  /* 회색 둘째 말은 조각('현·')만 남으니 숨기고 펼쳐서 봄 — 좁은 창(480px 아래)과 같음. */
+  .run-detail .act-detail {
+    display: none;
   }
 }
 

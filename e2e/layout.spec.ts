@@ -1,6 +1,7 @@
 // 화면 배치 검사 — 가짜 백엔드 견본(?demo=…)을 창 크기별로 띄워 겹침·넘침·높이·정렬을 잼.
 // - 픽셀 비교 없음. 위반은 "무엇이 · 어디서 · 몇 px"로 모아 빈 배열인지만 확인함.
 // - 창 크기: 넓은 두 칸(1100), 좁은 격자(800·720 — 640~899px). 앱의 최소 창 너비가 720이라 그보다 좁게는 보지 않음.
+//   상세 두 칸(상태 | 활동 기록, 1360px~)은 맨 아래 1440×900에서 따로 봄.
 // - 화면마다 스크린샷을 결과(test-results·HTML 보고서)에 붙임 — 사람이 훑어보는 용도.
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { installGeometry } from "./geometry";
@@ -581,6 +582,28 @@ for (const vp of VIEWPORTS) {
       expect(r).toEqual([]);
     });
 
+    test("알림 토스트 — 연결 도우미가 열려 있어도 어두운 막 위에 보임", async ({ page }, info) => {
+      // '이미 발급받았어요'를 고르면 API 관리 페이지를 열었다는 알림이 뜸(도우미는 키 넣기 단계로 길어짐).
+      await open(page, "?demo=wizard");
+      await page.locator(".wizard").waitFor();
+      await page.getByRole("button", { name: /이미 발급받았어요/ }).click();
+      const toast = page.locator(".toast").first();
+      await toast.waitFor();
+      await snap(page, info, "wizard-toast");
+      const r = await toast.evaluate((el) => {
+        const g = window.__geo;
+        const tb = g.box(el);
+        const out: string[] = [];
+        if (!g.inside(tb, { l: 0, t: 0, r: innerWidth, b: innerHeight, w: innerWidth, h: innerHeight }))
+          out.push(`토스트 ${g.fmt(tb)}가 창 밖`);
+        // 토스트 가운데에서 토스트가 잡혀야 함 — 막 뒤에 깔려 있으면 막이 잡힘.
+        const hit = document.elementFromPoint((tb.l + tb.r) / 2, (tb.t + tb.b) / 2);
+        if (!hit || !el.contains(hit)) out.push(`토스트 ${g.fmt(tb)}가 막 뒤에 깔림(잡힌 것: ${hit?.className})`);
+        return out;
+      });
+      expect(r).toEqual([]);
+    });
+
     test("가로 넘침 없음 — 주요 화면", async ({ page }) => {
       const problems: string[] = [];
       for (const q of [
@@ -657,5 +680,64 @@ test.describe("1040x720 — 상태 카드 높이", () => {
     );
     expect(measured, "활동 기록 세 줄 이상인 실행을 잰 수").toBeGreaterThan(0);
     expect(problems).toEqual([]);
+  });
+});
+
+// 넓은 창(1360px~) — 상세가 '상태 | 활동 기록' 두 칸. 활동 기록이 오른쪽 칸을 위아래로 다 차지하고,
+// 활동 기록 머리줄은 일부러 두 줄(제목 · [기록 복사] / 거르기 칩), 돈 칸 넷은 한 줄에 글자가 잘리지 않음.
+test.describe("1440x900 — 넓은 창 두 칸", () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test("상태 | 활동 기록 두 칸 · 머리줄 두 줄 · 돈 칸 한 줄", async ({ page }, info) => {
+    const problems: string[] = [];
+    for (const q of ["?demo=running&open=1", "?demo=wait&open=1", "?demo=pnl&open=1"]) {
+      await open(page, q);
+      await page.locator(".run-detail > .feed").waitFor();
+      await snap(page, info, `wide${q.replace(/[^a-z]+/g, "-")}`);
+      problems.push(...(await horizontalOverflow(page, q)));
+      const found = await page.evaluate((where) => {
+        const g = window.__geo;
+        const out: string[] = [];
+        const one = (sel: string) => g.box(document.querySelector(sel)!);
+        const main = one(".detail-main");
+        const feed = one(".run-detail > .feed");
+        const detail = one(".run-detail");
+        if (feed.l < main.r) out.push(`${where}: 활동 기록 ${g.fmt(feed)}가 왼쪽 칸 ${g.fmt(main)} 오른쪽에 있지 않음`);
+        if (feed.t - detail.t > 20 || detail.b - feed.b > 20)
+          out.push(`${where}: 활동 기록 ${g.fmt(feed)}가 상세 ${g.fmt(detail)}의 위아래를 다 차지하지 않음`);
+        const title = one(".feed-title");
+        const copy = one(".feed-copy");
+        if (Math.abs((title.t + title.b) / 2 - (copy.t + copy.b) / 2) > 4)
+          out.push(`${where}: 제목 ${g.fmt(title)}과 [기록 복사] ${g.fmt(copy)}가 다른 줄`);
+        const chips = Array.from(document.querySelectorAll(".feed-chip")).map((c) => g.box(c));
+        if (new Set(chips.map((c) => Math.round(c.t))).size !== 1) out.push(`${where}: 거르기 칩이 두 줄 이상`);
+        if (chips.some((c) => c.t < title.b)) out.push(`${where}: 거르기 칩이 제목 줄에 걸침`);
+        const cells = Array.from(document.querySelectorAll(".money-cells:not(.is-compact) > .money-cell"));
+        if (cells.length && new Set(cells.map((c) => Math.round(g.box(c).t))).size !== 1)
+          out.push(`${where}: 돈 칸 ${cells.length}개가 한 줄에 안 들어감`);
+        for (const c of cells)
+          for (const e of Array.from(c.querySelectorAll("dt, dd")))
+            if (g.box(e).r > g.box(c).r + 0.5)
+              out.push(`${where}: 돈 칸 '${c.querySelector("dt")?.textContent}' 글자가 칸 밖`);
+        return out;
+      }, q);
+      problems.push(...found);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  test("알림 토스트 — 연결 도우미 아래에 틈이 있으면 패널을 피해 아래에 뜸", async ({ page }, info) => {
+    await open(page, "?demo=wizard");
+    await page.locator(".wizard").waitFor();
+    await page.getByRole("button", { name: /이미 발급받았어요/ }).click();
+    await page.locator(".toasts.at-bottom .toast").first().waitFor();
+    await snap(page, info, "wizard-toast-wide");
+    const r = await page.evaluate(() => {
+      const g = window.__geo;
+      const tb = g.box(document.querySelector(".toast")!);
+      const wb = g.box(document.querySelector(".wizard")!);
+      return g.overlaps(tb, wb) ? [`토스트 ${g.fmt(tb)}가 도우미 ${g.fmt(wb)}와 겹침`] : [];
+    });
+    expect(r).toEqual([]);
   });
 });

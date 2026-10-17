@@ -84,6 +84,8 @@
   padding: 28px var(--pad);
   color: var(--muted);
   text-align: center;
+  text-wrap: balance;
+  word-break: keep-all;
 }
 .feed-list {
   position: relative;

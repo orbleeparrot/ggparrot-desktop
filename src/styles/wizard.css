@@ -3,10 +3,11 @@
   z-index: 55;
   padding: 24px;
 }
+/* 높이는 내용만큼(첫 질문처럼 짧은 단계에서 아래가 크게 비지 않게), 길면 max-height 안에서 본문이 굴러감. */
 .wizard {
   position: relative;
   width: min(720px, 100%);
-  min-height: min(440px, 100%);
+  min-height: 0;
   max-height: min(680px, 100%);
   display: flex;
   flex-direction: column;
@@ -72,6 +73,10 @@
   gap: 8px;
   padding: 12px var(--pad);
   border-top: 1px solid var(--border);
+}
+/* [이전] · [닫기]는 왼쪽, [다음] · [연결 확인] · [직접 입력]은 오른쪽 끝 — 가운데를 비워 앞으로 가는 쪽을 가름. */
+.wz-foot .action-spacer {
+  flex: 1;
 }
 
 /* 단계 점 */
