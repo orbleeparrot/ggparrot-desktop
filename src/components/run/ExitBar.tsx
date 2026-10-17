@@ -27,10 +27,18 @@ function anchor(x: number) {
 export function ExitBar({ rules, side, quote, entry, price }: Props) {
   const bar = exitBar(rules, side, entry, price);
   if (!bar.show) {
+    // 보유 전(진입 대기 등)에는 막대 대신 기준을 칩으로 — 줄글 한 줄로 늘어놓지 않음.
+    const parts = rules.summary.split(" · ").filter(Boolean);
     return (
-      <p className="exit-line">
-        <span className="exit-line-head">청산 기준</span> {exitSummary(rules)}
-      </p>
+      <div className="exit-chips" role="group" aria-label={`청산 기준 · ${exitSummary(rules)}`}>
+        <span className="exit-line-head">청산 기준</span>
+        {parts.map((part) => (
+          <span key={part} className={`exit-chip ${/손절/.test(part) ? "tone-down" : /익절|발동/.test(part) ? "tone-up" : ""}`}>
+            {part}
+          </span>
+        ))}
+        {rules.kind !== "none" && <span className="exit-chip-note">평단 대비</span>}
+      </div>
     );
   }
   const gain = bar.priceX >= bar.entryX;

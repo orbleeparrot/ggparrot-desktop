@@ -15,7 +15,9 @@ const VIEWPORTS = [
 const NO_MOTION =
   "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}";
 
-async function open(page: Page, query: string) {
+async function open(page: Page, query: string, { details = "open" }: { details?: "open" | "closed" } = {}) {
+  // 상태 카드의 세부 표는 기본으로 접혀 있다 — 표 정렬을 재는 검사는 펼친 상태로, 높이 예산은 접힌 기본 상태로 본다.
+  await page.addInitScript((value) => window.localStorage.setItem("ggp.runner.status.details", value), details);
   await page.goto(`/${query}`, { waitUntil: "networkidle" });
   await page.addStyleTag({ content: NO_MOTION });
   await page.locator(".app-header").waitFor();
@@ -563,7 +565,7 @@ test.describe("1040x720 — 상태 카드 높이", () => {
   test.use({ viewport: { width: 1040, height: 720 } });
 
   test("상태 카드 높이 예산·활동 기록 세 줄·보유 수량 값이 잘리지 않음", async ({ page }, info) => {
-    await open(page, "?demo=pnl&open=1");
+    await open(page, "?demo=pnl&open=1", { details: "closed" });
     const problems: string[] = [];
     let measured = 0;
     const count = await page.locator(".run-card.is-live").count();
@@ -572,31 +574,37 @@ test.describe("1040x720 — 상태 카드 높이", () => {
       await page.locator(".status-card .exit-bar").waitFor();
       await page.locator(".feed .act").first().waitFor();
       const where = (await page.locator(".detail-title").innerText()).replace(/\s+/g, " ");
-      const r = await page.evaluate(() => {
+      // 높이 · 활동 기록은 기본(세부 표 접힘) 상태로 잰다.
+      const fold = await page.evaluate(() => {
         const g = window.__geo;
-        const card = g.box(document.querySelector(".status-card")!);
         const acts = document.querySelectorAll(".feed .act");
-        const third = acts.length >= 3 ? g.box(acts[2]) : null;
+        return {
+          cardH: g.box(document.querySelector(".status-card")!).h,
+          thirdBottom: acts.length >= 3 ? g.box(acts[2]).b : null,
+        };
+      });
+      // 보유 수량 값은 표를 펼쳐서 보고, 다음 실행을 위해 다시 접는다.
+      await page.getByRole("button", { name: "현재가 · 평단 · 수량 자세히" }).click();
+      const r = await page.evaluate(() => {
         const qty = Array.from(document.querySelectorAll<HTMLElement>(".run-table > div")).find(
           (d) => d.querySelector("dt")?.textContent === "보유 수량",
         )!;
         const dd = qty.querySelector<HTMLElement>("dd")!;
         return {
-          cardH: card.h,
-          thirdBottom: third ? third.b : null,
           bottom: window.innerHeight,
           qty: dd.textContent,
           title: dd.title,
           cut: dd.scrollWidth > dd.clientWidth + 1,
         };
       });
+      await page.getByRole("button", { name: "자세히 접기" }).click();
       // 예전 높이(약 400px)의 70% 남짓.
-      if (r.cardH > 292) problems.push(`${where}: 상태 카드 높이 ${r.cardH}px > 292px`);
+      if (fold.cardH > 292) problems.push(`${where}: 상태 카드 높이 ${fold.cardH}px > 292px`);
       // 견본 중 활동이 세 줄 이상인 실행(선물 3배 — 증거금 줄까지 있어 가장 높은 카드)으로 잼.
-      if (r.thirdBottom !== null) {
+      if (fold.thirdBottom !== null) {
         measured++;
-        if (r.thirdBottom > r.bottom)
-          problems.push(`${where}: 활동 기록 셋째 줄 아래 ${r.thirdBottom}px가 창 아래 ${r.bottom}px 밖`);
+        if (fold.thirdBottom > r.bottom)
+          problems.push(`${where}: 활동 기록 셋째 줄 아래 ${fold.thirdBottom}px가 창 아래 ${r.bottom}px 밖`);
       }
       if (r.cut) problems.push(`${where}: 보유 수량 "${r.qty}"이 잘림`);
       if (r.title !== r.qty) problems.push(`${where}: 보유 수량 풍선 도움말 "${r.title}" ≠ "${r.qty}"`);

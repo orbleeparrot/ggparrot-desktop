@@ -1,6 +1,6 @@
 // 브라우저 미리보기용 mock 백엔드 — `window.__TAURI_INTERNALS__`가 없을 때만 ipc.ts가 불러옴.
 // 계약 v2(types.ts)를 그대로 흉내 냄: 실행 목록·모드·시작/실전 확인·실행 루프와 활동·종료·설정 키 칸·자동 연결 확인·
-// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | many | settings | applog | wizard | library
+// 연결 도우미·매크로 폴더·앱 업데이트. 디자인 검토용 바로가기: ?demo=empty | running | many | settings | applog | wizard | library | wait
 // | wizard-testnet | wizard-demo | wizard-live(바이낸스 도우미). many: 매크로 24개, 그중 몇 개는 실행 중.
 import type { Backend, ConfirmPayload, Unlisten } from "./ipc";
 import {
@@ -580,6 +580,7 @@ export function createMockBackend(
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
   if (demo === "pnl") seedPnl();
+  if (demo === "wait") seedWait();
   if (demo === "settings") seedSettings();
   if (demo === "many") seedMany();
   if (demo === "wizard") wizard.open(slotTarget("upbit", "upbit"), "ask");
@@ -617,6 +618,77 @@ export function createMockBackend(
       for (let i = 1; i <= ticks; i += 1) tickRun(say, r, t0 + (i * minutes * 60_000) / (ticks + 1));
       if (r.run) r.run.online = true;
     }
+  }
+
+  /** ?demo=wait — 진입 대기 검토용. 2026-10-17 빗썸 KRW-FORT 변동성 돌파(15분 · 20봉 평균 필터) 10:40 그대로:
+   *  고가가 사는 선을 넘었지만 마감가가 20봉 평균 아래라 아직 안 삼(서버 entry_wait.py 계산 값). */
+  function seedWait() {
+    const now = Date.now();
+    const [, upbit] = m.runs;
+    const fort = newRun(
+      m,
+      {
+        ...upbit.macro,
+        title: "FORT 변동성 돌파",
+        exchange: "bithumb",
+        exchangeName: "bithumb",
+        exchangeLabel: "빗썸",
+        symbol: "KRW-FORT",
+        baseAsset: "FORT",
+        strategy: "변동성 돌파",
+        summary: "15분 봉 변동폭의 0.6배를 넘어 오르고 20봉 평균 위에서 마감하면 사요.",
+        exits: {
+          sl: null,
+          tp: null,
+          trailing: { activation: 0, trail: 2, label: "고점 -2%" },
+          kind: "two",
+          summary: "트레일링 고점 -2%",
+        },
+      },
+      "FORT 변동성 돌파.ggm.json",
+    );
+    fort.mode = "mock";
+    fort.fixedWait = {
+      rule: "I",
+      interval: "15m",
+      interval_label: "15분",
+      realtime: false,
+      sentence: "26.523 위에서 끝나면 사요",
+      headline: "26.523 위에서 끝나면 사요",
+      distance: "지금 26.2 · +1.2% 더 · 사는 선은 넘었고 20봉 평균선이 남았어요",
+      gap: "평균선 −1.2%",
+      remain: "",
+      touched: true,
+      reached: false,
+      conditions: [
+        { key: "line", label: "사는 선 26.118 넘기", now: "넘음 · 고가 26.26", ok: true, at_close: false, wait: "" },
+        { key: "ma", label: "20봉 평균 26.523 위에서 끝나기", now: "−1.2%", ok: false, at_close: true, wait: "20봉 평균 26.523 위에서 끝나야 사요" },
+      ],
+      last_bar: { at_ms: now - 10 * 60_000, entered: false, why: "고가 26.12가 사는 선 26.336에 못 미쳤어요" },
+      meter: {
+        from: { label: "이 봉 시가", value: "26.01" },
+        to: { label: "사는 선", value: "26.118" },
+        now: "26.2",
+        progress: 1,
+      },
+      ladder: {
+        marks: [
+          { key: "line", label: "사는 선", value: "26.118", pos: 0.2666, main: false },
+          { key: "ma", label: "20봉 평균", value: "26.523", pos: 0.9032, main: true },
+        ],
+        now: { label: "지금", value: "26.2", pos: 0.3955 },
+        zone: 0.9032,
+      },
+      buy_line: { price: 26.118, label: "사는 선 26.118" },
+      next_check_ms: Math.ceil(now / 900_000) * 900_000,
+      checks: 1,
+      last_check_ms: null,
+      typical: { episodes: 30, span_ms: 177_300_000, avg_ms: 5_910_000, longest_ms: 42_300_000 },
+      log: [],
+    };
+    beginRun(say, fort, now - 3 * 60_000);
+    goLive(fort);
+    tickRun(say, fort, now);
   }
 
   /** ?demo=pnl — 손익·청산 기준 막대 검토용. 정해진 평단·현재가로 보유 중인 매크로 여섯 개(신호 없이 시세만 흔듦).

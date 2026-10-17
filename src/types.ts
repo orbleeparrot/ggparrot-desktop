@@ -123,11 +123,29 @@ export interface EntryWait {
   realtime: boolean;
   /** "가격이 209.52 위로 올라가면 사요." */
   sentence: string;
+  /** 맨 위 큰 글씨 — 지금 상태 한 줄("26.523 위에서 끝나면 사요" · "이대로 끝나면 사요"). (옛 서버엔 없음 — sentence 로 대신) */
+  headline?: string;
+  /** 가격 막대 하나에 선 여럿(사는 선 · 20봉 평균) — 두 조건이 다 있는 매크로만. pos 는 0~1. (옛 서버엔 없음) */
+  ladder?: {
+    marks: { key: string; label: string; value: string; pos: number; main: boolean }[];
+    now: { label: string; value: string; pos: number };
+    /** 사는 구역(두 선 위)이 시작하는 곳 0~1. */
+    zone: number;
+  } | null;
   /** "지금 207.46 · +1.0% 더 오르면" */
   distance: string;
   /** 목록 카드 오른쪽 칸용 짧은 거리 — "+1.0%" · "RSI 13.7" · "곧 사요". */
   gap: string;
+  /** 숫자 칸 '남은 거리' — "+1.0%" · RSI 점수 차 "8.0". 주 조건이 맞았으면 빈 문자열. (옛 서버엔 없음) */
+  remain?: string;
+  /** 주 조건(사는 선 · RSI · 밴드 …)이 지금 맞았는지. (옛 서버엔 없음 — reached 로 대신) */
+  touched?: boolean;
+  /** 이대로 봉이 마감되면 사는지 — 주 조건과 함께 맞아야 하는 조건(이평선 필터 · 연속 봉 · 진입 필터)까지 맞음. */
   reached: boolean;
+  /** 함께 맞아야 하는 조건 — 첫 줄은 주 조건. 두 줄 이상일 때만 체크 목록으로 보임. (옛 서버엔 없음) */
+  conditions?: { key: string; label: string; now: string; ok: boolean | null; at_close: boolean; wait?: string }[];
+  /** 방금 마감된 봉 — 샀는지와 안 샀으면 이유. (옛 서버엔 없음) */
+  last_bar?: { at_ms: number; entered: boolean; why: string } | null;
   meter: {
     from: { label: string; value: string };
     to: { label: string; value: string };

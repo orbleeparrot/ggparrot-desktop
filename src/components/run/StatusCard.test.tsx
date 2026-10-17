@@ -1,11 +1,13 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RunnerContext, type RunnerContextValue } from "../../state/context";
 import { binanceMacro, makeEntryWait, makeRun, makeSlot, makeState, upbitMacro } from "../../test/fixtures";
 import { RunCard } from "./RunCard";
-import { StatusCard } from "./StatusCard";
+import { DETAILS_KEY, StatusCard } from "./StatusCard";
 
 afterEach(cleanup);
+// 세부 표(현재가 · 평단 · 투입금 …)는 기본으로 접혀 있다 — 표를 읽는 검사들은 펼친 상태로 본다.
+beforeEach(() => window.localStorage.setItem(DETAILS_KEY, "open"));
 
 const ok = { text: "실행 중", tone: "ok" as const };
 
@@ -154,13 +156,16 @@ describe("실행 상태 카드", () => {
     expect(screen.getByText("보유 수량").nextElementSibling?.textContent).toBe("10 BTC");
   });
 
-  it("보유가 없으면 투입금·보유 수량은 '없음', 청산 기준은 요약 한 줄", () => {
-    render(<StatusCard run={makeRun()} macro={binanceMacro} phase="running" status={ok} prices={[]} />);
+  it("보유가 없으면 투입금·보유 수량은 '없음', 청산 기준은 칩 한 줄", () => {
+    const { container } = render(<StatusCard run={makeRun()} macro={binanceMacro} phase="running" status={ok} prices={[]} />);
     expect(screen.getByText("투입금").nextElementSibling?.textContent).toBe("없음");
     expect(screen.getByText("보유 수량").nextElementSibling?.textContent).toBe("없음");
-    expect(screen.getByText(/청산 기준/).closest("p")?.textContent).toBe(
-      "청산 기준 익절 +5% · 손절 -3% (평단 대비 가격)",
-    );
+    const chips = [...container.querySelectorAll(".exit-chip")].map((chip) => [chip.className, chip.textContent]);
+    expect(chips).toEqual([
+      ["exit-chip tone-up", "익절 +5%"],
+      ["exit-chip tone-down", "손절 -3%"],
+    ]);
+    expect(screen.getByRole("group", { name: "청산 기준 · 익절 +5% · 손절 -3% (평단 대비 가격)" })).toBeTruthy();
   });
 
   it("수수료 반영 평가손익 — 바이낸스 현물 +0.15%는 지금 정리하면 -0.50 USDT, '투입금 대비'", () => {
@@ -333,10 +338,10 @@ describe("목록 카드와 상태 카드의 %", () => {
 });
 
 describe("진입 대기", () => {
-  it("안 샀으면 평가손익 자리에 조건 · 거리 · 막대, 아래에 세 칸, 차트에 사는 선", () => {
+  it("안 샀으면 평가손익 자리에 지금 상태 한 줄 · 짧은 설명 · 막대, 차트에 사는 선", () => {
     const { container } = render(
       <StatusCard
-        run={makeRun({ entryWait: makeEntryWait() })}
+        run={makeRun({ entryWait: makeEntryWait({ headline: "102.00 넘으면 사요" }) })}
         macro={binanceMacro}
         phase="running"
         mode="mock"
@@ -344,18 +349,66 @@ describe("진입 대기", () => {
         prices={[100, 100.5, 101]}
       />,
     );
-    expect(screen.getByText("진입 조건 · 모의")).toBeTruthy();
-    expect(screen.getByText("가격이 102.00 위로 올라가면 사요.")).toBeTruthy();
-    expect(screen.getByText("지금 101.00 · +1.0% 더 오르면")).toBeTruthy();
+    expect(screen.getByText("1시간 봉 · 모의")).toBeTruthy();
+    expect(container.querySelector(".ew-sentence")?.textContent).toBe("102.00 넘으면 사요");
+    expect(container.querySelector(".ew-distance")?.textContent).toBe("지금 101.00 · +1.0% 더 오르면");
     expect(screen.getByRole("img", { name: /이 봉 시가 100.00에서 사는 선 102.00까지 중 지금 101.00/ })).toBeTruthy();
-    expect(screen.getByText("평소 기다린 시간")).toBeTruthy();
-    expect(screen.getByText("약 9시간")).toBeTruthy();
-    expect(screen.getByText("3번")).toBeTruthy();
+    expect(container.querySelector(".ew-conds")).toBeNull(); // 조건이 하나뿐이면 체크 목록 없음
+    expect(container.querySelector(".ew-ladder")).toBeNull();
     expect(container.querySelector(".chart-tag.is-buy")?.textContent).toContain("사는 선 102.00");
     expect(screen.queryByText(/평가손익/)).toBeNull();
   });
 
-  it("실시간 규칙(밴드)은 다음 확인 대신 '실시간'", () => {
+  it("옛 서버(headline 없음)면 조건 문장을 마침표 없이 큰 글씨로", () => {
+    const { container } = render(
+      <StatusCard run={makeRun({ entryWait: makeEntryWait() })} macro={binanceMacro} phase="running" status={ok} prices={[]} />,
+    );
+    expect(container.querySelector(".ew-sentence")?.textContent).toBe("가격이 102.00 위로 올라가면 사요");
+  });
+
+  it("사는 선은 넘었지만 20봉 평균선 아래 — 숫자 하나 · 가격 막대에 두 선 · 체크(10/17 KRW-FORT)", () => {
+    const { container } = render(
+      <StatusCard
+        run={makeRun({
+          entryWait: makeEntryWait({
+            headline: "26.523 위에서 끝나면 사요",
+            distance: "지금 26.2 · +1.2% 더 · 사는 선은 넘었고 20봉 평균선이 남았어요",
+            touched: true,
+            reached: false,
+            gap: "평균선 −1.2%",
+            next_check_ms: Date.now() + 5 * 60_000 + 20_000,
+            ladder: {
+              marks: [
+                { key: "line", label: "사는 선", value: "26.118", pos: 0.27, main: false },
+                { key: "ma", label: "20봉 평균", value: "26.523", pos: 0.9, main: true },
+              ],
+              now: { label: "지금", value: "26.2", pos: 0.4 },
+              zone: 0.9,
+            },
+            conditions: [
+              { key: "line", label: "사는 선 26.118 넘기", now: "넘음 · 고가 26.26", ok: true, at_close: false },
+              { key: "ma", label: "20봉 평균 26.523 위에서 끝나기", now: "−1.2%", ok: false, at_close: true },
+            ],
+          }),
+        })}
+        macro={binanceMacro}
+        phase="running"
+        status={ok}
+        prices={[]}
+      />,
+    );
+    expect(container.querySelector(".ew-sentence")?.textContent).toBe("26.523 위에서 끝나면 사요");
+    expect(screen.getByRole("img", { name: "사는 선 26.118 · 20봉 평균 26.523 중 지금 26.2" })).toBeTruthy();
+    expect(container.querySelector(".ew-meter")).toBeNull(); // 막대는 하나만
+    const rows = [...container.querySelectorAll(".ew-conds li")].map((row) => [row.className, row.textContent]);
+    expect(rows).toEqual([
+      ["is-ok", "사는 선 26.118 넘기넘음 · 고가 26.26"],
+      ["is-wait", "20봉 평균 26.523 위에서 끝나기−1.2%"],
+    ]);
+    expect(container.querySelector(".status-head")?.textContent).toMatch(/\d\d:\d\d 마감까지 5분/);
+  });
+
+  it("실시간 규칙(밴드)은 맨 윗줄에 '실시간 확인'", () => {
     render(
       <StatusCard
         run={makeRun({ entryWait: makeEntryWait({ realtime: true, checks: null, typical: null }) })}
@@ -365,9 +418,7 @@ describe("진입 대기", () => {
         prices={[]}
       />,
     );
-    expect(screen.getByText("실시간")).toBeTruthy();
-    expect(screen.getByText("가격이 닿는 순간")).toBeTruthy();
-    expect(screen.getByText("계속")).toBeTruthy();
+    expect(screen.getByText("실시간 확인")).toBeTruthy();
   });
 
   it("샀으면 평소처럼 평가손익", () => {
@@ -382,5 +433,22 @@ describe("진입 대기", () => {
     );
     expect(screen.getByText("평가손익 · 지금 정리하면")).toBeTruthy();
     expect(screen.queryByText("가격이 102.00 위로 올라가면 사요.")).toBeNull();
+  });
+});
+
+describe("세부 표 접기", () => {
+  it("처음엔 접혀 있고, 누르면 펼쳐져 이 PC에 기억된다", () => {
+    window.localStorage.removeItem(DETAILS_KEY);
+    const { container } = render(
+      <StatusCard run={makeRun()} macro={binanceMacro} phase="running" status={ok} prices={[]} />,
+    );
+    expect(container.querySelector(".run-table")).toBeNull();
+    const toggle = screen.getByRole("button", { name: "현재가 · 평단 · 수량 자세히" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(container.querySelector(".run-table")).toBeTruthy();
+    expect(window.localStorage.getItem(DETAILS_KEY)).toBe("open");
+    fireEvent.click(screen.getByRole("button", { name: "자세히 접기" }));
+    expect(container.querySelector(".run-table")).toBeNull();
   });
 });
