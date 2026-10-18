@@ -3,6 +3,7 @@
 //! - 평가손익 % = 평가손익 ÷ 투입금, 투입금 = 수량×평단 + 남은 진입 수수료
 //! - 실현손익 = 가격 손익 − 이번 정리 수수료 − 정리한 수량 몫의 진입 수수료(수량 비례)
 //! - 서버로 가는 realized_pnl·unrealized_pct는 수수료 전(파이썬 실행기와 같음) — 여기서 건드리지 않음.
+//!   수수료 반영 값(realized_net·unrealized_net·unrealized_net_pct)은 2026-10-18부터 서버에도 함께 보냄(웹이 같은 숫자를 보이게).
 
 use crate::brokers::DOMESTIC_BID_FEE_FALLBACK;
 use crate::money::pnl_amount;

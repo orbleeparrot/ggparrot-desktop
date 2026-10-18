@@ -917,9 +917,11 @@ async fn fees_and_signal_slippage_reach_the_screen_but_not_the_server_snapshot()
     assert_eq!(sold.detail, "실현손익 +4.90 USDT · 이번 실행 누적 +4.90 USDT · 신호가 대비 0.00% · 수수료 0.105 USDT");
     assert!((bot.realized_net - 4.895).abs() < 1e-9);
 
-    // 서버로 가는 스냅샷은 파이썬 실행기와 같음 — 실현손익에서 수수료를 빼지 않고 수수료 칸도 없음.
+    // 서버로 가는 스냅샷 — 수수료 전 실현손익은 파이썬 실행기와 같고, 수수료 반영 값도 함께 실음(웹이 실행기와 같은 숫자).
     let snap = bot.snapshot();
     assert_eq!(snap["realized_pnl"], 5.0);
+    assert!((snap["realized_net"].as_f64().unwrap() - 4.895).abs() < 1e-9, "{snap}");
+    assert_eq!(snap["unrealized_net_pct"], 0.0, "보유가 없으면 0");
     assert!(snap.get("fees_paid").is_none() && snap.get("day_change").is_none());
     let ui = bot.ui_snapshot(bot.snapshot());
     assert!((ui["fees_paid"].as_f64().unwrap() - 0.105).abs() < 1e-12, "{ui}");
@@ -935,9 +937,10 @@ async fn fees_and_signal_slippage_reach_the_screen_but_not_the_server_snapshot()
     let sold = activities(&mut rx).into_iter().find(|a| a.kind == "sell").unwrap();
     assert_eq!(sold.detail, "실현손익 -5.00 USDT(수수료 제외 전) · 이번 실행 누적 0.00 USDT(수수료 제외 전)");
     assert_eq!(sold.tone, "danger");
-    // 수수료를 모르는 체결이 끼면 화면에도 모름(null)으로 — 수수료 뺀 손익을 주장하지 않음.
+    // 수수료를 모르는 체결이 끼면 화면에도 서버에도 모름(null)으로 — 수수료 뺀 손익을 주장하지 않음.
     let ui = bot.ui_snapshot(bot.snapshot());
     assert!(ui["fees_paid"].is_null() && ui["realized_net"].is_null(), "{ui}");
+    assert!(bot.snapshot()["realized_net"].is_null());
 }
 
 #[tokio::test]
@@ -1386,7 +1389,8 @@ async fn stop_loss_reads_as_a_price_move_from_the_average() {
 
 #[tokio::test]
 async fn the_server_snapshot_keeps_its_python_shape() {
-    // 서버 하트비트는 파이썬 실행기와 같은 칸·같은 값(수수료 전) — 화면용 칸이 새지 않음.
+    // 서버 하트비트는 파이썬 실행기와 같은 칸·같은 값(수수료 전)에 수수료 반영 손익 세 칸만 더함 —
+    // 웹이 실행기 화면과 같은 숫자를 보이게(2026-10-18). 투입금·낸 수수료 같은 화면용 칸은 새지 않음.
     let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
     let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
     fb.push(filled_with_fee(1.0, 100.0, fee(0.1)));
@@ -1404,14 +1408,25 @@ async fn the_server_snapshot_keeps_its_python_shape() {
             "note",
             "position_qty",
             "position_uncertain",
+            "realized_net",
             "realized_pnl",
+            "unrealized_net",
+            "unrealized_net_pct",
             "unrealized_pct"
         ]
     );
     assert!((snap["unrealized_pct"].as_f64().unwrap() - 2.0).abs() < 1e-9);
+    // 수수료 반영 값은 실행기 화면이 쓰는 값과 같음.
+    let ui = bot.ui_snapshot(bot.snapshot());
+    assert_eq!(snap["unrealized_net"], ui["unrealized_net"]);
+    assert_eq!(snap["unrealized_net_pct"], ui["unrealized_net_pct"]);
+    assert!(snap["unrealized_net_pct"].as_f64().unwrap() < 2.0, "수수료만큼 낮음: {snap}");
     fb.push(filled_with_fee(1.0, 102.0, fee(0.102)));
     assert!(bot.close_position().await.unwrap());
-    assert!((bot.snapshot()["realized_pnl"].as_f64().unwrap() - 2.0).abs() < 1e-9, "수수료를 빼지 않음");
+    let snap = bot.snapshot();
+    assert!((snap["realized_pnl"].as_f64().unwrap() - 2.0).abs() < 1e-9, "수수료를 빼지 않음");
+    assert!((snap["realized_net"].as_f64().unwrap() - 1.798).abs() < 1e-9, "수수료 반영: {snap}");
+    assert_eq!(snap["unrealized_net"], 0.0);
 }
 
 #[tokio::test]
