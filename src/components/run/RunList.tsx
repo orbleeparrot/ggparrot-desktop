@@ -9,6 +9,7 @@
 // - 고른 카드는 늘 보이게 가장 가까운 만큼만 스크롤함. 끄는 중 위·아래 가장자리에 가까우면 저절로 스크롤함.
 // - 넓은 창은 이 패널이, 좁은 창(한 열)은 문서가 스크롤함 — 둘 다 같은 계산(화면상 위치)으로 다룸.
 import { ChevronDown, Pause, Plus, Search, TriangleAlert } from "lucide-react";
+import { SwapLabel } from "../SwapLabel";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useRunnerContext } from "../../state/context";
 import { GROUP_LABELS, globalIndex, groupOf, groupRuns, matches, type GroupKey } from "../../state/runGroups";
@@ -358,7 +359,7 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
                     aria-controls="run-group-idle-list"
                     onClick={toggleIdle}
                   >
-                    {idleOpen ? "접기" : "펼치기"}
+                    <SwapLabel active={idleOpen ? 0 : 1} items={["접기", "펼치기"]} />
                     <ChevronDown
                       size={13}
                       className={`run-group-chev ${idleOpen ? "is-open" : ""}`}

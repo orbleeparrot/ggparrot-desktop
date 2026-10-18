@@ -1,11 +1,11 @@
 // 오른쪽 상세 — 머리줄(종목·칩)·모드·시작/종료·돈 · 안전 칸·상태 카드(끝났으면 결과, 시작 전이면 '시작 전 확인')·활동 기록.
-// - 대기·끝남: 모드 카드(세그먼트 + [시작], 아래 한 줄은 고른 모드의 설명 MODE_NOTES). 그 밖(확인·시작·실행·종료 중):
+// - 대기·끝남: 모드 카드(세그먼트 + [시작], 아래 한 줄은 고른 모드의 설명 modeNote). 그 밖(확인·시작·실행·종료 중):
 //   모드를 바꿀 수 없어 모드 카드를 없애고, 상태("● 실행 중 06:02" — RunState)는 제목 옆, 끝내는 단추는 머리 오른쪽.
 // - 키가 없으면 [시작] 자리가 [○○ 키 연결하기](연결 도우미), 회원 키가 없으면 [회원 키 입력하기] — 막힌 이유 띠를 따로 두지 않음.
 import { KeyRound, LoaderCircle, Play } from "lucide-react";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
-import { isIdle, MODE_NOTES, primaryAction, stopChoices } from "../../state/runs";
+import { isIdle, modeNote, primaryAction, stopChoices } from "../../state/runs";
 import type { Activity, RunSlot } from "../../types";
 import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
@@ -130,7 +130,7 @@ export function RunDetail({
                 </div>
                 <Controls slot={slot} />
               </div>
-              <p className={`mode-note mode-${slot.mode}`}>{MODE_NOTES[slot.mode]}</p>
+              <p className={`mode-note mode-${slot.mode}`}>{modeNote(slot.mode, slot.macro.market)}</p>
             </div>
           </>
         ) : (

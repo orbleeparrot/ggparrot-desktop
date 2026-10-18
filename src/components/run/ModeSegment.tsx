@@ -3,7 +3,7 @@
 // - 실전 시작 확인은 시작할 때 대화상자로 한 번 더 함(useRunDialogs).
 import { useId, useRef, type KeyboardEvent } from "react";
 import { useRunnerContext } from "../../state/context";
-import { isIdle, MODE_LABELS, MODE_NOTES } from "../../state/runs";
+import { isIdle, MODE_LABELS, modeNote } from "../../state/runs";
 import type { RunMode, RunSlot } from "../../types";
 
 export function ModeSegment({ slot }: { slot: RunSlot }) {
@@ -49,7 +49,7 @@ export function ModeSegment({ slot }: { slot: RunSlot }) {
             data-mode={mode}
             aria-checked={selected}
             aria-describedby={`${noteId}-${mode}`}
-            title={editable ? MODE_NOTES[mode] : undefined}
+            title={editable ? modeNote(mode, slot.macro.market) : undefined}
             tabIndex={selected ? 0 : -1}
             disabled={!editable}
             className={`segment ${selected ? "is-selected" : ""} segment-${mode}`}
@@ -61,7 +61,7 @@ export function ModeSegment({ slot }: { slot: RunSlot }) {
       })}
       {choices.map((mode) => (
         <span key={mode} id={`${noteId}-${mode}`} className="sr-only">
-          {MODE_NOTES[mode]}
+          {modeNote(mode, slot.macro.market)}
         </span>
       ))}
       {!editable && (

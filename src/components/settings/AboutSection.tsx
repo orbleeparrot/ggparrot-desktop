@@ -1,6 +1,7 @@
 // 정보 — 문의할 때 알려 줄 사용 환경. 앱 버전(업데이트를 한 줄로 합침)·서버 연동 레벨·OS·공인 IP와
 // [문의용 정보 복사]. 서버 주소는 기본 운영 서버가 아니거나 개발자 로그를 켰을 때만 보여 줌.
 import { Check, ClipboardCopy, LoaderCircle, RefreshCw } from "lucide-react";
+import { SwapLabel } from "../SwapLabel";
 import { useEffect } from "react";
 import { useRunnerContext } from "../../state/context";
 import { useCopiedFlag } from "../useCopiedFlag";
@@ -25,18 +26,21 @@ function PublicIp() {
   return (
     <dd className="about-value">
       <span className={ip.status === "ok" ? "num" : "muted"}>{text}</span>
-      {ip.status !== "loading" && (
-        <button
-          type="button"
-          className="icon-btn icon-btn-sm"
-          aria-label="공인 IP 다시 확인"
-          title="공인 IP 다시 확인"
-          onClick={() => act("refresh_public_ip", { force: true })}
-        >
+      {/* 확인하는 동안에도 단추 자리를 그대로 둠(빠지면 줄 높이가 4.5px 줄어 아래가 들썩임) — 아이콘만 돌고 눌리지 않음 */}
+      <button
+        type="button"
+        className="icon-btn icon-btn-sm"
+        aria-label="공인 IP 다시 확인"
+        title="공인 IP 다시 확인"
+        disabled={ip.status === "loading"}
+        onClick={() => act("refresh_public_ip", { force: true })}
+      >
+        {ip.status === "loading" ? (
+          <LoaderCircle size={13} className="spin" aria-hidden="true" />
+        ) : (
           <RefreshCw size={13} aria-hidden="true" />
-        </button>
-      )}
-      {ip.status === "loading" && <LoaderCircle size={13} className="spin muted" aria-hidden="true" />}
+        )}
+      </button>
     </dd>
   );
 }
@@ -52,8 +56,19 @@ function CopySupport() {
         className="btn btn-ghost btn-sm"
         onClick={async () => (await ok("copy_support_info")) && markCopied()}
       >
-        {copied ? <Check size={14} aria-hidden="true" /> : <ClipboardCopy size={14} aria-hidden="true" />}
-        {copied ? "복사했어요" : "문의용 정보 복사"}
+        <SwapLabel
+          active={copied ? 1 : 0}
+          items={[
+            <>
+              <ClipboardCopy size={14} aria-hidden="true" />
+              문의용 정보 복사
+            </>,
+            <>
+              <Check size={14} aria-hidden="true" />
+              복사했어요
+            </>,
+          ]}
+        />
       </button>
     </div>
   );

@@ -115,6 +115,21 @@ input {
 }
 
 /* --- 버튼 ------------------------------------------------------------ */
+/* 바뀌는 단추 글자(SwapLabel) — 후보를 한 칸에 겹쳐 가장 긴 후보 너비로 고정, 지금 것만 보임. 간격은 단추의 gap 을 이어받음. */
+.swap-label {
+  display: inline-grid;
+  gap: inherit;
+}
+.swap-label > span {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+}
+.swap-label > .is-off {
+  visibility: hidden;
+}
 .btn {
   display: inline-flex;
   align-items: center;
@@ -359,6 +374,24 @@ input {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+/* 스크롤되는 곳은 스크롤바 자리를 늘 비워 둠 — 내용이 길어져 스크롤바가 생기거나 없어져도 폭 · 오른쪽 단추 자리가 그대로.
+   (Windows WebView2 · WebKit 처럼 스크롤바가 자리를 차지하면 짧은 목록 ↔ 긴 상세를 오갈 때 머리줄 단추가 10px씩 움직였음)
+   맥처럼 겹쳐 뜨는 스크롤바에선 아무 일도 하지 않음. */
+.run-list-panel,
+.run-detail,
+.detail-main,
+.feed-body,
+.settings-body,
+.applog-scroll,
+.wz-body,
+.lib-scroll {
+  scrollbar-gutter: stable;
+}
+@media (max-width: 899px) {
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

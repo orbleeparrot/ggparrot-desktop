@@ -596,9 +596,11 @@
   padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
 }
+/* 값 · [다시 확인] — 단추는 줄 오른쪽 끝(값 글자 길이가 '확인하는 중…' 등으로 바뀌어도 단추 자리가 그대로) */
 .about-value {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
 }
 .about-note {

@@ -1,6 +1,7 @@
 // 허용 IP 등록 — 이 기기의 공인 IPv4·[복사]·[복사하고 API 관리 열기]·주의 문구·거래소 화면 그림.
 // 국내는 첫 단계, 바이낸스 실거래는 키를 만든 뒤 마지막 단계(키 카드의 Edit restrictions에서 IP·주문 권한).
 import { Check, Copy, ExternalLink, RefreshCw } from "lucide-react";
+import { SwapLabel } from "../../components/SwapLabel";
 import { useCopiedFlag } from "../../components/useCopiedFlag";
 import { useRunnerContext } from "../../state/context";
 import type { WizardState } from "../../types";
@@ -61,8 +62,19 @@ export function IpStage({ wizard }: { wizard: WizardState }) {
               className="btn btn-ghost btn-sm"
               onClick={async () => (await ok("wizard_copy_ip")) && markCopied()}
             >
-              {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-              {copied ? "복사됨" : "복사"}
+              <SwapLabel
+                active={copied ? 1 : 0}
+                items={[
+                  <>
+                    <Copy size={14} aria-hidden="true" />
+                    복사
+                  </>,
+                  <>
+                    <Check size={14} aria-hidden="true" />
+                    복사됨
+                  </>,
+                ]}
+              />
             </button>
           )}
           <button

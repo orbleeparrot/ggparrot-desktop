@@ -7,6 +7,7 @@ import {
   futuresTag,
   isIdle,
   primaryAction,
+  modeNote,
   runStateText,
   settingsElementId,
   settingsTargetOf,
@@ -52,6 +53,14 @@ describe("상태 문구 나누기", () => {
     expect(statusParts("실행 중 · 서버 재시도 중")).toEqual(["실행 중", "서버 재시도 중"]);
     expect(statusParts("종료됨 · 손절 · 수동")).toEqual(["종료됨", "손절 · 수동"]);
     expect(statusParts("시작 전")).toEqual(["시작 전", ""]);
+  });
+});
+
+describe("모드 설명", () => {
+  it("바이낸스 선물의 테스트넷은 데모 키 — 단추 '바이낸스 데모 키 연결하기'와 같은 이름", () => {
+    expect(modeNote("testnet", "futures")).toBe("바이낸스 데모 키로 연습 주문을 보내요.");
+    expect(modeNote("testnet", "spot")).toBe("바이낸스 테스트넷 키로 연습 주문을 보내요.");
+    expect(modeNote("mock", "futures")).toBe("주문을 보내지 않고 현재가로 연습해요.");
   });
 });
 

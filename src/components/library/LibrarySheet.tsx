@@ -5,6 +5,7 @@
 // - 추가할 수 없는 파일은 목록에 섞지 않고 아래 접히는 회색 칸에 '이름 · 이유' 한 줄씩.
 // - 회색 줄글 안내는 두지 않음 — 끌어다 놓기는 실제로 끌 때 겹친 화면(DropOverlay)이 말하고, 폴더 경로는 마우스를 올리면.
 import { ChevronDown, ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
+import { SwapLabel } from "../SwapLabel";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useRunnerContext } from "../../state/context";
 import { trapTab, useModalFocus } from "../focus";
@@ -117,7 +118,7 @@ export function LibrarySheet({ onClose, onAdded }: { onClose(): void; onAdded(ru
                       aria-controls="lib-problems-list"
                       onClick={() => setProblemsOpen((v) => !v)}
                     >
-                      {problemsOpen ? "접기" : "펼치기"}
+                      <SwapLabel active={problemsOpen ? 0 : 1} items={["접기", "펼치기"]} />
                       <ChevronDown size={13} className={problemsOpen ? "is-open" : ""} aria-hidden="true" />
                     </button>
                   </div>
