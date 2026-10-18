@@ -2,6 +2,7 @@
 // 그림일 뿐 아무 데도 보내지 않음. 움직임 줄이기 설정이면 움직이지 않고 '다 누른 모습' 한 장을 보임.
 // 실제 화면으로 오해하지 않게 회색 받침 위에 [예시 화면] 표시와 함께 놓고, 멈춤·재생 단추를 둠.
 import { MonitorPlay, Pause, Play } from "lucide-react";
+import { SwapLabel } from "../../components/SwapLabel";
 import { useEffect, useMemo, useState } from "react";
 import { EMPTY_STATE, type Scene, type SceneState, type Step } from "./types";
 
@@ -144,8 +145,19 @@ export function ScenePlayer({ scene, ip, label }: { scene: Scene; ip: string; la
             onClick={() => setPaused((p) => !p)}
             title={paused ? "다시 재생" : "멈추고 완성된 화면 보기"}
           >
-            {paused ? <Play size={12} aria-hidden="true" /> : <Pause size={12} aria-hidden="true" />}
-            {paused ? "재생" : "멈춤"}
+            <SwapLabel
+              active={paused ? 1 : 0}
+              items={[
+                <>
+                  <Pause size={12} aria-hidden="true" />
+                  멈춤
+                </>,
+                <>
+                  <Play size={12} aria-hidden="true" />
+                  재생
+                </>,
+              ]}
+            />
           </button>
         )}
       </figcaption>

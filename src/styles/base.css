@@ -115,6 +115,21 @@ input {
 }
 
 /* --- 버튼 ------------------------------------------------------------ */
+/* 바뀌는 단추 글자(SwapLabel) — 후보를 한 칸에 겹쳐 가장 긴 후보 너비로 고정, 지금 것만 보임. 간격은 단추의 gap 을 이어받음. */
+.swap-label {
+  display: inline-grid;
+  gap: inherit;
+}
+.swap-label > span {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: inherit;
+}
+.swap-label > .is-off {
+  visibility: hidden;
+}
 .btn {
   display: inline-flex;
   align-items: center;

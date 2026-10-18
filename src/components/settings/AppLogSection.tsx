@@ -3,6 +3,7 @@
 // - 카드 안에서만 굴러감(설정 화면이 끝없이 길어지지 않게).
 // - focus: 알림 토스트의 [자세히] — 그 줄이 보이게 필터를 풀고, 펼치고, 굴려서 잠깐 밝힘. 없으면 묶음으로만 감.
 import { Check, Copy } from "lucide-react";
+import { SwapLabel } from "../SwapLabel";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   APP_LOG_FILTERS,
@@ -94,8 +95,19 @@ export function AppLogSection({ focus }: { focus: { id: number; seq: number } | 
             disabled={entries.length === 0}
             title="앱 기록 전체를 복사해요"
           >
-            {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-            {copied ? "복사했어요" : "기록 복사"}
+            <SwapLabel
+              active={copied ? 1 : 0}
+              items={[
+                <>
+                  <Copy size={14} aria-hidden="true" />
+                  기록 복사
+                </>,
+                <>
+                  <Check size={14} aria-hidden="true" />
+                  복사했어요
+                </>,
+              ]}
+            />
           </button>
         </div>
         <div className="applog-scroll" role="log" aria-label="앱 기록" tabIndex={0}>

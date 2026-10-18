@@ -1,6 +1,7 @@
 // 활동 기록 — 밝은 카드. 아래가 최신이고, 맨 아래에 있으면 따라 내려감(위로 굴리면 멈춤).
 // 필터 칩: 전체·거래·신호·문제. 원문 줄은 설정의 '개발자 로그 보기'를 켰을 때만. [복사]는 원문 포함 전체.
 import { ArrowDown, Check, Copy } from "lucide-react";
+import { SwapLabel } from "../SwapLabel";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ACTIVITY_FILTERS, countByFilter, visibleActivity, type ActivityFilter } from "../../state/activity";
 import { useRunnerContext } from "../../state/context";
@@ -89,8 +90,19 @@ export function ActivityFeed({
           disabled={items.length === 0}
           title="최근 기록부터 6만 자까지 복사해요(문의 글에 붙여 넣기 좋은 크기)"
         >
-          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-          {copied ? "복사했어요" : "기록 복사"}
+          <SwapLabel
+            active={copied ? 1 : 0}
+            items={[
+              <>
+                <Copy size={14} aria-hidden="true" />
+                기록 복사
+              </>,
+              <>
+                <Check size={14} aria-hidden="true" />
+                복사했어요
+              </>,
+            ]}
+          />
         </button>
       </div>
       <div
@@ -127,7 +139,7 @@ export function ActivityFeed({
       {!follow && (
         <button type="button" className={`feed-jump ${unseen ? "has-new" : ""}`} onClick={jump}>
           <ArrowDown size={14} aria-hidden="true" />
-          {unseen ? "새 기록" : "맨 아래로"}
+          <SwapLabel active={unseen ? 1 : 0} items={["맨 아래로", "새 기록"]} />
         </button>
       )}
     </section>

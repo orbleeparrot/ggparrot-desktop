@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ReleaseNotes } from "./ReleaseNotes";
+import { SwapLabel } from "../SwapLabel";
 import { call, errorText } from "../../ipc";
 import { detectPlatform } from "../../platform";
 import { useRunnerContext } from "../../state/context";
@@ -64,12 +65,23 @@ export function UpdatePanel() {
 
   const checkButton = (
     <button type="button" className="btn btn-ghost btn-sm" onClick={() => act("update_check")} disabled={checking}>
-      {checking ? (
-        <LoaderCircle size={14} className="spin" aria-hidden="true" />
-      ) : (
-        <RefreshCw size={14} aria-hidden="true" />
-      )}
-      {checking ? "확인 중…" : u.status === "error" ? "다시 확인" : "업데이트 확인"}
+      <SwapLabel
+        active={checking ? 2 : u.status === "error" ? 1 : 0}
+        items={[
+          <>
+            <RefreshCw size={14} aria-hidden="true" />
+            업데이트 확인
+          </>,
+          <>
+            <RefreshCw size={14} aria-hidden="true" />
+            다시 확인
+          </>,
+          <>
+            <LoaderCircle size={14} className="spin" aria-hidden="true" />
+            확인 중…
+          </>,
+        ]}
+      />
     </button>
   );
 

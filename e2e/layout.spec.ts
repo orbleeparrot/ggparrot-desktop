@@ -341,6 +341,112 @@ for (const vp of VIEWPORTS) {
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });
 
+    test("머리줄 — 모드를 바꾸거나 다른 매크로를 골라도 [에이전트(web)] · ⚙ 자리가 그대로, [거래소]는 모드를 바꿔도 크기 그대로", async ({
+      page,
+    }) => {
+      await open(page, "?demo=many&open=1");
+      const header = () =>
+        page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLElement>(".app-header button"))
+            .filter((b) => b.offsetParent)
+            .map((b) => {
+              const r = b.getBoundingClientRect();
+              return {
+                t: (b.getAttribute("aria-label") || b.textContent || "").trim(),
+                l: Math.round(r.left),
+                w: Math.round(r.width),
+              };
+            }),
+        );
+      const fixed = new Map<string, Set<string>>();
+      const note = (snap: { t: string; l: number; w: number }[]) => {
+        for (const b of snap)
+          if (b.t === "에이전트(web)" || b.t === "설정")
+            fixed.set(b.t, (fixed.get(b.t) ?? new Set()).add(`${b.l}/${b.w}`));
+      };
+      if (!wide) await page.locator(".detail-back").click();
+      const cards = page.locator(".run-card-select");
+      for (let i = 0; i < Math.min(await cards.count(), 6); i++) {
+        await cards.nth(i).click();
+        note(await header());
+        if (!wide) await page.locator(".detail-back").click();
+      }
+      // 모드를 바꿔도 [거래소] 크기 그대로(바이낸스 ↔ 바이낸스 데모로 바뀌지 않음)
+      if (!wide) await cards.first().click();
+      const seg = page.locator(".detail-mode [role=radio]");
+      const market = new Set<string>();
+      for (let i = 0; i < (await seg.count()); i++) {
+        if (await seg.nth(i).isDisabled()) continue;
+        await seg.nth(i).click();
+        const snap = await header();
+        note(snap);
+        const ex = snap.find((b) => b.t !== "에이전트(web)" && b.t !== "설정" && !/새 버전/.test(b.t));
+        if (ex) market.add(`${ex.t}/${ex.w}`);
+      }
+      for (const [t, seen] of fixed) expect(seen.size, `${t} 자리 ${[...seen].join(", ")}`).toBe(1);
+      expect(market.size, `[거래소] ${[...market].join(", ")}`).toBeLessThanOrEqual(1);
+    });
+
+    test("글자가 바뀌는 단추([기록 복사] · 접기/펼치기)는 눌러도 크기 · 자리가 그대로", async ({ page }) => {
+      const problems: string[] = [];
+      for (const [q, sel, back] of [
+        ["?demo=pnl&open=1", ".feed-copy:not([disabled])", false],
+        ["?demo=many", ".run-group-toggle", true],
+      ] as const) {
+        await open(page, q);
+        if (back && !wide && (await page.locator(".detail-back").count())) await page.locator(".detail-back").click();
+        const btn = page.locator(sel).first();
+        await btn.waitFor();
+        const box = () =>
+          btn.evaluate((e) => {
+            const r = e.getBoundingClientRect();
+            return { at: `${Math.round(r.left)}/${Math.round(r.width)}`, text: (e.textContent || "").trim() };
+          });
+        const before = await box();
+        await btn.click();
+        await page.waitForTimeout(150);
+        const after = await box();
+        if (before.at !== after.at)
+          problems.push(`${sel}: ${before.at} '${before.text}' → ${after.at} '${after.text}'`);
+      }
+      expect(problems).toEqual([]);
+    });
+
+    test("설정 › 정보 — [업데이트 확인] · [문의용 정보 복사] · 공인 IP 다시 확인을 눌러도 크기 · 자리 · 줄 높이가 그대로", async ({
+      page,
+    }) => {
+      await open(page, "?demo=settings");
+      await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>(".settings-nav button"))
+          .find((b) => b.textContent?.trim() === "정보")
+          ?.click(),
+      );
+      await page.waitForTimeout(300);
+      const geo = (label: string) =>
+        page.evaluate((label) => {
+          const b = Array.from(document.querySelectorAll<HTMLElement>(".settings-body button")).find((x) =>
+            (x.getAttribute("aria-label") || x.textContent || "").includes(label),
+          )!;
+          const r = b.getBoundingClientRect();
+          const table = document.querySelector(".about-table")!.getBoundingClientRect();
+          return { l: Math.round(r.left), w: Math.round(r.width), table: Math.round(table.height) };
+        }, label);
+      const problems: string[] = [];
+      for (const label of ["업데이트 확인", "문의용 정보 복사", "공인 IP 다시 확인"]) {
+        const before = await geo(label);
+        await page.evaluate((label) => {
+          Array.from(document.querySelectorAll<HTMLElement>(".settings-body button"))
+            .find((x) => (x.getAttribute("aria-label") || x.textContent || "").includes(label))
+            ?.click();
+        }, label);
+        await page.waitForTimeout(120);
+        const after = await geo(label);
+        if (JSON.stringify(before) !== JSON.stringify(after))
+          problems.push(`${label}: ${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+      }
+      expect(problems).toEqual([]);
+    });
+
     test("상세 조작 줄 — 모드를 바꿔도 주 단추([시작] · [실전으로 시작] · [○○ 키 연결하기]) 크기 · 자리가 그대로", async ({
       page,
     }) => {
@@ -417,7 +523,7 @@ for (const vp of VIEWPORTS) {
       if (Math.abs(r.actions.t - r.name.t) < r.actions.h)
         expect(r.name.r, "이름 칸과 단추가 겹치지 않음").toBeLessThanOrEqual(r.actions.l);
       expect(r.headLinks, "상세 머리 바로가기 단추").toBe(0);
-      expect(r.links.map((l) => l.text)).toEqual(["에이전트(web)", "바이낸스"]);
+      expect(r.links.map((l) => l.text)).toEqual(["바이낸스", "에이전트(web)"]);
       expect(
         r.links.every((l) => l.lines === 1),
         "머리줄 단추 한 줄",
