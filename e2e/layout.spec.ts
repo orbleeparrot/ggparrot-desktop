@@ -387,6 +387,22 @@ for (const vp of VIEWPORTS) {
       expect(market.size, `[거래소] ${[...market].join(", ")}`).toBeLessThanOrEqual(1);
     });
 
+    test("스크롤되는 곳은 스크롤바 자리를 늘 비워 둠 — 짧은 목록 ↔ 긴 상세를 오가도 폭이 그대로", async ({ page }) => {
+      await open(page, "?demo=many&open=1");
+      const gutters = await page.evaluate(() => {
+        const sel = [".run-list-panel", ".run-detail", ".feed-body"];
+        const out: Record<string, string> = { html: getComputedStyle(document.documentElement).scrollbarGutter };
+        for (const s of sel) {
+          const el = document.querySelector(s);
+          if (el) out[s] = getComputedStyle(el).scrollbarGutter;
+        }
+        return out;
+      });
+      // 넓은 창은 문서가 스크롤하지 않음(패널이 각자) — 좁은 창만 문서 자리를 비움.
+      if (!wide) expect(gutters.html, "좁은 창 문서").toBe("stable");
+      for (const [k, v] of Object.entries(gutters)) if (k !== "html") expect(v, k).toBe("stable");
+    });
+
     test("글자가 바뀌는 단추([기록 복사] · 접기/펼치기)는 눌러도 크기 · 자리가 그대로", async ({ page }) => {
       const problems: string[] = [];
       for (const [q, sel, back] of [
