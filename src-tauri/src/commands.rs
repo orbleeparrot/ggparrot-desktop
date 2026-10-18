@@ -152,6 +152,12 @@ pub fn set_slot_remember(s: State<'_, S>, slot: String, remember: bool) -> R<()>
     Ok(())
 }
 
+/// 설정 › 거래소 연결 칸 제목 옆 [↗] — 그 칸의 거래소 사이트를 기본 브라우저로 엶(주소는 Rust가 정함).
+#[tauri::command]
+pub fn open_slot_site(s: State<'_, S>, slot: String) -> R<()> {
+    s.open_url_or_hint(slot_of(&slot)?.site_url())
+}
+
 #[tauri::command]
 pub fn check_slot(s: State<'_, S>, slot: String) -> R<()> {
     s.inner().begin_slot_check(slot_of(&slot)?, true);

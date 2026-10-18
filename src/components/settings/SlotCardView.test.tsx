@@ -32,6 +32,12 @@ function withContext(node: ReactNode) {
 }
 
 describe("거래소 연결 칸", () => {
+  it("이름 옆 [↗]는 그 칸의 거래소 사이트를 연다(머리줄에서 옮겨 옴)", () => {
+    const ctx = withContext(<Slot slot={slotCard("binance_demo")} />);
+    fireEvent.click(screen.getByRole("button", { name: "바이낸스 데모 사이트 열기" }));
+    expect(ctx.act).toHaveBeenCalledWith("open_slot_site", { slot: "binance_demo" });
+  });
+
   it("바이낸스 칸도 [연결 도우미]가 있고, 누르면 그 칸(사이트)으로 도우미를 연다", () => {
     const ctx = withContext(<Slot slot={slotCard("binance_demo")} />);
     expect(screen.getByRole("heading", { name: "바이낸스 데모" })).toBeTruthy();

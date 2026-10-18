@@ -224,6 +224,7 @@ pub fn run() {
             commands::stop_run,
             commands::copy_activity,
             commands::open_market_page,
+            commands::open_slot_site,
             commands::open_run_web_page,
             commands::refresh_public_ip,
             commands::copy_support_info,

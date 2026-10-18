@@ -1,10 +1,10 @@
-// 거래소 연결 한 줄 — 왼쪽: 로고 · 이름 · 연결 상태, 그 아래 세 확인 띠(키 인증 → 허용 IP → 주문 권한)와 고칠 일 한 줄.
+// 거래소 연결 한 줄 — 왼쪽: 로고 · 이름(옆에 [↗] 거래소 사이트 바로가기) · 연결 상태, 그 아래 세 확인 띠(키 인증 → 허용 IP → 주문 권한)와 고칠 일 한 줄.
 // 오른쪽 끝: 금액 한 줄(작은 라벨 '잔고' · '증거금' + 큰 숫자 + 작은 단위), 막혔으면 그 자리에 노란 [연결 도우미]. 맨 끝 ▾로 키 칸을 열고 닫음.
 //   확인 시각 · 코인 보유(보유 BTC 0.01)는 금액 옆에 붙이지 않고 이름 옆 상태 줄에(10/18 — 세 줄로 쌓던 것 · '+ BTC'를 붙이던 것 대신).
 // - 키 칸(두 칸 · 기억하기 · 안내 · [다시 확인] · [연결 도우미])은 처음엔 모두 닫혀 있음 — 화면이 키 칸으로 가득하지 않게.
 // - 안내 색은 Rust가 주는 noteTone("warn"·"muted"). 없으면 막힘(blocked)·확인 실패·잔고·권한·허용 IP 문구로 짐작함.
 // - 막힌 이유가 따로 없으면(국내 거래소) 세 확인의 빨간 칸 이유와 이 기기 공인 IP로 한 줄을 만듦.
-import { ChevronDown, LoaderCircle, RefreshCw, TriangleAlert, Wand2 } from "lucide-react";
+import { ChevronDown, ExternalLink, LoaderCircle, RefreshCw, TriangleAlert, Wand2 } from "lucide-react";
 import { useRunnerContext } from "../../state/context";
 import { formatClock } from "../../state/format";
 import { noteToneOf } from "../../state/slots";
@@ -118,6 +118,15 @@ export function SlotCardView({ slot, open, onToggle }: Props) {
           <h4 id={`${id}-title`} className="slot-title">
             {slot.label}
           </h4>
+          <button
+            type="button"
+            className="icon-btn icon-btn-sm slot-site"
+            aria-label={`${slot.label} 사이트 열기`}
+            title={`${slot.label} 사이트를 브라우저로 열어요`}
+            onClick={() => act("open_slot_site", { slot: slot.slot })}
+          >
+            <ExternalLink size={13} aria-hidden="true" />
+          </button>
           <span className={`slot-badge tone-${badgeTone(slot)}`} aria-live="polite">
             {slot.status === "checking" && <LoaderCircle size={12} className="spin" aria-hidden="true" />}
             {slot.headline}
