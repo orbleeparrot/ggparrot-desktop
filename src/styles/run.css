@@ -565,6 +565,8 @@
   height: 34px;
   padding: 0 8px;
 }
+/* 자리가 모자랄 때 줄이는 순서 — ① 전략은 통째로 숨음 ② (좁은 행 · 숏이 있으면) 모드 배지는 점 ③ 마지막으로 종목이 줄임표.
+   상태 낱말(종료 · 오류로 멈춤 · 시작 전 확인 필요)은 잘리지 않음 — 줄(.run-row-line)의 최소 너비가 상태 낱말 너비. */
 .run-card.is-compact .run-card-name {
   flex: 0 1 auto;
   max-width: 50%;
@@ -575,17 +577,39 @@
 .run-card.is-compact .run-card-mode {
   flex: none;
 }
+@container run-card (max-width: 340px) {
+  .run-card.is-compact:has(.side) .run-card-mode {
+    width: 10px;
+  }
+}
 .run-row-line {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
   color: var(--muted);
   font-size: var(--fs-small);
-  text-overflow: ellipsis;
+  line-height: 18px;
   white-space: nowrap;
 }
 .run-row-status {
+  flex: none;
   font-weight: var(--fw-regular);
+}
+/* 전략 — 다 들어가면 보이고 아니면 둘째 줄로 밀려 통째로 가려짐(앞의 빈 ::before가 첫 줄을 지킴). 줄임표 없음. */
+.run-row-strategy-slot {
+  flex: 1 1 0;
+  display: flex;
+  flex-wrap: wrap;
+  width: 0;
+  height: 18px;
+  overflow: hidden;
+}
+.run-row-strategy-slot::before {
+  content: "";
+  height: 18px;
+}
+.run-row-strategy {
+  flex: none;
 }
 .run-row-status.tone-muted {
   color: var(--muted);
@@ -598,7 +622,7 @@
   color: var(--danger-ink);
 }
 /* 상태 낱말이 없는 줄(그냥 기다림)은 전략만 — 앞 구분점 없이 */
-.run-row-status + .run-row-strategy::before {
+.run-row-status + .run-row-strategy-slot .run-row-strategy::before {
   content: "·";
   margin: 0 5px;
   color: var(--faint);

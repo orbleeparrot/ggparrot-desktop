@@ -5,6 +5,7 @@
 //   - 2줄: ● 상태 · 경과(실행 중·끝남) · 전략 …… 작은 주 단추 자리
 // - 대기(compact): 한 줄 행 — 코인 표시 · 종목 · 선물 배수 · 숏 · 모드 · 상태 낱말 · 전략 …… [▶] · [×] 자리. 시작 전이라 손익이 없어 카드가 필요 없음.
 //   상태는 낱말 하나(종료 · 오류로 멈춤 · 시작 전 확인 필요), 그냥 기다리는 줄은 전략만 — 끝난 이유는 상세 결과 카드 · 풍선 도움말(rowStatus).
+//   상태 낱말은 잘리지 않음 — 자리가 모자라면 전략이 통째로 숨고, 좁은 행에 숏이 있으면 모드 배지가 점, 마지막으로 종목 줄임표(run.css).
 // - 종목은 기초 자산(B3)만 크게 — 시장 쌍(KRW-B3)은 거래소 로고와 겹치는 정보라 뺌(runs.ts coinTicker).
 //   바이낸스 선물만 '선물 3배'를 옆에 작게 붙임. 빼기 단추 이름처럼 정확한 시장을 밝혀야 하는 곳은 시장 쌍을 씀.
 // - 배지는 기본이 아닌 것만(롱 · 모의는 생략) — 배지가 많으면 정작 다른 점이 안 보임.
@@ -165,7 +166,9 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
           <Badges slot={slot} />
           <span className="run-row-line" title={`${slot.status.text} · ${strategyTitle}`}>
             {word && <span className={`run-row-status tone-${word.tone}`}>{word.text}</span>}
-            <span className="run-row-strategy">{strategy}</span>
+            <span className="run-row-strategy-slot">
+              <span className="run-row-strategy">{strategy}</span>
+            </span>
           </span>
         </button>
         <div className="run-card-action">

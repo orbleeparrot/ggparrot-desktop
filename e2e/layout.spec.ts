@@ -213,6 +213,29 @@ for (const vp of VIEWPORTS) {
         if (!r) problems.push(`${s} 행이 없음`);
         else if (nearlyCut(r.visible, r.full)) problems.push(`${s}: 보이는 글자 폭 ${r.visible}px — 거의 잘림`);
       }
+      // 한 줄 행 — 상태 낱말(시작 전 확인 필요 등)은 잘리지 않고, 전략은 통째로 보이거나 숨음(줄임표 없음).
+      const lines = await page.evaluate(() =>
+        Array.from(document.querySelectorAll<HTMLElement>(".run-card.is-compact")).map((c) => {
+          c.scrollIntoView({ block: "nearest" });
+          const box = (e: Element) => e.getBoundingClientRect();
+          const sel = c.querySelector(".run-card-select")!;
+          const right = box(sel).right - parseFloat(getComputedStyle(sel).paddingRight) + 0.5;
+          const st = c.querySelector(".run-row-status");
+          const slot = c.querySelector(".run-row-strategy-slot")!;
+          const sg = c.querySelector(".run-row-strategy")!;
+          const shown = box(sg).top < box(slot).bottom - 1;
+          return {
+            symbol: c.querySelector(".run-card-symbol")?.textContent ?? "",
+            status: st?.textContent ?? "",
+            statusCut: !!st && box(st).right > right,
+            partial: shown && box(sg).right > box(slot).right + 0.5,
+          };
+        }),
+      );
+      for (const r of lines) {
+        if (r.statusCut) problems.push(`${r.symbol}: 상태 '${r.status}'가 행 밖으로 잘림`);
+        if (r.partial) problems.push(`${r.symbol}: 전략이 반쯤 잘려 보임`);
+      }
       for (const r of rows) {
         if (r.truncated && !r.ellipsis) problems.push(`${r.symbol}: 잘리는데 줄임표 없음`);
         // 점으로 줄었다면 머리가 오른쪽 칸까지 꽉 찼어야 함(자리가 남는데 줄면 안 됨).
@@ -371,7 +394,10 @@ for (const vp of VIEWPORTS) {
     test("진입 대기 — 봉 마감 칩은 '봉' 이름 옆 한 줄, 막대 · 판정 시각 · 남은 시간", async ({ page }, info) => {
       await open(page, "?demo=wait&open=1");
       if (!wide) await page.locator(".detail-back").click();
-      await page.locator(".run-card", { hasText: "KRW-FORT" }).first().click();
+      await page
+        .locator(".run-card", { has: page.locator('.run-card-name[title="빗썸 FORT"]') })
+        .first()
+        .click();
       await page.locator(".pnl-head .ew-close").waitFor();
       await snap(page, info, "entry-wait-close");
       const r = await page.evaluate(() => {
