@@ -1,6 +1,6 @@
 // 오른쪽 상세 — 머리줄(종목·칩)·모드·시작/종료·돈 · 안전 칸·상태 카드(끝났으면 결과, 시작 전이면 '시작 전 확인')·활동 기록.
-// - 대기·끝남: 모드 세그먼트 + [시작], 아래 한 줄은 고른 모드의 설명(MODE_NOTES). 그 밖(확인·시작·실행·종료 중):
-//   모드를 바꿀 수 없어 세그먼트 대신 상태 한 줄(RunBar — "실전으로 실행 중" · 경과 · 서버 연결)과 종료 단추.
+// - 대기·끝남: 모드 카드(세그먼트 + [시작], 아래 한 줄은 고른 모드의 설명 MODE_NOTES). 그 밖(확인·시작·실행·종료 중):
+//   모드를 바꿀 수 없어 모드 카드를 없애고, 상태("● 실행 중 06:02" — RunState)는 제목 옆, 끝내는 단추는 머리 오른쪽.
 // - 키가 없으면 [시작] 자리가 [○○ 키 연결하기](연결 도우미), 회원 키가 없으면 [회원 키 입력하기] — 막힌 이유 띠를 따로 두지 않음.
 import { KeyRound, LoaderCircle, Play } from "lucide-react";
 import { useEffect } from "react";
@@ -14,7 +14,7 @@ import { FinishedCard } from "./FinishedCard";
 import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
 import { PreStartChecks } from "./PreStartChecks";
-import { RunBar } from "./RunBar";
+import { RunState } from "./RunState";
 import { StatusCard } from "./StatusCard";
 
 interface Props {
@@ -119,22 +119,28 @@ export function RunDetail({
     <section id="run-detail" className="run-detail" aria-labelledby="detail-title">
       {/* 넓은 창(1360px~)에서는 왼쪽 칸 — 활동 기록이 오른쪽 칸을 위아래로 다 차지함. 그보다 좁으면 감싸개 없이 한 줄로 쌓임(run.css). */}
       <div className="detail-main">
-        <DetailHeader slot={slot} onBack={onBack} />
-
-        {/* 세그먼트(또는 실행 중 상태 한 줄)와 주 버튼은 한 줄. 대기 중에는 그 아래에 고른 모드의 설명 한 줄. */}
-        <div className="detail-mode-card">
-          <div className={`detail-controls ${idle ? "" : "is-running"}`}>
-            {idle ? (
-              <div className="detail-mode">
-                <ModeSegment slot={slot} />
+        {idle ? (
+          <>
+            <DetailHeader slot={slot} onBack={onBack} />
+            {/* 세그먼트와 주 버튼은 한 줄, 그 아래에 고른 모드의 설명 한 줄. */}
+            <div className="detail-mode-card">
+              <div className="detail-controls">
+                <div className="detail-mode">
+                  <ModeSegment slot={slot} />
+                </div>
+                <Controls slot={slot} />
               </div>
-            ) : (
-              <RunBar slot={slot} />
-            )}
-            <Controls slot={slot} />
-          </div>
-          {idle && <p className={`mode-note mode-${slot.mode}`}>{MODE_NOTES[slot.mode]}</p>}
-        </div>
+              <p className={`mode-note mode-${slot.mode}`}>{MODE_NOTES[slot.mode]}</p>
+            </div>
+          </>
+        ) : (
+          <DetailHeader
+            slot={slot}
+            onBack={onBack}
+            runState={<RunState slot={slot} />}
+            actions={<Controls slot={slot} />}
+          />
+        )}
 
         <MacroNotes slot={slot} blockerShown={blockerShown} />
         {/* 실행 중에는 설명을 두지 않음(청산 막대가 기준을 그림으로 보임). 끝난 뒤에는 한 줄로 줄여 결과 카드를 밀어내지 않게. */}

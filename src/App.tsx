@@ -107,11 +107,18 @@ export default function App() {
   }
 
   const dialog = notices.dialog;
+  // 머리줄 바로가기의 대상 — 상세가 화면에 보일 때만(두 열이거나 한 열에서 상세를 연 때).
+  const shownSlot =
+    nav.view === "run" && (wide || nav.detailOpen) ? (state.runs.find((r) => r.id === nav.selectedId) ?? null) : null;
 
   return (
     <RunnerContext.Provider value={ctx}>
       <div className={`app view-${nav.view}`}>
-        <Header view={nav.view} onGear={nav.view === "settings" ? nav.openRun : () => nav.openSettings()} />
+        <Header
+          view={nav.view}
+          slot={shownSlot}
+          onGear={nav.view === "settings" ? nav.openRun : () => nav.openSettings()}
+        />
         <main className="app-main">
           {nav.view === "settings" ? (
             <SettingsScreen target={nav.target} onBack={nav.openRun} />

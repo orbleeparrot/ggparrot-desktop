@@ -247,6 +247,7 @@ pub fn run() {
             commands::library_refresh,
             commands::library_open_folder,
             commands::open_web,
+            commands::open_web_agents,
             commands::library_import,
             commands::wizard_open,
             commands::wizard_choose,

@@ -3,7 +3,7 @@
 // - 조건이 둘(사는 선 + 20봉 평균)이면 가격 막대 하나에 두 선을 그리고 지금 점을 찍음 — 점이 두 선 사이에 있으면
 //   '사는 선은 넘었는데 평균선 아래라 안 산다'가 한눈에 보임(2026-10-17 KRW-FORT).
 // - 값은 서버가 엔진과 같은 규칙으로 계산해 하트비트로 보낸 것(entry_wait) — 웹 내 에이전트와 같은 숫자.
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Check } from "lucide-react";
 import type { EntryWait } from "../../types";
 
@@ -31,12 +31,47 @@ export function rough(ms: number): string {
   return `약 ${Math.round(h / 24)}일`;
 }
 
-/** 맨 윗줄 — 언제 판정되는지. "11:45 마감까지 5분" · 1분 안이면 "11:45 마감 곧" · 지정가는 "실시간 확인". */
-export function closeText(wait: EntryWait, now: number): string {
-  if (wait.realtime) return "실시간 확인";
+/** 봉 간격 → ms("15m" · "1h" · "4h" · "1d" · "1w"). 모르는 꼴이면 null(막대 없이 글자만). */
+export function intervalMs(interval: string): number | null {
+  const m = /^(\d+)([mhdw])$/.exec(interval.trim());
+  if (!m) return null;
+  const unit = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }[m[2] as "m" | "h" | "d" | "w"];
+  return Number(m[1]) * unit;
+}
+
+/** 봉 마감 칩 글자 — "03:15 판정 · 12분 남음" · 1분 안이면 "03:15 판정 · 곧". 지정가는 "실시간 확인". */
+export function closeChipText(wait: EntryWait, now: number): { at: string; left: string } | null {
+  if (wait.realtime) return { at: "실시간 확인", left: "" };
   const at = wait.next_check_ms;
-  if (!at) return "";
-  return at - now >= 60_000 ? `${clock(at)} 마감까지 ${span(at - now)}` : `${clock(at)} 마감 곧`;
+  if (!at) return null;
+  return { at: `${clock(at)} 판정`, left: at - now >= 60_000 ? `${span(at - now)} 남음` : "곧" };
+}
+
+/** '15분 봉' 옆 칩 — 이번 봉이 얼마나 지났는지 작은 막대 + 판정 시각 · 남은 시간. */
+export function CloseChip({ wait }: { wait: EntryWait }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const text = closeChipText(wait, now);
+  if (!text) return null;
+  const len = wait.realtime ? null : intervalMs(wait.interval);
+  const done = len && wait.next_check_ms ? Math.min(1, Math.max(0, 1 - (wait.next_check_ms - now) / len)) : null;
+  return (
+    <span
+      className="ew-close num"
+      title={wait.realtime ? "3초마다 조건을 봐요" : `${wait.interval_label} 봉이 끝날 때 조건을 다시 봐요`}
+    >
+      {done !== null && (
+        <span className="ew-close-bar" aria-hidden="true">
+          <i style={{ width: pct(done) }} />
+        </span>
+      )}
+      {text.at}
+      {text.left && <span className="ew-close-left">· {text.left}</span>}
+    </span>
+  );
 }
 
 const pct = (x: number) => `${Math.round(Math.min(1, Math.max(0, x)) * 1000) / 10}%`;

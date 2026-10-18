@@ -548,6 +548,9 @@ export function createMockBackend(
     open_web: () => {
       window.open(WEB_URL, "_blank", "noopener");
     },
+    open_web_agents: () => {
+      window.open(`${WEB_URL}agents`, "_blank", "noopener");
+    },
     library_import: () => {
       addFromMacro(m.imported++);
       return 1;

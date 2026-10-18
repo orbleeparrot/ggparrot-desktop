@@ -1,5 +1,5 @@
 // 실행 상태 카드 — 큰 평가손익 숫자 하나·금액·현재가 흐름·청산 기준 막대·접힌 2열 표·확인 필요 띠.
-// - 상태(실행 중·경과·서버 연결)는 위 조작 줄(RunBar)이 한 줄로 말함 — 이 카드에는 다시 적지 않음.
+// - 상태(실행 중·경과·서버 연결)는 상세 머리 제목 옆(RunState)이 말함 — 이 카드에는 다시 적지 않음.
 // - 1040×720 창에서 아래 활동 기록이 세 줄 넘게 보이도록 낮게 짬(그래프 46px·막대 한 줄·표 줄 간격 좁힘).
 // 손익은 수수료 반영 값(지금 정리하면) — Rust 봇이 계산해 보냄. 서버·웹 기록은 수수료 전 금액임.
 // - 큰 숫자 밑에 '평단 대비 가격'을 따로 두지 않음 — 수수료만큼만 다른 같은 값이고 막대가 이미 위치로 보임.
@@ -19,7 +19,7 @@ import {
 import { trailSpanLabel } from "../../state/priceTrail";
 import { STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus } from "../../types";
-import { EntryWaitDetail, EntryWaitHead } from "./EntryWait";
+import { CloseChip, EntryWaitDetail, EntryWaitHead } from "./EntryWait";
 import { ExitBar } from "./ExitBar";
 import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
@@ -105,6 +105,7 @@ export function StatusCard({
                   ? "평가손익 · 지금 정리하면 · 모의"
                   : "평가손익 · 지금 정리하면"}
             </span>
+            {waiting && run.entryWait && <CloseChip wait={run.entryWait} />}
             {/* 수수료를 모르면 큰 %는 평단 대비 가격(수수료 전) — 이름 옆에 그렇다고 밝힘 */}
             {!waiting && run.inPosition && !run.unrealizedFeeAware && (
               <span className="pnl-tag">평단 대비 · 수수료 제외 전</span>

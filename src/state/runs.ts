@@ -10,14 +10,12 @@ export const MODE_NOTES: Record<RunMode, string> = {
   live: "실제 자금으로 주문해요. 시작할 때 한 번 더 확인해요.",
 };
 
-/** "모의로"·"테스트넷으로"·"실전으로" — 받침에 맞춘 조사. */
-const MODE_WITH: Record<RunMode, string> = { mock: "모의로", testnet: "테스트넷으로", live: "실전으로" };
-
-/** 상세 조작 줄의 모드 배지 — 모드를 바꿀 수 없는 단계(확인·시작·실행·종료 중)에 세그먼트 대신 보임. */
-export function runningModeText(mode: RunMode, phase: Phase): string {
-  if (phase === "checking") return `${MODE_WITH[mode]} 시작 전 확인 중`;
-  if (phase === "starting") return `${MODE_WITH[mode]} 시작하는 중`;
-  return `${MODE_WITH[mode]} 실행 중`;
+/** 상세 머리 제목 옆 상태 글자 — 모드는 제목 옆 배지(실전 · 테스트넷)가 말하므로 단계만. */
+export function runStateText(phase: Phase): string {
+  if (phase === "checking") return "시작 전 확인 중";
+  if (phase === "starting") return "시작하는 중";
+  if (phase === "stopping") return "종료하는 중";
+  return "실행 중";
 }
 
 export const SIDE_LABELS = { long: "롱", short: "숏" } as const;
@@ -52,6 +50,15 @@ export type Phase = RunSlot["phase"];
 export function statusParts(text: string): [string, string] {
   const i = text.indexOf(" · ");
   return i < 0 ? [text, ""] : [text.slice(0, i), text.slice(i + 3)];
+}
+
+/** 대기 묶음 한 줄 행의 상태 낱말 — 끝난 이유 문장은 상세 결과 카드가 말하므로 목록엔 낱말 하나.
+ *  그냥 기다리는 줄('대기 중')은 묶음 이름이 이미 '대기'라 null(전략 이름만). */
+export function rowStatus(slot: Pick<RunSlot, "phase" | "status" | "readiness" | "run">): RunSlot["status"] | null {
+  if (slot.phase === "finished")
+    return { text: slot.run?.finished?.status === "error" ? "오류로 멈춤" : "종료", tone: slot.status.tone };
+  if (slot.phase === "idle" && slot.readiness.canStart) return null;
+  return slot.status;
 }
 
 /** 대기 중이거나 끝난 슬롯만 모드를 바꾸고, 시작하고, 목록에서 뺄 수 있음. */

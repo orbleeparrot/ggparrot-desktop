@@ -79,6 +79,8 @@ export interface CommandMap {
   library_import: { args: NoArgs; ret: number };
   // 껄무새 웹(기본 브라우저)
   open_web: { args: NoArgs; ret: void };
+  /** 껄무새 웹의 내 에이전트(실행 기록 목록). */
+  open_web_agents: { args: NoArgs; ret: void };
   // 연결 도우미
   /** slot: 바이낸스 실거래·테스트넷·데모 칸. */
   wizard_open: { args: { exchange: Exchange; slot?: KeySlot; stage?: WizardState["stage"] }; ret: void };

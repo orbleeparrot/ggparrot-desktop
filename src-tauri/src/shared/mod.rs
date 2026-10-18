@@ -154,6 +154,11 @@ impl Shared {
     pub fn open_web(&self) -> Result<(), String> {
         self.open_url_or_hint(WEB_URL)
     }
+
+    /// 껄무새 웹의 내 에이전트(실행 기록 목록)를 엶 — 머리줄 [에이전트(web)]에서 고른 실행이 없을 때.
+    pub fn open_web_agents(&self) -> Result<(), String> {
+        self.open_url_or_hint(&format!("{WEB_URL}agents"))
+    }
 }
 
 /// 앱 레이어 잠금은 모두 이 방식 — 다른 스레드가 잠근 채 패닉해도(오염) 값을 그대로 꺼내 씀.

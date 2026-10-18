@@ -64,12 +64,35 @@ const libFile: LibraryFile = {
   inUse: 0,
 };
 
-describe("껄무새 웹", () => {
-  it("머리줄 [껄무새 웹 열기]는 open_web을 보낸다", async () => {
+describe("머리줄 바로가기", () => {
+  it("[에이전트(web)]는 보이는 실행에 웹 기록이 없으면 내 에이전트를, 있으면 그 실행 기록을 연다", async () => {
+    current = makeState({ runs: [makeSlot()] });
     render(<App />);
     await ready();
-    fireEvent.click(await screen.findByRole("button", { name: "껄무새 웹 열기" }));
-    expect(calledWith("open_web")).toHaveLength(1);
+    fireEvent.click(await screen.findByRole("button", { name: "에이전트(web)" }));
+    expect(calledWith("open_web_agents")).toHaveLength(1);
+    pushState(makeState({ runs: [makeSlot({ webRunPage: true })] }));
+    fireEvent.click(screen.getByRole("button", { name: "에이전트(web)" }));
+    expect(calledWith("open_run_web_page")).toEqual([["open_run_web_page", { runId: "run-1" }]]);
+  });
+
+  it("거래소 단추는 보이는 매크로의 거래소 이름 — 상세에서는 바로가기 단추가 빠짐", async () => {
+    current = makeState({ runs: [makeSlot()] });
+    render(<App />);
+    const btn = await screen.findByRole("button", { name: "바이낸스" });
+    expect(btn.closest(".app-header")).toBeTruthy();
+    fireEvent.click(btn);
+    expect(calledWith("open_market_page")).toEqual([["open_market_page", { runId: "run-1" }]]);
+    expect(document.querySelector(".detail-head")?.textContent).not.toMatch(/실행 기록|바이낸스$/);
+  });
+
+  it("설정 화면에서는 거래소 단추가 숨는다", async () => {
+    current = makeState({ runs: [makeSlot()] });
+    render(<App />);
+    await screen.findByRole("button", { name: "바이낸스" });
+    fireEvent.click(screen.getByRole("button", { name: "설정" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "바이낸스" })).toBeNull());
+    expect(screen.getByRole("button", { name: "에이전트(web)" })).toBeTruthy();
   });
 });
 
@@ -327,17 +350,22 @@ describe("종료 · 이동", () => {
     expect(dlg.textContent).toContain("보유 포지션이 없어요");
   });
 
-  it("실행 중이면 모드 세그먼트 대신 모드 배지 — 조작 줄은 배지와 종료 단추뿐, 대기면 세그먼트", async () => {
+  it("실행 중이면 모드 카드 없이 머리에 상태 · 끝내는 단추, 대기면 모드 카드(세그먼트 + 시작)", async () => {
     current = makeState({ runs: [makeSlot({ phase: "running", mode: "live", run: makeRun() })] });
     render(<App />);
     const detail = await screen.findByRole("region", { name: /^바이낸스 BTC/ });
-    const row = detail.querySelector(".detail-controls")!;
-    expect(within(row as HTMLElement).queryByRole("radiogroup")).toBeNull();
-    expect(row.querySelector(".detail-mode-badge")?.textContent).toBe("실전으로 실행 중");
-    expect(within(row as HTMLElement).getByRole("button", { name: "종료" })).toBeTruthy();
+    const head = detail.querySelector(".detail-head") as HTMLElement;
+    expect(detail.querySelector(".detail-mode-card")).toBeNull();
+    expect(head.querySelector(".run-state")?.textContent).toMatch(/^실행 중/);
+    expect(head.querySelector(".mode-badge")?.textContent).toBe("실전");
+    expect(
+      within(head.querySelector(".detail-actions") as HTMLElement).getByRole("button", { name: "종료" }),
+    ).toBeTruthy();
     pushState(makeState({ runs: [makeSlot({ phase: "idle", mode: "mock" })] }));
-    expect(await within(row as HTMLElement).findByRole("radiogroup", { name: "실행 모드" })).toBeTruthy();
-    expect(row.querySelector(".detail-mode-badge")).toBeNull();
+    await waitFor(() => expect(detail.querySelector(".detail-mode-card")).not.toBeNull());
+    const card = detail.querySelector(".detail-mode-card") as HTMLElement;
+    expect(within(card).getByRole("radiogroup", { name: "실행 모드" })).toBeTruthy();
+    expect(detail.querySelector(".run-state, .detail-actions")).toBeNull();
   });
 
   it("runner:navigate 와 ⌘/Ctrl+, 로 화면을 바꾼다", async () => {

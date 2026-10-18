@@ -233,6 +233,11 @@ pub fn open_web(s: State<'_, S>) -> R<()> {
 }
 
 #[tauri::command]
+pub fn open_web_agents(s: State<'_, S>) -> R<()> {
+    s.inner().open_web_agents()
+}
+
+#[tauri::command]
 pub async fn library_import(s: State<'_, S>) -> R<usize> {
     let picked = s
         .app
