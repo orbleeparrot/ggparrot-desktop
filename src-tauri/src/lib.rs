@@ -236,6 +236,7 @@ pub fn run() {
             commands::set_member_key,
             commands::reveal_member_key,
             commands::set_close_to_tray,
+            commands::set_notify_fills,
             commands::set_show_dev_log,
             commands::recover_storage,
             commands::reload_storage,

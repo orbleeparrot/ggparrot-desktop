@@ -179,6 +179,12 @@ pub fn set_close_to_tray(s: State<'_, S>, value: bool) {
     s.inner().set_close_to_tray(value);
 }
 
+/// 설정 › 창 · 화면 '매수 체결 알림'.
+#[tauri::command]
+pub fn set_notify_fills(s: State<'_, S>, value: bool) {
+    s.inner().set_notify_fills(value);
+}
+
 #[tauri::command]
 pub fn set_show_dev_log(s: State<'_, S>, show: bool) {
     s.inner().set_show_dev_log(show);

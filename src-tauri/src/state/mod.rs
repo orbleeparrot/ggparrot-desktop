@@ -499,6 +499,8 @@ pub struct Core {
     pub show_dev_log: bool,
     /// 창을 닫으면 트레이로 숨기고 계속 실행함(기본 켬).
     pub close_to_tray: bool,
+    /// 매수 체결 알림(기본 켬, 소리 포함) — 끄면 실행마다 고른 '사면 소리 · 알림으로 알려 주기'와 상관없이 띄우지 않음.
+    pub notify_fills: bool,
     pub hidden_to_tray: bool,
     pub server_base: String,
     pub claim_busy: bool,
@@ -549,6 +551,7 @@ impl Core {
             storage_error: String::new(),
             show_dev_log: false,
             close_to_tray: true,
+            notify_fills: true,
             hidden_to_tray: false,
             server_base,
             claim_busy: false,

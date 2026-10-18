@@ -503,6 +503,9 @@ export function createMockBackend(
     set_close_to_tray: ({ value }) => {
       m.closeToTray = Boolean(value);
     },
+    set_notify_fills: ({ value }) => {
+      m.notifyFills = Boolean(value);
+    },
     set_show_dev_log: ({ show }) => {
       m.showDevLog = Boolean(show);
     },

@@ -153,6 +153,7 @@ export function makeSettings(over: Partial<SettingsState> = {}): SettingsState {
     storage: { status: "loaded", note: "" },
     showDevLog: false,
     closeToTray: true,
+    notifyFills: true,
     serverBase: "https://api.example.com",
     serverCustom: true,
     os: "macOS 15.6.1 (arm64)",

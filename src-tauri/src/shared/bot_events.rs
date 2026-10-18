@@ -116,10 +116,12 @@ impl Core {
         }
     }
 
-    /// 진입 체결을 알릴지 — '사면 소리 · 알림'을 켰고 이번 진입을 아직 알리지 않았으면 true(그리고 알린 것으로 표시).
+    /// 진입 체결을 알릴지 — 설정의 '매수 체결 알림'과 실행의 '사면 소리 · 알림'이 켜져 있고 이번 진입을 아직 알리지
+    /// 않았으면 true(그리고 알린 것으로 표시).
     /// 체결 소식이 보유 스냅샷보다 늦게 와도 알림(무포지션 스냅샷에서만 다시 켜지므로).
     pub(crate) fn take_entry_alert(&mut self, id: &str) -> bool {
-        self.run_mut(id).is_some_and(|r| r.notify_entry_fill && !std::mem::replace(&mut r.entry_alerted, true))
+        let on = self.notify_fills;
+        self.run_mut(id).is_some_and(|r| on && r.notify_entry_fill && !std::mem::replace(&mut r.entry_alerted, true))
     }
 
     /// 봇이 보낸 끝(stopped·error)을 활동에 남기고 실행을 끝난 상태로 둠.
@@ -194,6 +196,11 @@ mod tests {
         // 켜지 않았으면 울리지 않음
         assert!(!c.take_entry_alert("a"));
         c.run_mut("a").unwrap().notify_entry_fill = true;
+        // 설정에서 매수 체결 알림을 끄면 실행에서 켰어도 울리지 않음(그 진입은 알린 것으로 치지 않음)
+        c.notify_fills = false;
+        c.apply_snapshot("a", json!({"in_position": false}));
+        assert!(!c.take_entry_alert("a"));
+        c.notify_fills = true;
         // 무포지션에서 진입 → 울림, 보유 중 추가 매수 → 안 울림
         c.apply_snapshot("a", json!({"in_position": false}));
         assert!(c.take_entry_alert("a"));

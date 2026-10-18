@@ -266,6 +266,7 @@ export function snapshot(m: Model): AppState {
       storage: m.storage,
       showDevLog: m.showDevLog,
       closeToTray: m.closeToTray,
+      notifyFills: m.notifyFills,
       serverBase: "https://gg-parrot.onrender.com",
       serverCustom: false,
       os: "macOS 15.6.1 (arm64)",

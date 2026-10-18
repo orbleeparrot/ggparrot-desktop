@@ -63,6 +63,7 @@ export interface CommandMap {
   reveal_member_key: { args: NoArgs; ret: string };
   set_show_dev_log: { args: { show: boolean }; ret: void };
   set_close_to_tray: { args: { value: boolean }; ret: void };
+  set_notify_fills: { args: { value: boolean }; ret: void };
   recover_storage: { args: NoArgs; ret: void };
   reload_storage: { args: NoArgs; ret: void };
   resolve_member_key: { args: { accept: boolean }; ret: void };

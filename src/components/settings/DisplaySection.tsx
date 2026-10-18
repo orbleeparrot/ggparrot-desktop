@@ -1,4 +1,4 @@
-// 설정 › 창 · 화면 — 화면 테마(시스템 · 라이트 · 다크) · 백그라운드 실행 · 개발자 로그 보기.
+// 설정 › 창 · 화면 — 화면 테마(시스템 · 라이트 · 다크) · 백그라운드 실행 · 매수 체결 알림 · 개발자 로그 보기.
 import { useRunnerContext } from "../../state/context";
 import { THEME_LABELS, useThemePref, type ThemePref } from "../../state/theme";
 import { Section } from "./Section";
@@ -42,6 +42,12 @@ export function DisplaySection() {
           } 끄면 매크로가 실행 중일 때는 창을 닫을 수 없어요.`}
           checked={state.settings.closeToTray}
           onChange={(value) => act("set_close_to_tray", { value })}
+        />
+        <Toggle
+          label="매수 체결 알림"
+          hint="기다리던 조건이 와서 사면 알림음과 함께 화면 구석(Windows는 오른쪽 아래)에 알림을 띄워요."
+          checked={state.settings.notifyFills}
+          onChange={(value) => act("set_notify_fills", { value })}
         />
         <Toggle
           label="개발자 로그 보기"

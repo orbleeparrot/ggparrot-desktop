@@ -83,6 +83,7 @@ impl Shared {
     }
 
     /// 기다리던 진입이 체결됨 — 창이 앞에 있어도(실행기를 보고 있어도) 소리와 함께 OS 알림. 묶지 않음(실행마다 다른 체결).
+    /// 끄는 곳은 설정 › 창 · 화면 '매수 체결 알림' 하나(소리만 끄려면 OS 알림 설정에서).
     pub(crate) fn alert_entry_fill(self: &S, run_id: &str, fill: &str) {
         let (symbol, short) = {
             let c = self.lock();
