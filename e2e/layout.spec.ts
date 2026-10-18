@@ -318,55 +318,87 @@ for (const vp of VIEWPORTS) {
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });
 
-    test("상세 조작 줄 — 실행 중: 세그먼트 없이 상태 한 줄(모드 배지 · 경과 · 서버) + 종료 단추, 큰 빈 자리 없음", async ({
+    test("상세 머리 — 실행 중: 모드 카드 없이 제목 옆 상태 한 줄 · 끝내는 단추는 오른쪽 끝, 바로가기는 앱 머리줄", async ({
       page,
     }, info) => {
       await open(page, "?demo=running&open=1");
-      await page.locator(".detail-controls.is-running").waitFor();
+      await page.locator(".detail-head .run-state").waitFor();
       await snap(page, info, "detail-running");
       const r = await page.evaluate(() => {
         const g = window.__geo;
-        const row = document.querySelector(".detail-controls")!;
-        const left = row.querySelector(".run-bar")!;
-        const badge = left.querySelector(".detail-mode-badge")!;
-        const btns = Array.from(row.querySelectorAll(".btn"));
-        // 상태 한 줄의 칸(배지 · 저하 칩 · 경과 · 봉 마감 · 서버)은 각자 한 줄 — 칸 밖 글자가 없어야 함.
-        const owners = [...Array.from(left.children), ...btns].map((el) => g.box(el));
-        const wrapped = Array.from(left.children)
-          .filter(
-            (el) => g.textBoxes(el).length > 1 && new Set(g.textBoxes(el).map((t) => Math.round(t.box.t))).size > 1,
-          )
-          .map((el) => el.className);
-        const stray = g
-          .textBoxes(row)
-          .filter((t) => !owners.some((o) => g.inside(t.box, o, 1)))
-          .map((t) => t.text);
-        const pad = parseFloat(getComputedStyle(row).paddingLeft);
-        const firstBtn = g.box(btns[0]);
+        const head = document.querySelector(".detail-head")!;
+        const state = head.querySelector(".run-state")!;
+        const title = head.querySelector(".detail-title")!;
+        const actions = head.querySelector(".detail-actions")!;
+        const header = document.querySelector(".app-header")!;
+        const links = Array.from(header.querySelectorAll(".header-web"));
+        const lines = (el: Element) => new Set(g.textBoxes(el).map((t) => Math.round(t.box.t))).size;
         return {
-          segmented: row.querySelectorAll(".segmented, [role='radiogroup']").length,
-          badge: badge.textContent,
-          children: row.children.length,
-          stray,
-          left: g.box(left),
-          btn: firstBtn,
-          row: g.box(row),
-          pad,
-          wrapped,
+          modeCard: document.querySelectorAll(".run-detail .detail-mode-card").length,
+          stateText: state.textContent,
+          stateLines: lines(state),
+          stateMid: (g.box(state).t + g.box(state).b) / 2,
+          titleMid: (g.box(title).t + g.box(title).b) / 2,
+          name: g.box(head.querySelector(".detail-name")!),
+          actions: g.box(actions),
+          head: g.box(head),
+          headLinks: head.querySelectorAll("a, .btn-ghost.btn-sm").length,
+          links: links.map((b) => ({ text: b.textContent, lines: lines(b) })),
+          headerOverflow: header.scrollWidth > header.clientWidth + 1,
         };
       });
-      expect(r.segmented, "실행 중 세그먼트").toBe(0);
-      expect(r.badge).toMatch(/^(모의로|테스트넷으로|실전으로) (실행 중|시작하는 중)$/);
-      expect(r.children, "조작 줄 칸 수(배지 칸·단추)").toBe(2);
-      expect(r.stray, "조작 줄 안 다른 글자").toEqual([]);
-      expect(r.wrapped, "두 줄로 꺾인 칸").toEqual([]);
-      // 왼쪽 칸이 단추 앞까지 채움 — 큰 빈 자리 없음(같은 줄일 때).
-      if (Math.abs(r.left.t - r.btn.t) < r.btn.h)
-        expect(r.btn.l - r.left.r, `왼쪽 칸 끝 ${r.left.r} · 단추 ${r.btn.l}`).toBeLessThanOrEqual(24);
-      const leftMid = (r.left.t + r.left.b) / 2;
-      const btnMid = (r.btn.t + r.btn.b) / 2;
-      if (Math.abs(r.left.t - r.btn.t) < r.btn.h)
-        expect(Math.abs(leftMid - btnMid), "배지 칸과 단추 세로 가운데").toBeLessThanOrEqual(2);
+      expect(r.modeCard, "실행 중 모드 카드").toBe(0);
+      expect(r.stateText).toMatch(/^실행 중경과 \d\d:\d\d$/);
+      expect(r.stateLines, "상태 한 줄").toBe(1);
+      // 제목과 같은 줄이면 세로 가운데가 맞음(좁으면 다음 줄로 내려가도 됨).
+      if (Math.abs(r.stateMid - r.titleMid) < 14)
+        expect(Math.abs(r.stateMid - r.titleMid), "상태와 제목 세로 가운데").toBeLessThanOrEqual(2);
+      expect(
+        Math.abs(r.head.r - r.actions.r),
+        `끝내는 단추 오른쪽 끝 ${r.actions.r} · 머리 ${r.head.r}`,
+      ).toBeLessThanOrEqual(1);
+      if (Math.abs(r.actions.t - r.name.t) < r.actions.h)
+        expect(r.name.r, "이름 칸과 단추가 겹치지 않음").toBeLessThanOrEqual(r.actions.l);
+      expect(r.headLinks, "상세 머리 바로가기 단추").toBe(0);
+      expect(r.links.map((l) => l.text)).toEqual(["에이전트(web)", "바이낸스"]);
+      expect(
+        r.links.every((l) => l.lines === 1),
+        "머리줄 단추 한 줄",
+      ).toBe(true);
+      expect(r.headerOverflow, "머리줄 넘침").toBe(false);
+    });
+
+    test("진입 대기 — 봉 마감 칩은 '봉' 이름 옆 한 줄, 막대 · 판정 시각 · 남은 시간", async ({ page }, info) => {
+      await open(page, "?demo=wait&open=1");
+      if (!wide) await page.locator(".detail-back").click();
+      await page.locator(".run-card", { hasText: "KRW-FORT" }).first().click();
+      await page.locator(".pnl-head .ew-close").waitFor();
+      await snap(page, info, "entry-wait-close");
+      const r = await page.evaluate(() => {
+        const g = window.__geo;
+        const chip = document.querySelector(".pnl-head .ew-close")!;
+        const eyebrow = document.querySelector(".pnl-head .eyebrow")!;
+        const chart = document.querySelector(".pnl-chart");
+        return {
+          text: chip.textContent,
+          bar: !!chip.querySelector(".ew-close-bar i"),
+          lines: new Set(g.textBoxes(chip).map((t) => Math.round(t.box.t))).size,
+          chip: g.box(chip),
+          eyebrow: g.box(eyebrow),
+          chart: chart ? g.box(chart) : null,
+          barInRun: document.querySelectorAll(".detail-head .run-state").length,
+          stateText: document.querySelector(".detail-head .run-state")?.textContent ?? "",
+        };
+      });
+      expect(r.text).toMatch(/^\d\d:\d\d 판정· (\d+분 남음|곧)$/);
+      expect(r.bar, "봉 진행 막대").toBe(true);
+      expect(r.lines, "칩 한 줄").toBe(1);
+      expect(
+        Math.abs((r.chip.t + r.chip.b) / 2 - (r.eyebrow.t + r.eyebrow.b) / 2),
+        "'봉' 이름과 같은 줄",
+      ).toBeLessThanOrEqual(2);
+      if (r.chart) expect(r.chip.r, "그래프와 안 겹침").toBeLessThanOrEqual(r.chart.l);
+      expect(r.stateText, "머리 상태에는 봉 마감을 다시 적지 않음").not.toMatch(/판정|마감/);
     });
 
     test("상태 카드(?demo=pnl) — 막대·차트 꼬리표 안 겹침·표 정렬·가로 넘침 없음", async ({ page }, info) => {

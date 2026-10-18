@@ -97,7 +97,7 @@ describe("실행 상태 카드", () => {
     expect(cell.className).toContain("tone-flat");
   });
 
-  it("상태 줄은 카드에 다시 적지 않고(RunBar), 표에는 투입금·보유 수량·평단·현재가·낸 수수료·실현손익", () => {
+  it("상태 줄은 카드에 다시 적지 않고(RunState), 표에는 투입금·보유 수량·평단·현재가·낸 수수료·실현손익", () => {
     const { container } = render(
       <StatusCard
         run={makeRun({ inPosition: true, qty: 10, entryPrice: 100, price: 100.15, invested: 1001, fees: 1 })}

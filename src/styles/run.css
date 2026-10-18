@@ -736,17 +736,75 @@
 .detail-back {
   margin-left: -6px;
 }
-/* 웹 실행 기록·거래소 종목 화면 — 머리줄 오른쪽 끝 */
-.detail-links {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 2px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
 .detail-name {
   min-width: 0;
+}
+/* 제목(종목 · 모드 배지)과 실행 중 상태 — 좁으면 상태가 다음 줄로 */
+.detail-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 14px;
+  min-width: 0;
+}
+/* 실행 중 상태 — "● 실행 중 06:02". 잘 돌면 초록 점(천천히 퍼짐), 문제가 있으면 점 · 글자가 그 색. */
+.run-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.run-state-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.run-state.tone-ok .run-state-dot {
+  background: var(--ok);
+}
+.run-state-dot.is-live {
+  animation: state-pulse 1.8s var(--ease) infinite;
+}
+@keyframes state-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+.run-state-elapsed {
+  color: var(--muted);
+}
+.run-state.tone-muted {
+  color: var(--muted);
+}
+.run-state.tone-warn {
+  color: var(--warn-ink);
+}
+.run-state.tone-warn .run-state-dot {
+  background: var(--warn);
+}
+.run-state.tone-danger {
+  color: var(--danger-ink);
+}
+.run-state.tone-danger .run-state-dot {
+  background: var(--danger);
+}
+/* 실행 중 끝내는 단추 — 머리 오른쪽 끝 */
+.detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex: none;
+  margin-left: auto;
+}
+.detail-actions .btn {
+  min-height: 40px;
 }
 .detail-title {
   display: flex;
@@ -854,102 +912,6 @@
 }
 .detail-start {
   min-width: 132px;
-}
-.detail-mode-card:has(.detail-controls.is-running) {
-  padding-block: 10px;
-}
-/* 실행 중 — 세그먼트 대신 상태 한 줄(모드 배지 · 저하 칩 · 경과 · 봉 마감 · 서버), 오른쪽은 종료 단추.
-   좁으면 다음 줄로 넘어가되 각 칸은 한 줄. */
-.run-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 14px;
-  flex: 1 1 260px;
-  min-width: 0;
-  min-height: 40px;
-}
-.run-bar-alert {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: var(--fs-small);
-  font-weight: var(--fw-bold);
-  white-space: nowrap;
-}
-.run-bar-alert.tone-warn {
-  background: var(--warn-soft);
-  color: var(--warn-ink);
-}
-.run-bar-alert.tone-danger {
-  background: var(--danger-soft);
-  color: var(--danger-ink);
-}
-.run-bar-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-bold);
-  white-space: nowrap;
-}
-.run-bar-meta.num {
-  color: var(--ink);
-}
-.run-bar-meta svg {
-  color: var(--muted);
-}
-.detail-mode-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 13px 0 11px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--ink);
-  font-size: var(--fs-body);
-  font-weight: var(--fw-bold);
-  white-space: nowrap;
-}
-.detail-mode-badge::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-/* 잘 돌고 있으면 점 둘레가 천천히 퍼짐(저하 상태면 멈춤). */
-.detail-mode-badge.is-live::before {
-  animation: badge-pulse 1.8s var(--ease) infinite;
-}
-@keyframes badge-pulse {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 6px transparent;
-  }
-}
-.detail-mode-badge.mode-testnet {
-  border-color: color-mix(in srgb, var(--info) 40%, transparent);
-  background: var(--info-soft);
-  color: var(--info-ink);
-}
-.detail-mode-badge.mode-testnet::before {
-  background: var(--info);
-}
-.detail-mode-badge.mode-live {
-  border-color: var(--live);
-  background: var(--live);
-  color: var(--on-accent);
-}
-.detail-mode-badge.mode-live::before {
-  background: var(--on-accent);
 }
 .detail-stop {
   display: flex;
@@ -1150,34 +1112,6 @@
   gap: 8px;
   padding: 10px var(--pad) 7px;
   overflow: hidden;
-}
-/* 서버 연결 — 점 색이 상태(목록 카드 상태 점과 같은 뜻): 연결됨 초록·다시 연결 중 주의·거절 빨강·확인 중 회색.
-   글자는 연결됨이면 흐리게, 문제가 있으면 그 색으로. */
-.server-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-.server-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--faint);
-}
-.server-meta.tone-up .server-dot {
-  background: var(--ok);
-}
-.server-meta.tone-warn .server-dot {
-  background: var(--warn);
-}
-.server-meta.tone-down .server-dot {
-  background: var(--danger);
-}
-.server-meta.tone-warn {
-  color: var(--warn-ink);
-}
-.server-meta.tone-down {
-  color: var(--danger-ink);
 }
 /* 끝난 실행 결과 — 종료 칩 · 큰 실현손익 · 네 칸(거래 · 낸 수수료 · 실행 시간 · 마지막 가격). */
 .finished-card {
@@ -2178,12 +2112,11 @@
     flex: 1;
     width: 100%;
   }
-  /* 두 단추가 종목 이름을 누르지 않게 머리줄 아래 줄로 내림 */
+  /* 끝내는 단추가 종목 이름을 누르지 않게 머리줄 아래 줄로 내림 */
   .detail-head {
     flex-wrap: wrap;
   }
-  .detail-links {
-    justify-content: flex-start;
+  .detail-actions {
     width: 100%;
     margin-left: 0;
   }
@@ -2205,6 +2138,39 @@
   display: grid;
   gap: 2px;
   min-width: 0;
+}
+/* 봉 마감 칩 — '15분 봉' 옆. 이번 봉이 얼마나 지났는지 작은 막대 + "03:15 판정 · 12분 남음". */
+.ew-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-sunken);
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: var(--fw-bold);
+  white-space: nowrap;
+}
+.ew-close-left {
+  color: var(--muted);
+}
+.ew-close-bar {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.ew-close-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--brand-deep);
 }
 .ew-sentence {
   margin: 2px 0 0;

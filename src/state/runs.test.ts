@@ -7,7 +7,7 @@ import {
   futuresTag,
   isIdle,
   primaryAction,
-  runningModeText,
+  runStateText,
   settingsElementId,
   settingsTargetOf,
   statusParts,
@@ -55,12 +55,12 @@ describe("상태 문구 나누기", () => {
   });
 });
 
-describe("실행 중 모드 배지", () => {
-  it("받침에 맞춘 조사와 단계별 문구", () => {
-    expect(runningModeText("mock", "running")).toBe("모의로 실행 중");
-    expect(runningModeText("testnet", "starting")).toBe("테스트넷으로 시작하는 중");
-    expect(runningModeText("live", "checking")).toBe("실전으로 시작 전 확인 중");
-    expect(runningModeText("live", "stopping")).toBe("실전으로 실행 중");
+describe("상세 머리 상태 글자", () => {
+  it("모드 없이 단계만", () => {
+    expect(runStateText("running")).toBe("실행 중");
+    expect(runStateText("starting")).toBe("시작하는 중");
+    expect(runStateText("checking")).toBe("시작 전 확인 중");
+    expect(runStateText("stopping")).toBe("종료하는 중");
   });
 });
 

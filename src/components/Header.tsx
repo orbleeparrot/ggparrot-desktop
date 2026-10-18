@@ -1,12 +1,14 @@
-// 머리줄: 심볼·앱 이름(+ 새 버전이 있을 때만 업데이트 알림)·확인할 일이 있을 때만 상태 알약·[웹]·⚙ 설정.
+// 머리줄: 심볼·앱 이름(+ 새 버전이 있을 때만 업데이트 알림)·확인할 일이 있을 때만 상태 알약·[에이전트(web)]·[거래소]·⚙ 설정.
 // - 상태 알약은 확인 필요 · 연결 다시 시도 · 웹에서 받는 중일 때만 — 실행 중 개수는 목록의 '실행 중' 묶음 머리가 말함.
 //   확인 필요면 눌러서 목록의 '확인 필요' 묶음으로 감.
-// - 껄무새 웹은 지구본(언어 선택처럼 보임) 대신 글자 단추 [↗ 웹].
+// - [↗ 에이전트(web)]: 상세에 보이는 실행이 웹 기록을 가지면 웹 내 에이전트의 그 실행 기록, 아니면 내 에이전트.
+// - [↗ 업비트] 등: 상세에 보이는 매크로의 거래소 종목 화면 — 보이는 실행이 없거나 열 화면이 없으면 숨김.
 // 지금 버전은 설정 › 정보에서 봄.
 import { ExternalLink, Settings } from "lucide-react";
 import { useRunnerContext } from "../state/context";
 import { detectPlatform } from "../platform";
 import { isTauri } from "../ipc";
+import type { RunSlot } from "../types";
 import { UpdateChip } from "./UpdateChip";
 import { WindowControls } from "./WindowControls";
 
@@ -20,9 +22,21 @@ function revealAttention() {
   group.querySelector<HTMLElement>(".run-card-select")?.focus({ preventScroll: true });
 }
 
+/** 거래소 종목 화면 단추 글자 — "업비트에서 보기" → "업비트"(전체 문장은 풍선 도움말). */
+function shortMarket(label: string): string {
+  return label.replace(/에서 보기$/, "").trim() || label;
+}
+
+interface Props {
+  view: "run" | "settings";
+  /** 지금 상세에 보이는 실행(설정 화면 · 한 열 목록이면 null). */
+  slot: RunSlot | null;
+  onGear(): void;
+}
+
 /** ⚙은 설정을 여닫는 토글임(설정에서 누르면 실행 화면으로). */
-export function Header({ view, onGear }: { view: "run" | "settings"; onGear(): void }) {
-  const { state, act, openSettings } = useRunnerContext();
+export function Header({ view, slot, onGear }: Props) {
+  const { state, act, ok, openSettings } = useRunnerContext();
   const { status } = state;
   const attention = status.tone === "danger" || status.text.includes("확인 필요");
   const show = state.claiming || status.tone === "warn" || status.tone === "danger";
@@ -59,12 +73,29 @@ export function Header({ view, onGear }: { view: "run" | "settings"; onGear(): v
       <button
         type="button"
         className="btn btn-quiet btn-sm header-web"
-        aria-label="껄무새 웹 열기"
-        title="껄무새 웹 열기 (브라우저)"
-        onClick={() => act("open_web")}
+        title={
+          slot?.webRunPage
+            ? `껄무새 웹 내 에이전트에서 ${slot.macro.symbol} 실행 기록을 열어요`
+            : "껄무새 웹 내 에이전트를 열어요"
+        }
+        onClick={() =>
+          slot?.webRunPage ? void ok("open_run_web_page", { runId: slot.id }) : void act("open_web_agents")
+        }
       >
-        <ExternalLink size={14} aria-hidden="true" />웹
+        <ExternalLink size={14} aria-hidden="true" />
+        에이전트(web)
       </button>
+      {slot?.marketPage && (
+        <button
+          type="button"
+          className="btn btn-quiet btn-sm header-web"
+          title={`${slot.marketPage} — ${slot.macro.symbol} 시세를 브라우저로 열어요`}
+          onClick={() => void ok("open_market_page", { runId: slot.id })}
+        >
+          <ExternalLink size={14} aria-hidden="true" />
+          {shortMarket(slot.marketPage)}
+        </button>
+      )}
       <button
         type="button"
         className={`icon-btn header-gear ${view === "settings" ? "is-on" : ""}`}
