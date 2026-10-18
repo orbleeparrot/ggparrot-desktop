@@ -161,6 +161,16 @@ impl KeySlot {
             other => other.exchange().label(),
         }
     }
+    /// 설정 › 거래소 연결의 칸 제목 옆 바로가기가 여는 거래소 사이트.
+    pub fn site_url(self) -> &'static str {
+        match self {
+            KeySlot::Binance => "https://www.binance.com/",
+            KeySlot::BinanceTestnet => "https://testnet.binance.vision/",
+            KeySlot::BinanceDemo => "https://demo.binance.com/",
+            KeySlot::Upbit => "https://upbit.com/exchange",
+            KeySlot::Bithumb => "https://www.bithumb.com/",
+        }
+    }
     /// 연습 사이트 칸(현물 테스트넷·선물 데모) 여부 — 허용 IP 없이 연습 주소로 확인함.
     pub fn is_practice(self) -> bool {
         matches!(self, KeySlot::BinanceTestnet | KeySlot::BinanceDemo)

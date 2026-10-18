@@ -210,6 +210,11 @@
 .slot-card.is-practice .slot-title {
   font-size: var(--fs-body);
 }
+/* 이름 옆 거래소 사이트 바로가기 — 이름에 붙여 둠(머리 줄 간격 10px 보다 가깝게) */
+.slot-site {
+  margin-left: -8px;
+  color: var(--muted);
+}
 .slot-badge {
   display: inline-flex;
   align-items: center;

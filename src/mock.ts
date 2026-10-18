@@ -492,6 +492,16 @@ export function createMockBackend(
       m.keys[slot as KeySlot].remembered = Boolean(remember);
     },
     check_slot: ({ slot }) => scheduleCheck(slot as KeySlot, 0),
+    open_slot_site: ({ slot }) => {
+      const site: Record<KeySlot, string> = {
+        binance: "https://www.binance.com/",
+        binance_testnet: "https://testnet.binance.vision/",
+        binance_demo: "https://demo.binance.com/",
+        upbit: "https://upbit.com/exchange",
+        bithumb: "https://www.bithumb.com/",
+      };
+      window.open(site[slot as KeySlot], "_blank", "noopener");
+    },
     set_member_key: ({ value }) => {
       m.member = String(value ?? "").trim();
     },
@@ -502,6 +512,9 @@ export function createMockBackend(
     },
     set_close_to_tray: ({ value }) => {
       m.closeToTray = Boolean(value);
+    },
+    set_notify_fills: ({ value }) => {
+      m.notifyFills = Boolean(value);
     },
     set_show_dev_log: ({ show }) => {
       m.showDevLog = Boolean(show);

@@ -99,7 +99,7 @@ pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
     Ok(runner_core::server::entry_preview(&s.inner().http, &base, &key, &macro_).await.unwrap_or(none))
 }
 
-/// '사면 알림으로 알려 주기' — 켜 두면 이 실행의 첫 진입 체결 때 OS 알림을 한 번 띄움.
+/// '사면 소리 · 알림으로 알려 주기' — 켜 두면 보유 없이 기다리다 진입 체결될 때마다 소리와 OS 알림을 띄움.
 #[tauri::command]
 pub fn set_entry_notify(s: State<'_, S>, run_id: String, on: bool) {
     if let Some(run) = s.inner().lock().run_mut(&run_id) {
@@ -152,6 +152,12 @@ pub fn set_slot_remember(s: State<'_, S>, slot: String, remember: bool) -> R<()>
     Ok(())
 }
 
+/// 설정 › 거래소 연결 칸 제목 옆 [↗] — 그 칸의 거래소 사이트를 기본 브라우저로 엶(주소는 Rust가 정함).
+#[tauri::command]
+pub fn open_slot_site(s: State<'_, S>, slot: String) -> R<()> {
+    s.open_url_or_hint(slot_of(&slot)?.site_url())
+}
+
 #[tauri::command]
 pub fn check_slot(s: State<'_, S>, slot: String) -> R<()> {
     s.inner().begin_slot_check(slot_of(&slot)?, true);
@@ -177,6 +183,12 @@ pub fn reveal_member_key(s: State<'_, S>) -> String {
 #[tauri::command]
 pub fn set_close_to_tray(s: State<'_, S>, value: bool) {
     s.inner().set_close_to_tray(value);
+}
+
+/// 설정 › 창 · 화면 '매수 체결 알림'.
+#[tauri::command]
+pub fn set_notify_fills(s: State<'_, S>, value: bool) {
+    s.inner().set_notify_fills(value);
 }
 
 #[tauri::command]

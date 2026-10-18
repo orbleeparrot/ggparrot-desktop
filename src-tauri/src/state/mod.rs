@@ -262,8 +262,11 @@ pub struct Run {
     /// 실전 시작 확인을 띄웠고 아직 답을 받지 않음 — 확인 명령은 이 표시를 써야만 시작함(화면이 오염돼도
     /// 확인 창 없이 실전을 시작하지 못하게).
     pub live_confirm_issued: bool,
-    /// '사면 알림으로 알려 주기'를 켜고 시작함 — 첫 진입 체결 때 OS 알림 한 번 띄우고 끔.
+    /// '사면 소리 · 알림으로 알려 주기'를 켜고 시작함 — 보유 없이 기다리다 진입 체결될 때마다 소리와 OS 알림.
     pub notify_entry_fill: bool,
+    /// 이번 진입을 이미 알렸는지 — 진입 체결에서 켜고, 스냅샷이 다시 무포지션이면 끔(다음 진입을 또 알림).
+    /// 보유 중 추가 매수(마틴게일 추가 · 그리드)는 켜진 채라 다시 울리지 않음.
+    pub entry_alerted: bool,
     pub data: Option<RunData>,
     pub activity: Vec<ActivityDto>,
     pub reporter: Option<Arc<SetupProgressReporter>>,
@@ -319,6 +322,7 @@ impl Run {
             stopping: false,
             live_confirm_issued: false,
             notify_entry_fill: false,
+            entry_alerted: false,
             data: None,
             activity: vec![],
             reporter: None,
@@ -495,6 +499,8 @@ pub struct Core {
     pub show_dev_log: bool,
     /// 창을 닫으면 트레이로 숨기고 계속 실행함(기본 켬).
     pub close_to_tray: bool,
+    /// 매수 체결 알림(기본 켬, 소리 포함) — 끄면 실행마다 고른 '사면 소리 · 알림으로 알려 주기'와 상관없이 띄우지 않음.
+    pub notify_fills: bool,
     pub hidden_to_tray: bool,
     pub server_base: String,
     pub claim_busy: bool,
@@ -545,6 +551,7 @@ impl Core {
             storage_error: String::new(),
             show_dev_log: false,
             close_to_tray: true,
+            notify_fills: true,
             hidden_to_tray: false,
             server_base,
             claim_busy: false,

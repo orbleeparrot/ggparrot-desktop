@@ -59,10 +59,13 @@ export interface CommandMap {
   reveal_slot_key: { args: { slot: KeySlot; field: KeyField }; ret: string };
   set_slot_remember: { args: { slot: KeySlot; remember: boolean }; ret: void };
   check_slot: { args: { slot: KeySlot }; ret: void };
+  /** 설정 › 거래소 연결 칸의 거래소 사이트(주소는 Rust). */
+  open_slot_site: { args: { slot: KeySlot }; ret: void };
   set_member_key: { args: { value: string }; ret: void };
   reveal_member_key: { args: NoArgs; ret: string };
   set_show_dev_log: { args: { show: boolean }; ret: void };
   set_close_to_tray: { args: { value: boolean }; ret: void };
+  set_notify_fills: { args: { value: boolean }; ret: void };
   recover_storage: { args: NoArgs; ret: void };
   reload_storage: { args: NoArgs; ret: void };
   resolve_member_key: { args: { accept: boolean }; ret: void };

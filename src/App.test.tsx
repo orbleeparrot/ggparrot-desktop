@@ -76,23 +76,14 @@ describe("머리줄 바로가기", () => {
     expect(calledWith("open_run_web_page")).toEqual([["open_run_web_page", { runId: "run-1" }]]);
   });
 
-  it("거래소 단추는 보이는 매크로의 거래소 이름 — 상세에서는 바로가기 단추가 빠짐", async () => {
+  it("머리줄에는 거래소 단추가 없다 — 거래소 사이트 바로가기는 설정 › 거래소 연결로(10/18)", async () => {
     current = makeState({ runs: [makeSlot()] });
     render(<App />);
-    const btn = await screen.findByRole("button", { name: "바이낸스" });
-    expect(btn.closest(".app-header")).toBeTruthy();
-    fireEvent.click(btn);
-    expect(calledWith("open_market_page")).toEqual([["open_market_page", { runId: "run-1" }]]);
-    expect(document.querySelector(".detail-head")?.textContent).not.toMatch(/실행 기록|바이낸스$/);
-  });
-
-  it("설정 화면에서는 거래소 단추가 숨는다", async () => {
-    current = makeState({ runs: [makeSlot()] });
-    render(<App />);
-    await screen.findByRole("button", { name: "바이낸스" });
-    fireEvent.click(screen.getByRole("button", { name: "설정" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "바이낸스" })).toBeNull());
-    expect(screen.getByRole("button", { name: "에이전트(web)" })).toBeTruthy();
+    const detail = await screen.findByRole("region", { name: /^바이낸스 BTC/ });
+    const header = document.querySelector(".app-header") as HTMLElement;
+    expect(within(header).getByRole("button", { name: "에이전트(web)" })).toBeTruthy();
+    expect(within(header).queryByRole("button", { name: "바이낸스" })).toBeNull();
+    expect(detail.querySelector(".detail-head")?.textContent).not.toMatch(/실행 기록|바이낸스$/);
   });
 });
 
@@ -175,7 +166,7 @@ describe("실전 확인 시트", () => {
     const box = within(sheet).getByRole("region", { name: "이 매크로는 바로 사지 않아요" });
     expect(box.textContent).toContain("RSI(14)가 30 아래로 내려가면 사요. 조건이 맞을 때만 사요.");
     expect(within(box).getByText("21번 진입")).toBeTruthy();
-    fireEvent.click(within(sheet).getByRole("checkbox", { name: "사면 알림으로 알려 주기" }));
+    fireEvent.click(within(sheet).getByRole("checkbox", { name: "사면 소리 · 알림으로 알려 주기" }));
     fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
     await waitFor(() => expect(calledWith("start_run_confirmed")).toHaveLength(1));
     expect(calledWith("set_entry_notify")).toEqual([["set_entry_notify", { runId: "run-1", on: false }]]);

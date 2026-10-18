@@ -100,9 +100,40 @@ impl Shared {
         });
     }
 
+    /// 지금 공개된 최신 버전을 다시 확인함 — 6시간마다 확인한 결과를 기억해 두면 그 사이 나온 더 새 버전을 놓쳐
+    /// 업데이트를 두 번 해야 했음(2026-10-18). 못 받거나 새 버전이 없으면 None(호출자는 기억해 둔 것을 씀).
+    async fn latest_update(&self) -> Option<tauri_plugin_updater::Update> {
+        use tauri_plugin_updater::UpdaterExt;
+        let updater = self.app.updater_builder().timeout(Duration::from_secs(20)).build().ok()?;
+        updater.check().await.ok().flatten()
+    }
+
+    /// 기억해 둔 업데이트(`have`)보다 확인한 최신(`latest`)이 새로우면 그것으로 바꾸고 화면 버전 · 바뀐 점도 고침.
+    /// 바꿨으면 참 — 받아 둔 설치 파일(옛 버전)은 버림.
+    fn adopt_latest(&self, latest: Option<tauri_plugin_updater::Update>, have: &str) -> bool {
+        let Some(latest) = latest else { return false };
+        if !newer_than_pending(&latest.version, have) {
+            return false;
+        }
+        let (version, notes) = (latest.version.clone(), latest.body.clone().unwrap_or_default());
+        *lock_or_recover(&self.pending_update) = Some(latest);
+        *lock_or_recover(&self.pending_bytes) = None;
+        let mut c = self.lock();
+        c.push_app_log(
+            "info",
+            "update",
+            &format!("더 새 버전 v{version}이 나와 그것으로 받아요"),
+            &format!("v{have} 대신"),
+        );
+        c.update.version = version;
+        c.update.notes = notes;
+        true
+    }
+
     /// 새 버전 설치 파일을 내려받고 서명을 확인함. 설치는 하지 않음 — 끝나면 status=ready.
+    /// 받기 직전에 최신을 다시 확인해 그 버전을 받음(확인한 뒤 또 나온 버전까지 한 번에).
     pub fn update_install(self: &S) -> Result<(), String> {
-        let update = lock_or_recover(&self.pending_update).clone().ok_or("먼저 업데이트를 확인하세요.")?;
+        lock_or_recover(&self.pending_update).as_ref().ok_or("먼저 업데이트를 확인하세요.")?;
         {
             let mut c = self.lock();
             if !c.update.blocked.is_empty() {
@@ -120,6 +151,15 @@ impl Shared {
         self.emit();
         let me = self.clone();
         tauri::async_runtime::spawn(async move {
+            let have = me.lock().update.version.clone();
+            let latest = me.latest_update().await;
+            if me.adopt_latest(latest, &have) {
+                me.emit();
+            }
+            let Some(update) = lock_or_recover(&me.pending_update).clone() else {
+                me.finish_download(Err("no pending update".into()));
+                return;
+            };
             let result = me.download_watched(&update).await;
             me.finish_download(result);
         });
@@ -209,12 +249,39 @@ impl Shared {
                 "실행 중이거나 시작하는 매크로가 {running}개 있어 지금은 설치할 수 없어요. 모두 종료한 뒤 다시 누르세요."
             ));
         }
-        let update = lock_or_recover(&self.pending_update).clone().ok_or("먼저 업데이트를 내려받으세요.")?;
-        let bytes = lock_or_recover(&self.pending_bytes).take().ok_or("먼저 업데이트를 내려받으세요.")?;
+        lock_or_recover(&self.pending_update).as_ref().ok_or("먼저 업데이트를 내려받으세요.")?;
+        lock_or_recover(&self.pending_bytes).as_ref().ok_or("먼저 업데이트를 내려받으세요.")?;
         self.lock().update.status = "installing";
         self.emit();
         let me = self.clone();
         tauri::async_runtime::spawn(async move {
+            // 받아 둔 뒤 더 새 버전이 나왔으면 그것을 받아 바로 설치 — 설치 뒤 또 업데이트하지 않게.
+            let have = me.lock().update.version.clone();
+            let latest = me.latest_update().await;
+            if me.adopt_latest(latest, &have) {
+                me.lock().update.status = "downloading";
+                me.emit();
+                let update = lock_or_recover(&me.pending_update).clone();
+                let result = match update {
+                    Some(u) => me.download_watched(&u).await,
+                    None => Err("no pending update".into()),
+                };
+                match result {
+                    Ok(b) => *lock_or_recover(&me.pending_bytes) = Some(b),
+                    Err(e) => {
+                        me.finish_download(Err(e));
+                        return;
+                    }
+                }
+                me.lock().update.status = "installing";
+                me.emit();
+            }
+            let (Some(update), Some(bytes)) =
+                (lock_or_recover(&me.pending_update).clone(), lock_or_recover(&me.pending_bytes).take())
+            else {
+                me.finish_download(Err("no downloaded update".into()));
+                return;
+            };
             me.shutdown().await;
             // Windows는 여기서 설치 파일을 띄우고 프로세스가 끝남.
             match update.install(&bytes) {
@@ -237,6 +304,11 @@ impl Shared {
         });
         Ok(())
     }
+}
+
+/// 확인한 최신(`latest`)으로 기억해 둔 업데이트(`have`)를 바꿀지 — 더 새로울 때만. 기억해 둔 버전을 모르면(빈 값) 바꿈.
+pub fn newer_than_pending(latest: &str, have: &str) -> bool {
+    have.trim().is_empty() || is_newer(latest, have)
 }
 
 /// a가 b보다 새 버전인지 여부(점으로 나눈 숫자를 차례로 비교, 비거나 못 읽으면 거짓).
@@ -269,7 +341,16 @@ pub fn install_blocker_for(exe: &str, mac: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{install_blocker_for, is_newer};
+    use super::{install_blocker_for, is_newer, newer_than_pending};
+
+    #[test]
+    fn a_later_release_replaces_the_remembered_update_so_one_update_reaches_the_latest() {
+        // 0.20.10 을 확인해 둔 뒤 0.20.11 이 나왔으면 0.20.11 로 받는다(두 번 업데이트하지 않게)
+        assert!(newer_than_pending("0.20.11", "0.20.10"));
+        assert!(!newer_than_pending("0.20.10", "0.20.10"), "같은 버전이면 받아 둔 파일을 그대로 쓴다");
+        assert!(!newer_than_pending("0.20.9", "0.20.10"));
+        assert!(newer_than_pending("0.20.11", ""));
+    }
 
     #[test]
     fn newer_only_when_version_went_up() {

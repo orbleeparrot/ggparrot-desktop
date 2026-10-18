@@ -38,6 +38,8 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   // 실전 시작 확인 시트에 함께 보일 '바로 사지 않아요' — [시작] 때 물어 둔 답(매크로마다).
   const [previews, setPreviews] = useState<Record<string, EntryPreview>>({});
   const [liveNotify, setLiveNotify] = useState(true);
+  // 설정 › 창 · 화면에서 매수 체결 알림을 끄면 시작 확인 창의 체크도 숨김.
+  const fillsOn = state?.settings.notifyFills ?? true;
   const sending = useRef(new Set<string>());
   // 비동기 시작 흐름이 지금 모드를 읽을 곳 — 최신 상태는 effect에서 담음.
   const latest = useRef(state);
@@ -150,14 +152,16 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
           <p className="dialog-meta num">{name(waitAsk.runId)}</p>
           <p>{waitAsk.preview.sentence} 조건이 맞을 때만 사요.</p>
           <WaitFacts typical={waitAsk.preview.typical} />
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={waitAsk.notify}
-              onChange={(e) => setWaitAsk({ ...waitAsk, notify: e.target.checked })}
-            />
-            <span>사면 알림으로 알려 주기</span>
-          </label>
+          {fillsOn && (
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={waitAsk.notify}
+                onChange={(e) => setWaitAsk({ ...waitAsk, notify: e.target.checked })}
+              />
+              <span>사면 소리 · 알림으로 알려 주기</span>
+            </label>
+          )}
         </ConfirmDialog>
       )}
 
@@ -181,10 +185,10 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
         >
           {livePreview && <WaitBox preview={livePreview} />}
           {liveSlot && <MoneyCells macro={liveSlot.macro} compact />}
-          {livePreview && (
+          {livePreview && fillsOn && (
             <label className="check-row">
               <input type="checkbox" checked={liveNotify} onChange={(e) => setLiveNotify(e.target.checked)} />
-              <span>사면 알림으로 알려 주기</span>
+              <span>사면 소리 · 알림으로 알려 주기</span>
             </label>
           )}
         </ConfirmDialog>

@@ -19,14 +19,13 @@ impl Shared {
                         let (slot_changed, notify_fill) = {
                             let mut c = me.lock();
                             c.push_activity(&id, a.kind, &a.title, &a.detail, &a.raw, false, a.tone);
-                            // 진입 체결("buy") — '사면 알림' 을 켜 둔 실행이면 한 번만 알림(시작 전 확인 창에서 고름).
-                            let notify = a.kind == "buy"
-                                && c.run_mut(&id).is_some_and(|r| std::mem::replace(&mut r.notify_entry_fill, false));
+                            // 진입 체결("buy") — '사면 소리 · 알림' 을 켜 둔 실행이면 보유 없이 기다리다 산 진입마다 알림.
+                            let notify = a.kind == "buy" && c.take_entry_alert(&id);
                             // 진입 체결("buy") — 잔고가 있었음. 설정 칸에 남은 잔고 부족 글을 지움.
                             (a.kind == "buy" && c.entry_filled(&id), notify)
                         };
                         if notify_fill {
-                            me.alert_os(&id, "기다리던 조건이 와서 샀어요", &a.title);
+                            me.alert_entry_fill(&id, &a.title);
                         }
                         if slot_changed {
                             me.emit();
@@ -40,10 +39,7 @@ impl Shared {
                         }
                     }
                     BotEvent::Status(snap) => {
-                        if let Some(d) = me.lock().run_mut(&id).and_then(|r| r.data.as_mut()) {
-                            d.snapshot = snap;
-                            d.updated_at = now_ms();
-                        }
+                        me.lock().apply_snapshot(&id, snap);
                         me.emit_soon();
                     }
                     BotEvent::EntryWait(wait) => {
@@ -107,6 +103,27 @@ impl Shared {
 }
 
 impl Core {
+    /// 상태 스냅샷을 반영함. 무포지션이면 진입 알림을 다시 켬(다음 진입 체결을 알림).
+    pub(crate) fn apply_snapshot(&mut self, id: &str, snap: Value) {
+        if let Some(r) = self.run_mut(id) {
+            if let Some(d) = r.data.as_mut() {
+                d.snapshot = snap;
+                d.updated_at = now_ms();
+                if !d.holding() {
+                    r.entry_alerted = false;
+                }
+            }
+        }
+    }
+
+    /// 진입 체결을 알릴지 — 설정의 '매수 체결 알림'과 실행의 '사면 소리 · 알림'이 켜져 있고 이번 진입을 아직 알리지
+    /// 않았으면 true(그리고 알린 것으로 표시).
+    /// 체결 소식이 보유 스냅샷보다 늦게 와도 알림(무포지션 스냅샷에서만 다시 켜지므로).
+    pub(crate) fn take_entry_alert(&mut self, id: &str) -> bool {
+        let on = self.notify_fills;
+        self.run_mut(id).is_some_and(|r| on && r.notify_entry_fill && !std::mem::replace(&mut r.entry_alerted, true))
+    }
+
     /// 봇이 보낸 끝(stopped·error)을 활동에 남기고 실행을 끝난 상태로 둠.
     pub(crate) fn bot_finished(&mut self, id: &str, status: &str, note: &str) {
         let tone = if status == "error" { "danger" } else { "muted" };
@@ -171,6 +188,32 @@ mod tests {
         c.bot_finished("a", "stopped", "");
         let a = c.run("a").unwrap().activity.last().unwrap();
         assert_eq!((a.detail.as_str(), a.raw.as_str()), ("종료", "종료됨 (stopped)"));
+    }
+
+    #[tokio::test]
+    async fn entry_fill_alert_rings_once_per_entry_and_again_after_going_flat() {
+        let mut c = core_running();
+        // 켜지 않았으면 울리지 않음
+        assert!(!c.take_entry_alert("a"));
+        c.run_mut("a").unwrap().notify_entry_fill = true;
+        // 설정에서 매수 체결 알림을 끄면 실행에서 켰어도 울리지 않음(그 진입은 알린 것으로 치지 않음)
+        c.notify_fills = false;
+        c.apply_snapshot("a", json!({"in_position": false}));
+        assert!(!c.take_entry_alert("a"));
+        c.notify_fills = true;
+        // 무포지션에서 진입 → 울림, 보유 중 추가 매수 → 안 울림
+        c.apply_snapshot("a", json!({"in_position": false}));
+        assert!(c.take_entry_alert("a"));
+        c.apply_snapshot("a", json!({"in_position": true}));
+        assert!(!c.take_entry_alert("a"));
+        // 정리 뒤 무포지션 → 다음 진입에서 다시 울림
+        c.apply_snapshot("a", json!({"in_position": false}));
+        assert!(c.take_entry_alert("a"));
+        // 보유 스냅샷이 체결 소식보다 먼저 와도 첫 진입은 울림
+        c.apply_snapshot("a", json!({"in_position": false}));
+        c.apply_snapshot("a", json!({"in_position": true}));
+        assert!(c.take_entry_alert("a"));
+        assert!(!c.take_entry_alert("a"));
     }
 
     #[tokio::test]

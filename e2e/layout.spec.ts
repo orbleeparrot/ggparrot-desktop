@@ -341,9 +341,7 @@ for (const vp of VIEWPORTS) {
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });
 
-    test("머리줄 — 모드를 바꾸거나 다른 매크로를 골라도 [에이전트(web)] · ⚙ 자리가 그대로, [거래소]는 모드를 바꿔도 크기 그대로", async ({
-      page,
-    }) => {
+    test("머리줄 — 모드를 바꾸거나 다른 매크로를 골라도 [에이전트(web)] · ⚙ 자리가 그대로", async ({ page }) => {
       await open(page, "?demo=many&open=1");
       const header = () =>
         page.evaluate(() =>
@@ -371,20 +369,15 @@ for (const vp of VIEWPORTS) {
         note(await header());
         if (!wide) await page.locator(".detail-back").click();
       }
-      // 모드를 바꿔도 [거래소] 크기 그대로(바이낸스 ↔ 바이낸스 데모로 바뀌지 않음)
+      // 모드를 바꿔도 그대로
       if (!wide) await cards.first().click();
       const seg = page.locator(".detail-mode [role=radio]");
-      const market = new Set<string>();
       for (let i = 0; i < (await seg.count()); i++) {
         if (await seg.nth(i).isDisabled()) continue;
         await seg.nth(i).click();
-        const snap = await header();
-        note(snap);
-        const ex = snap.find((b) => b.t !== "에이전트(web)" && b.t !== "설정" && !/새 버전/.test(b.t));
-        if (ex) market.add(`${ex.t}/${ex.w}`);
+        note(await header());
       }
       for (const [t, seen] of fixed) expect(seen.size, `${t} 자리 ${[...seen].join(", ")}`).toBe(1);
-      expect(market.size, `[거래소] ${[...market].join(", ")}`).toBeLessThanOrEqual(1);
     });
 
     test("스크롤되는 곳은 스크롤바 자리를 늘 비워 둠 — 짧은 목록 ↔ 긴 상세를 오가도 폭이 그대로", async ({ page }) => {
@@ -431,13 +424,20 @@ for (const vp of VIEWPORTS) {
     test("설정 › 정보 — [업데이트 확인] · [문의용 정보 복사] · 공인 IP 다시 확인을 눌러도 크기 · 자리 · 줄 높이가 그대로", async ({
       page,
     }) => {
-      await open(page, "?demo=settings");
+      // update=0 — 새 버전이 없는 견본. 기본 견본은 열자마자 자동 확인이 '새 버전 있음'으로 끝나 [업데이트 확인]이
+      // [내려받기]로 바뀌므로(빠르면 처음부터 없음) 단추를 못 찾는 경쟁이 생겼다(WebKit 좁은 창, 2026-10-18).
+      await open(page, "?demo=settings&update=0");
       await page.evaluate(() =>
         Array.from(document.querySelectorAll<HTMLElement>(".settings-nav button"))
           .find((b) => b.textContent?.trim() === "정보")
           ?.click(),
       );
-      await page.waitForTimeout(300);
+      // 자동 확인이 끝나 지금 글자가 [업데이트 확인]일 때부터 잰다.
+      await page.waitForFunction(() =>
+        Array.from(document.querySelectorAll(".settings-body .swap-label > span:not(.is-off)")).some(
+          (e) => e.textContent?.trim() === "업데이트 확인",
+        ),
+      );
       const geo = (label: string) =>
         page.evaluate((label) => {
           const b = Array.from(document.querySelectorAll<HTMLElement>(".settings-body button")).find((x) =>
@@ -539,7 +539,7 @@ for (const vp of VIEWPORTS) {
       if (Math.abs(r.actions.t - r.name.t) < r.actions.h)
         expect(r.name.r, "이름 칸과 단추가 겹치지 않음").toBeLessThanOrEqual(r.actions.l);
       expect(r.headLinks, "상세 머리 바로가기 단추").toBe(0);
-      expect(r.links.map((l) => l.text)).toEqual(["바이낸스", "에이전트(web)"]);
+      expect(r.links.map((l) => l.text)).toEqual(["에이전트(web)"]);
       expect(
         r.links.every((l) => l.lines === 1),
         "머리줄 단추 한 줄",

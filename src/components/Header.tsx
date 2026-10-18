@@ -1,10 +1,8 @@
-// 머리줄: 심볼·앱 이름(+ 새 버전이 있을 때만 업데이트 알림)·확인할 일이 있을 때만 상태 알약·[거래소]·[에이전트(web)]·⚙ 설정.
-// - [거래소]는 거래소 이름만(업비트 · 바이낸스 · 빗썸) — 모드를 바꿔도 글자 · 크기가 그대로. 정확한 곳(바이낸스 데모 등)은 풍선 도움말.
-//   매크로마다 · 설정 화면에서 달라지는 단추라 맨 왼쪽에 둬서 [에이전트(web)] · ⚙ 자리가 늘 그대로.
+// 머리줄: 심볼·앱 이름(+ 새 버전이 있을 때만 업데이트 알림)·확인할 일이 있을 때만 상태 알약·[에이전트(web)]·⚙ 설정.
+// - 거래소 사이트 바로가기는 설정 › 거래소 연결의 칸마다(매크로를 고를 때마다 머리줄 단추가 바뀌던 것 대신, 10/18).
 // - 상태 알약은 확인 필요 · 연결 다시 시도 · 웹에서 받는 중일 때만 — 실행 중 개수는 목록의 '실행 중' 묶음 머리가 말함.
 //   확인 필요면 눌러서 목록의 '확인 필요' 묶음으로 감.
 // - [↗ 에이전트(web)]: 상세에 보이는 실행이 웹 기록을 가지면 웹 내 에이전트의 그 실행 기록, 아니면 내 에이전트.
-// - [↗ 업비트] 등: 상세에 보이는 매크로의 거래소 종목 화면 — 보이는 실행이 없거나 열 화면이 없으면 숨김.
 // 지금 버전은 설정 › 정보에서 봄.
 import { ExternalLink, Settings } from "lucide-react";
 import { useRunnerContext } from "../state/context";
@@ -67,17 +65,6 @@ export function Header({ view, slot, onGear }: Props) {
             </span>
           ))}
       </div>
-      {slot?.marketPage && (
-        <button
-          type="button"
-          className="btn btn-quiet btn-sm header-web"
-          title={`${slot.marketPage} — ${slot.macro.symbol} 시세를 브라우저로 열어요`}
-          onClick={() => void ok("open_market_page", { runId: slot.id })}
-        >
-          <ExternalLink size={14} aria-hidden="true" />
-          {slot.macro.exchangeLabel || slot.marketPage}
-        </button>
-      )}
       <button
         type="button"
         className="btn btn-quiet btn-sm header-web"
