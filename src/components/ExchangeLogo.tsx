@@ -6,7 +6,27 @@ const SRC: Record<Exchange, string> = {
   bithumb: "/exchanges/bithumb.png",
 };
 
-export function ExchangeLogo({ exchange, size = 24 }: { exchange: Exchange | null; size?: number }) {
+/** 거래소 로고. label이 있으면 그 이름으로 읽힘(옆에 거래소 이름 글자가 없을 때), 없으면 장식. */
+export function ExchangeLogo({
+  exchange,
+  size = 24,
+  label = "",
+  className = "",
+}: {
+  exchange: Exchange | null;
+  size?: number;
+  label?: string;
+  className?: string;
+}) {
   if (!exchange) return null;
-  return <img className="ex-logo" src={SRC[exchange]} width={size} height={size} alt="" aria-hidden="true" />;
+  return (
+    <img
+      className={`ex-logo ${className}`.trim()}
+      src={SRC[exchange]}
+      width={size}
+      height={size}
+      alt={label}
+      aria-hidden={label ? undefined : "true"}
+    />
+  );
 }

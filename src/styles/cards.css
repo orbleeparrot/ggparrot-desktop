@@ -10,6 +10,49 @@
   flex: none;
   border-radius: 6px;
 }
+/* 코인 표시(CoinMark.tsx) — 동그란 코인 로고 + 오른쪽 아래 모서리에 겹친 거래소 작은 로고.
+   크기는 --coin(지름)·--coin-badge(작은 로고). 작은 로고 테두리는 둘레 바탕색 --coin-ring으로, 놓인 곳(카드 · 고른 카드 ·
+   대기 행 · 상세 머리줄)이 정함 — 바탕과 같은 색이라 로고 사이에 틈이 난 것처럼 보임. */
+.coin-mark {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--coin);
+  height: var(--coin);
+}
+.coin-mark-logo,
+.coin-mark-letters {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--hover);
+}
+.coin-mark-logo {
+  object-fit: contain;
+}
+/* 로고가 없는 종목 — BASE 앞 세 글자를 조용한 회색 동그라미에(깨진 이미지 아이콘 대신). */
+.coin-mark-letters {
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--muted);
+  font-size: max(7px, calc(var(--coin) * 0.32));
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+.ex-logo.coin-mark-ex {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: var(--coin-badge);
+  height: var(--coin-badge);
+  border-radius: 50%;
+  background: var(--logo-plate);
+  box-shadow: 0 0 0 var(--coin-ring-w, 2px) var(--coin-ring, var(--card));
+  object-fit: contain;
+}
 .macro-summary {
   color: var(--muted);
   font-size: var(--fs-body);

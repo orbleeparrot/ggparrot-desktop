@@ -183,13 +183,14 @@
   border-radius: calc(var(--radius) + 4px);
   background: color-mix(in srgb, var(--warn-soft) 70%, var(--bg));
 }
-/* 대기 — 회색 칸에 한 줄 행, 처음엔 세 줄만 보이고 [N개 모두 보기] */
+/* 대기 — 회색 칸에 한 줄 행, 처음엔 세 줄만 보이고 [N개 모두 보기]. 바탕색은 행의 코인 표시 테두리도 씀(--idle-box-bg). */
 .run-idle-box {
+  --idle-box-bg: color-mix(in srgb, var(--hover) 80%, var(--bg));
   display: flex;
   flex-direction: column;
   padding: 4px;
   border-radius: calc(var(--radius) + 2px);
-  background: color-mix(in srgb, var(--hover) 80%, var(--bg));
+  background: var(--idle-box-bg);
 }
 .run-group.is-idle .run-list {
   gap: 2px;
@@ -246,9 +247,12 @@
   position: relative;
   /* 고른 카드를 보이게 스크롤할 때 붙어 있는 머리·[+ 매크로 추가] 밑으로 숨지 않게 */
   scroll-margin: 48px 0 12px;
+  /* 카드 바탕 — 코인 표시의 작은 로고 테두리(--coin-ring)도 같은 색 */
+  --card-bg: var(--card);
+  --coin-ring: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--card);
+  background: var(--card-bg);
   box-shadow: var(--shadow);
   transition:
     border-color 140ms var(--ease),
@@ -259,22 +263,23 @@
 }
 /* 고른 카드 — 노란 테두리 + 안쪽 옅은 노란 테 · 아주 옅은 노란 바탕(시안 2절). 가장자리 색 막대는 두지 않음. */
 .run-card.is-selected {
+  --card-bg: color-mix(in srgb, var(--brand) 6%, var(--card));
   border-color: var(--brand-hover);
-  background: color-mix(in srgb, var(--brand) 6%, var(--card));
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--brand) 40%, transparent);
 }
-/* 카드는 두 줄(1줄 28px · 2줄 30px) — 글자는 줄바꿈하지 않아 카드 높이가 바뀌지 않음.
+/* 카드는 두 줄(1줄 32px — 코인 표시 높이 · 2줄 24px) — 글자는 줄바꿈하지 않아 카드 높이가 바뀌지 않음.
    고르기 버튼이 카드 전체이고, ×(1줄 오른쪽)·주 버튼(2줄 오른쪽)은 버튼 안에 비워 둔 자리 위에 놓인 형제.
    --act-w: 주 버튼 너비(종류마다 고정) — 2줄 글자가 이만큼 비켜 감. */
 .run-card {
   --act-w: 24px;
   --x-size: 24px;
   --card-pad: 9px;
+  --top-h: 32px;
   container: run-card / inline-size;
 }
 .run-card-select {
   display: grid;
-  grid-template-rows: 20px 24px;
+  grid-template-rows: var(--top-h) 24px;
   row-gap: 3px;
   width: 100%;
   padding: var(--card-pad) 11px var(--card-pad) 12px;
@@ -289,7 +294,7 @@
   outline-offset: -2px;
   border-radius: var(--radius);
 }
-/* 1줄 — 머리(로고·종목·방향·모드)와 오른쪽 칸 */
+/* 1줄 — 머리(코인 표시·종목·방향·모드)와 오른쪽 칸 */
 .run-card-top {
   display: flex;
   align-items: center;
@@ -297,7 +302,7 @@
   min-width: 0;
 }
 /* 줄이는 순서(글자 길이를 재지 않고 격자 크기 계산으로): 종목 칸(minmax)이 먼저 제 너비를 받고 남는 만큼 모드 칸(1fr)이 받음
-   → 모자라면 모드 배지가 먼저 점으로 줄고, 그래도 모자라면 종목이 줄임표(…)로 잘림. 로고·방향 배지는 줄지 않음.
+   → 모자라면 모드 배지가 먼저 점으로 줄고, 그래도 모자라면 종목이 줄임표(…)로 잘림. 코인 표시·선물 배수·방향 배지는 줄지 않음.
    머리는 제 글자 너비보다 넓어지지 않아(flex 0 1 auto) 모드 칸이 남는 자리를 차지하지 않음. */
 .run-card-head {
   display: grid;
@@ -307,10 +312,11 @@
   flex: 0 1 auto;
   min-width: 0;
 }
-.run-card-head > .ex-logo {
+.run-card-head > .coin-mark {
   grid-column: 1;
+  margin-right: 3px;
 }
-.run-card-head > .run-card-symbol {
+.run-card-head > .run-card-name {
   grid-column: 2;
 }
 .run-card-head > .side {
@@ -319,12 +325,26 @@
 .run-card-head > .run-card-mode {
   grid-column: 4;
 }
+/* 종목 칸 — 종목(B3, 줄임표로 줄어듦) + 바이낸스 선물만 '선물 3배'(줄지 않음). 글자 바닥선을 맞춤. */
+.run-card-name {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
 .run-card-symbol {
-  font-size: 14px;
-  font-weight: var(--fw-bold);
+  min-width: 0;
+  font-size: 17px;
+  font-weight: 800;
   letter-spacing: -0.01em;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.run-card-tag {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
 }
 /* 모드 — 색 점 위에 글자 배지를 겹쳐 둠(점은 바깥 너비 0). 칸이 배지보다 좁으면 배지가 둘째 줄로 밀려 가려지고 점만 남음. */
 .run-card-mode {
@@ -488,8 +508,9 @@
 .run-card.act-busy .run-card-action {
   opacity: 1;
 }
+/* × 는 1줄(코인 표시 높이)의 세로 가운데 */
 .run-card-remove-slot {
-  top: var(--card-pad);
+  top: calc(var(--card-pad) + (var(--top-h) - var(--x-size)) / 2);
   width: var(--x-size);
   height: var(--x-size);
 }
@@ -517,19 +538,24 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 대기 묶음의 한 줄 행 — 로고 · 종목 · 숏 · 모드 · 상태 · 전략 …… [▶] · [×] 자리. 바탕은 묶음 칸(회색), 행은 가리킬 때 · 고르면 흰색. */
+/* 대기 묶음의 한 줄 행 — 코인 표시 · 종목 · 숏 · 모드 · 상태 · 전략 …… [▶] · [×] 자리. 바탕은 묶음 칸(회색), 행은 가리킬 때 · 고르면 흰색.
+   코인 표시의 작은 로고(10px)는 테두리를 1.5px로 — 2px이면 로고보다 테두리가 먼저 보임. */
 .run-card.is-compact {
+  --card-bg: transparent;
+  --coin-ring: var(--idle-box-bg);
+  --coin-ring-w: 1.5px;
   border-color: transparent;
-  background: transparent;
   box-shadow: none;
 }
 .run-card.is-compact:hover {
+  --card-bg: var(--card);
+  --coin-ring: var(--card);
   border-color: transparent;
-  background: var(--card);
 }
 .run-card.is-compact.is-selected {
+  --card-bg: var(--card);
+  --coin-ring: var(--card);
   border-color: var(--brand-hover);
-  background: var(--card);
 }
 .run-card.is-compact .run-card-select {
   display: flex;
@@ -539,10 +565,12 @@
   height: 34px;
   padding: 0 8px;
 }
+.run-card.is-compact .run-card-name {
+  flex: 0 1 auto;
+  max-width: 50%;
+}
 .run-card.is-compact .run-card-symbol {
-  flex: none;
-  max-width: 45%;
-  font-size: 12.5px;
+  font-size: 14px;
 }
 .run-card.is-compact .run-card-mode {
   flex: none;
@@ -693,10 +721,17 @@
   display: contents;
 }
 .detail-head {
+  /* 코인 표시의 작은 로고 테두리 — 상세 바탕색 */
+  --coin-ring: var(--bg);
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+/* 코인 표시는 제목 줄 쪽으로 붙임 — 칩이 두 줄로 늘어도 종목 옆에 남음 */
+.detail-head > .coin-mark {
+  align-self: flex-start;
+  margin-right: 2px;
 }
 .detail-back {
   margin-left: -6px;
@@ -717,10 +752,20 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 20px;
-  font-weight: var(--fw-bold);
+  min-width: 0;
+  font-size: 26px;
+  font-weight: 800;
   letter-spacing: -0.02em;
-  line-height: 1.25;
+  line-height: 1.15;
+}
+.detail-ticker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-title > .mode-badge {
+  flex: none;
 }
 .detail-exchange {
   font-size: var(--fs-title);

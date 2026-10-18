@@ -112,6 +112,34 @@ for (const vp of VIEWPORTS) {
                 if (g.overlaps(els[a].box, els[b].box))
                   out.push(`${name}: ${els[a].cls} ${g.fmt(els[a].box)} ↔ ${els[b].cls} ${g.fmt(els[b].box)} 겹침`);
           }
+          // 코인 표시는 줄지 않음(두 줄 카드 32px · 한 줄 행 20px). 거래소 작은 로고는 오른쪽 아래 모서리에 3px 걸치고 카드 안.
+          const size = card.classList.contains("is-compact") ? 20 : 32;
+          const mark = card.querySelector(".coin-mark");
+          if (!mark) out.push(`${name}: 코인 표시 없음`);
+          else {
+            const mb = g.box(mark);
+            if (Math.abs(mb.w - size) > 0.5 || Math.abs(mb.h - size) > 0.5)
+              out.push(`${name}: 코인 표시 ${mb.w}×${mb.h} — ${size}px이어야 함`);
+            const ex = mark.querySelector(".coin-mark-ex");
+            if (ex) {
+              const eb = g.box(ex);
+              if (Math.abs(eb.r - (mb.r + 3)) > 1 || Math.abs(eb.b - (mb.b + 3)) > 1)
+                out.push(`${name}: 거래소 작은 로고 ${g.fmt(eb)}가 코인 표시 ${g.fmt(mb)} 모서리에 있지 않음`);
+              if (!g.inside(eb, cb, 0.5)) out.push(`${name}: 거래소 작은 로고 ${g.fmt(eb)}가 카드 밖`);
+            }
+          }
+          // 종목 글자는 기초 자산만(시장 쌍 KRW-BTC · BTCUSDT 없이), 바이낸스 선물의 '선물 N배'는 잘리지 않음.
+          const ticker = card.querySelector(".run-card-symbol")?.textContent ?? "";
+          if (/USDT$|^KRW|[-_]/.test(ticker)) out.push(`${name}: 종목 글자에 시장 쌍`);
+          const tag = card.querySelector<HTMLElement>(".run-card-tag");
+          if (tag && (!g.shown(tag) || tag.scrollWidth > tag.clientWidth + 0.5))
+            out.push(`${name}: '${tag.textContent}'가 잘리거나 가려짐`);
+          // 1줄 오른쪽 칸(손익 % · 진입 대기 거리)은 한 줄 — 둘째 줄로 떨어지지 않음.
+          const end = card.querySelector(".run-card-top > :last-child:not(.run-card-head)");
+          if (end && g.shown(end)) {
+            const lines = new Set(g.textBoxes(end).map((t) => Math.round(t.box.t)));
+            if (lines.size > 1) out.push(`${name}: 오른쪽 칸 "${end.textContent}"이 ${lines.size}줄`);
+          }
           // 가로로 잘리면서 일부가 보이는 글자는 줄임표(…)로 끝남.
           // - 자리가 모자라면 둘째 줄로 밀어 통째로 가리는 칸(상태 뒷부분·전략·모드 배지)은 보이는 글자가 없어 빠짐.
           for (const el of Array.from(card.querySelectorAll<HTMLElement>(".run-card-select *"))) {
@@ -141,11 +169,13 @@ for (const vp of VIEWPORTS) {
             const mode = card.querySelector<HTMLElement>(".run-card-mode")!;
             const badge = mode.querySelector<HTMLElement>(".mode-badge")!;
             const visibleText = g.textBoxes(sym).reduce((w, t) => w + t.box.w, 0);
+            const fullText = sym.scrollWidth;
             const gap = parseFloat(getComputedStyle(top).columnGap) || 0;
             const room = (end && g.shown(end) ? g.box(end).l : g.box(top).r) - gap;
             return {
               symbol: sym.textContent ?? "",
               visibleText,
+              fullText,
               truncated: sym.scrollWidth > sym.clientWidth,
               ellipsis: getComputedStyle(sym).textOverflow === "ellipsis",
               // 배지가 둘째 줄로 밀려(가려져) 점만 남았는지.
@@ -158,10 +188,13 @@ for (const vp of VIEWPORTS) {
         );
       });
       const problems: string[] = [];
-      for (const s of ["1000SHIBUSDT"]) {
+      // 종목은 기초 자산(1000SHIBUSDT → 1000SHIB) — 짧은 종목은 40px보다 좁을 수 있어 글자 전체 폭과 견줌.
+      const nearlyCut = (visible: number, full: number) => visible < Math.min(40, full - 1);
+      for (const s of ["1000SHIB"]) {
         const r = rows.find((x) => x.symbol === s);
         if (!r) problems.push(`${s} 카드가 없음`);
-        else if (r.visibleText < 40) problems.push(`${s}: 보이는 글자 폭 ${r.visibleText}px — 거의 잘림`);
+        else if (nearlyCut(r.visibleText, r.fullText))
+          problems.push(`${s}: 보이는 글자 폭 ${r.visibleText}px — 거의 잘림`);
       }
       // 대기 묶음의 한 줄 행도 긴 종목이 거의 다 보임(넓은 창은 목록이 따로 굴러가니 행마다 보이게 굴린 뒤 잼).
       const compact = await page.evaluate(() =>
@@ -170,13 +203,15 @@ for (const vp of VIEWPORTS) {
           return {
             symbol: sym.textContent ?? "",
             visible: window.__geo.textBoxes(sym).reduce((w, t) => w + t.box.w, 0),
+            full: sym.scrollWidth,
           };
         }),
       );
-      for (const s of ["BTCDOMUSDT", "KRW-SHIB"]) {
+      // BTCDOMUSDT → BTCDOM, KRW-SHIB → SHIB
+      for (const s of ["BTCDOM", "SHIB"]) {
         const r = compact.find((x) => x.symbol === s);
         if (!r) problems.push(`${s} 행이 없음`);
-        else if (r.visible < 40) problems.push(`${s}: 보이는 글자 폭 ${r.visible}px — 거의 잘림`);
+        else if (nearlyCut(r.visible, r.full)) problems.push(`${s}: 보이는 글자 폭 ${r.visible}px — 거의 잘림`);
       }
       for (const r of rows) {
         if (r.truncated && !r.ellipsis) problems.push(`${r.symbol}: 잘리는데 줄임표 없음`);
@@ -722,13 +757,18 @@ test.describe("1040x720 — 상태 카드 높이", () => {
       }
       if (r.cut) problems.push(`${where}: 보유 수량 "${r.qty}"이 잘림`);
       if (r.title !== r.qty) problems.push(`${where}: 보유 수량 풍선 도움말 "${r.title}" ≠ "${r.qty}"`);
-      if (where.includes("KRW-BTC") && r.qty !== "0.00127 BTC") problems.push(`${where}: 보유 수량 "${r.qty}"`);
-      if (where.includes("KRW-ZAMA") && r.qty !== "499.75012494 ZAMA") problems.push(`${where}: 보유 수량 "${r.qty}"`);
+      // 제목은 "거래소(가려진 글자) 종목 모드" — 시장 쌍 없이 거래소로 업비트 BTC를 가림.
+      if (where.startsWith("업비트 BTC") && r.qty !== "0.00127 BTC") problems.push(`${where}: 보유 수량 "${r.qty}"`);
+      if (where.startsWith("업비트 ZAMA") && r.qty !== "499.75012494 ZAMA")
+        problems.push(`${where}: 보유 수량 "${r.qty}"`);
       if (i === 0) await snap(page, info, "status-card-1040");
     }
-    const symbols = await page.locator(".run-card.is-live .run-card-symbol").allInnerTexts();
-    expect(symbols, "수량 견본(KRW-BTC 0.00127 · KRW-ZAMA 499.75012494)").toEqual(
-      expect.arrayContaining(["KRW-BTC", "KRW-ZAMA"]),
+    // 카드의 풍선 도움말은 거래소 + 종목("업비트 BTC").
+    const names = await page
+      .locator(".run-card.is-live .run-card-name")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("title") ?? ""));
+    expect(names, "수량 견본(KRW-BTC 0.00127 · KRW-ZAMA 499.75012494)").toEqual(
+      expect.arrayContaining(["업비트 BTC", "업비트 ZAMA"]),
     );
     expect(measured, "활동 기록 세 줄 이상인 실행을 잰 수").toBeGreaterThan(0);
     expect(problems).toEqual([]);

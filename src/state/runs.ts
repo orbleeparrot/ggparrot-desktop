@@ -1,5 +1,5 @@
 // 실행 슬롯 표시 규칙 — 모드·방향 이름, 버튼 상태, 막힌 이유에서 설정의 어느 칸으로 갈지.
-import type { KeySlot, RunMode, RunSlot, StopMode } from "../types";
+import type { KeySlot, MacroInfo, RunMode, RunSlot, StopMode } from "../types";
 
 export const MODE_LABELS: Record<RunMode, string> = { mock: "모의", testnet: "테스트넷", live: "실전" };
 
@@ -22,6 +22,29 @@ export function runningModeText(mode: RunMode, phase: Phase): string {
 
 export const SIDE_LABELS = { long: "롱", short: "숏" } as const;
 export const MARKET_LABELS = { spot: "현물", futures: "선물" } as const;
+
+/**
+ * 목록 카드 · 상세 머리줄의 종목 글자 — 기초 자산(B3 · BTC).
+ * - 시장 쌍(KRW-B3 · BTCUSDT)은 보이지 않음: 거래소마다 견적 통화가 하나(업비트 · 빗썸 원화, 바이낸스 USDT)라
+ *   코인 로고 모서리의 거래소 로고로 충분함.
+ * - 확인 창 · 활동 기록처럼 정확한 시장을 밝혀야 하는 곳은 시장 쌍(symbol)을 그대로 씀.
+ */
+export function coinTicker(m: Pick<MacroInfo, "baseAsset" | "symbol">): string {
+  return (m.baseAsset.trim() || m.symbol).toUpperCase();
+}
+
+/** 종목 글자 옆 작은 글자 — 같은 코인이라도 뜻이 다른 바이낸스 선물만 "선물 3배"(배수가 1이거나 모르면 "선물"). 현물은 "". */
+export function futuresTag(m: Pick<MacroInfo, "market" | "leverage">): string {
+  if (m.market !== "futures") return "";
+  return m.leverage > 1 ? `${MARKET_LABELS.futures} ${m.leverage}배` : MARKET_LABELS.futures;
+}
+
+/** 거래소와 종목을 함께 — "업비트 B3"·"바이낸스 BTC 선물 3배". 줄임표로 잘린 종목의 풍선 도움말. */
+export function coinName(
+  m: Pick<MacroInfo, "exchangeLabel" | "exchangeName" | "baseAsset" | "symbol" | "market" | "leverage">,
+): string {
+  return [m.exchangeLabel || m.exchangeName, coinTicker(m), futuresTag(m)].filter(Boolean).join(" ");
+}
 
 export type Phase = RunSlot["phase"];
 

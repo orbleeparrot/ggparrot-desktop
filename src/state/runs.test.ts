@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { binanceMacro, upbitMacro } from "../test/fixtures";
 import {
   canStop,
+  coinName,
+  coinTicker,
+  futuresTag,
   isIdle,
   primaryAction,
   runningModeText,
@@ -57,5 +61,27 @@ describe("실행 중 모드 배지", () => {
     expect(runningModeText("testnet", "starting")).toBe("테스트넷으로 시작하는 중");
     expect(runningModeText("live", "checking")).toBe("실전으로 시작 전 확인 중");
     expect(runningModeText("live", "stopping")).toBe("실전으로 실행 중");
+  });
+});
+
+describe("종목 글자 — 기초 자산만, 시장 쌍은 보이지 않음", () => {
+  it("KRW-B3 · BTCUSDT · ETH_KRW → B3 · BTC · ETH", () => {
+    expect(coinTicker({ baseAsset: "B3", symbol: "KRW-B3" })).toBe("B3");
+    expect(coinTicker({ baseAsset: "btc", symbol: "BTCUSDT" })).toBe("BTC");
+    expect(coinTicker({ baseAsset: "ETH", symbol: "ETH_KRW" })).toBe("ETH");
+  });
+  it("기초 자산을 모르면 시장 쌍 그대로(빈 칸으로 두지 않음)", () => {
+    expect(coinTicker({ baseAsset: "", symbol: "weird" })).toBe("WEIRD");
+  });
+  it("바이낸스 선물만 '선물 N배' — 1배 · 모름은 '선물', 현물은 없음", () => {
+    expect(futuresTag({ market: "futures", leverage: 3 })).toBe("선물 3배");
+    expect(futuresTag({ market: "futures", leverage: 1 })).toBe("선물");
+    expect(futuresTag({ market: "futures", leverage: 0 })).toBe("선물");
+    expect(futuresTag({ market: "spot", leverage: 1 })).toBe("");
+  });
+  it("카드 풍선 도움말은 거래소와 종목 — 시장 쌍 없이", () => {
+    expect(coinName(binanceMacro)).toBe("바이낸스 BTC 선물 3배");
+    expect(coinName(upbitMacro)).toBe("업비트 BTC");
+    expect(coinName({ ...upbitMacro, exchangeLabel: "", exchangeName: "kucoin" })).toBe("kucoin BTC");
   });
 });
