@@ -341,6 +341,40 @@ for (const vp of VIEWPORTS) {
       expect(r.children, "조작 줄 칸 수(모드·단추)").toBe(2);
     });
 
+    test("상세 조작 줄 — 모드를 바꿔도 주 단추([시작] · [실전으로 시작] · [○○ 키 연결하기]) 크기 · 자리가 그대로", async ({
+      page,
+    }) => {
+      await open(page, "?open=1");
+      await page.locator(".detail-controls").waitFor();
+      const seg = page.locator(".detail-mode [role=radio]");
+      const boxes: { mode: string; text: string; w: number; l: number; clipped: boolean }[] = [];
+      for (let i = 0; i < (await seg.count()); i++) {
+        if (await seg.nth(i).isDisabled()) continue;
+        await seg.nth(i).click();
+        boxes.push(
+          await page.evaluate(() => {
+            const btn = document.querySelector(".detail-controls .btn")!;
+            const b = btn.getBoundingClientRect();
+            const mode = document.querySelector(".detail-mode [aria-checked=true]")?.textContent ?? "";
+            return {
+              mode,
+              text: btn.textContent ?? "",
+              w: Math.round(b.width),
+              l: Math.round(b.left),
+              clipped: btn.scrollWidth > btn.clientWidth + 1,
+            };
+          }),
+        );
+      }
+      expect(boxes.length, "고를 수 있는 모드").toBeGreaterThanOrEqual(2);
+      expect(new Set(boxes.map((b) => b.w)).size, `단추 너비 ${JSON.stringify(boxes)}`).toBe(1);
+      expect(new Set(boxes.map((b) => b.l)).size, "단추 자리").toBe(1);
+      expect(
+        boxes.filter((b) => b.clipped),
+        "글자 잘림",
+      ).toEqual([]);
+    });
+
     test("상세 머리 — 실행 중: 모드 카드 없이 제목 옆 상태 한 줄 · 끝내는 단추는 오른쪽 끝, 바로가기는 앱 머리줄", async ({
       page,
     }, info) => {

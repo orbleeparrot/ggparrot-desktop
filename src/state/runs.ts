@@ -10,6 +10,11 @@ export const MODE_NOTES: Record<RunMode, string> = {
   live: "실제 자금으로 주문해요. 시작할 때 한 번 더 확인해요.",
 };
 
+/** 고른 모드의 설명 — 바이낸스 선물의 테스트넷 모드는 데모 키(demo.binance.com)로 돌아서 그 이름으로(Rust KeySlot::for_run). */
+export function modeNote(mode: RunMode, market: MacroInfo["market"]): string {
+  return mode === "testnet" && market === "futures" ? "바이낸스 데모 키로 연습 주문을 보내요." : MODE_NOTES[mode];
+}
+
 /** 상세 머리 제목 옆 상태 글자 — 모드는 제목 옆 배지(실전 · 테스트넷)가 말하므로 단계만. */
 export function runStateText(phase: Phase): string {
   if (phase === "checking") return "시작 전 확인 중";
