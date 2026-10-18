@@ -235,7 +235,7 @@ describe("mock 백엔드 — 앱 기록", () => {
     expect(log.some((e) => e.source === "update" && e.level === "warn")).toBe(true);
   });
 
-  it("앱 기록 복사 줄은 날짜 · 수준 · 출처 · 제목 — 설명(줄바꿈은 /)", () => {
+  it("앱 기록 복사 줄은 연도 · 날짜 · 수준 · 출처 · 제목 — 설명(줄바꿈은 /)", () => {
     const line = appLogLine({
       id: 1,
       at: new Date(2026, 9, 16, 9, 5, 7).getTime(),
@@ -244,6 +244,6 @@ describe("mock 백엔드 — 앱 기록", () => {
       title: "웹 연결 요청을 확인하지 못했어요.",
       detail: "첫째\n둘째",
     });
-    expect(line).toBe("10-16 09:05:07  주의 [web] 웹 연결 요청을 확인하지 못했어요. — 첫째 / 둘째");
+    expect(line).toBe("2026-10-16 09:05:07  주의 [web] 웹 연결 요청을 확인하지 못했어요. — 첫째 / 둘째");
   });
 });

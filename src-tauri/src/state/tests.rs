@@ -612,9 +612,10 @@ fn activity_copy_keeps_recent_lines_within_limit() {
     assert!(!text.contains("줄 10\n"), "오래된 줄은 빠짐");
     let all = activity_copy_text("[머리말]", &items[..3], ACTIVITY_COPY_CHARS);
     assert!(!all.contains("뺐어요"), "한도 안이면 다 담음");
-    // 날짜까지 붙음(MM-DD HH:MM:SS)
+    // 연도까지 붙음(YYYY-MM-DD HH:MM:SS) — 해를 넘긴 기록도 헷갈리지 않게
     let line = all.lines().nth(1).unwrap();
-    assert!(line.as_bytes()[2] == b'-' && line.as_bytes()[5] == b' ', "{line}");
+    assert!(line.as_bytes()[4] == b'-' && line.as_bytes()[7] == b'-' && line.as_bytes()[10] == b' ', "{line}");
+    assert_eq!(copy_line_time(items[0].at).len(), 19);
 }
 
 #[test]
@@ -638,7 +639,7 @@ fn activity_copy_keeps_the_error_code_line_indented_under_its_entry() {
     let lines: Vec<&str> = text.lines().collect();
     assert!(lines[1].contains("잔고가 모자라 주문하지 못했어요 — 주문할 원화 잔고가 모자라요."), "{text}");
     assert!(!lines[1].contains("insufficient"), "제목·설명 줄에는 코드가 없음");
-    assert_eq!(lines[3], "                오류 코드: insufficient_funds_bid", "{text}");
+    assert_eq!(lines[3], "                     오류 코드: insufficient_funds_bid", "{text}");
 }
 
 #[test]
@@ -807,7 +808,7 @@ fn app_log_hides_keys_and_tokens_in_lines_and_copy() {
     }
     assert!(text.contains("[키 숨김]") && text.contains("https://x.test/p"), "{text}");
     let line = text.lines().nth(1).unwrap();
-    assert!(line.as_bytes()[2] == b'-' && line.contains("오류 [update] 실패"), "날짜·수준·출처: {line}");
+    assert!(line.as_bytes()[4] == b'-' && line.contains("오류 [update] 실패"), "연도 · 날짜 · 수준 · 출처: {line}");
 }
 
 #[test]

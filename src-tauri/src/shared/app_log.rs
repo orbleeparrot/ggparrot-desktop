@@ -29,7 +29,12 @@ impl Shared {
     pub fn copy_app_log(&self) -> Result<(), String> {
         let text = {
             let c = self.lock();
-            let head = format!("[껄무새 앱 기록] v{} · {}", self.version, os_summary());
+            let head = format!(
+                "[껄무새 앱 기록] v{} · {} · {}",
+                self.version,
+                os_summary(),
+                crate::state::copied_at(chrono::Local::now())
+            );
             app_log_copy_text(&head, &c.app_log, ACTIVITY_COPY_CHARS)
         };
         self.copy_text(&text, "앱 기록을 복사하지 못했어요.")

@@ -54,11 +54,9 @@ fn level_label(level: &str) -> &'static str {
     }
 }
 
-/// 복사·문의용 한 줄 — "10-16 14:03:22  주의 [web] 제목 — 설명". 설명의 줄바꿈은 " / "로 이음.
+/// 복사·문의용 한 줄 — "2026-10-16 14:03:22  주의 [web] 제목 — 설명". 설명의 줄바꿈은 " / "로 이음.
 pub fn app_log_line(e: &AppLogEntry) -> String {
-    let t = chrono::DateTime::from_timestamp_millis(e.at)
-        .map(|d| d.with_timezone(&chrono::Local).format("%m-%d %H:%M:%S").to_string())
-        .unwrap_or_default();
+    let t = super::copy_line_time(e.at);
     let mut line = format!("{t}  {} [{}] {}", level_label(e.level), e.source, e.title);
     let detail: Vec<&str> = e.detail.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     if !detail.is_empty() {
