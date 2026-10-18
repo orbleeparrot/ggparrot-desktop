@@ -590,7 +590,15 @@
 .run-row-status.tone-muted {
   color: var(--muted);
 }
-.run-row-strategy::before {
+/* 작은 글자(12px)라 진한 쪽 — 주의 · 오류 */
+.run-row-status.tone-warn {
+  color: var(--warn-ink);
+}
+.run-row-status.tone-danger {
+  color: var(--danger-ink);
+}
+/* 상태 낱말이 없는 줄(그냥 기다림)은 전략만 — 앞 구분점 없이 */
+.run-row-status + .run-row-strategy::before {
   content: "·";
   margin: 0 5px;
   color: var(--faint);

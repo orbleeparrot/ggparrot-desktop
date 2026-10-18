@@ -186,3 +186,52 @@ describe("내 매크로 카드 — 코인 표시 · 종목", () => {
     expect(screen.getByRole("button", { name: "KRW-BTC 목록에서 빼기" })).toBeTruthy();
   });
 });
+
+describe("내 매크로 한 줄 행(대기 묶음)", () => {
+  const line = (card: HTMLElement) => card.querySelector(".run-row-line")!;
+
+  it("그냥 기다리는 줄은 '대기 중' 없이 전략만", () => {
+    const { card } = renderCard(makeSlot(), { compact: true });
+    expect(line(card).querySelector(".run-row-status")).toBeNull();
+    expect(line(card).textContent).toBe(makeSlot().macro.strategy);
+    expect(line(card).getAttribute("title")).toContain("대기 중");
+  });
+
+  it("끝난 줄은 이유 문장 대신 '종료', 오류면 '오류로 멈춤'(빨강) — 이유는 title 에", () => {
+    const note = "지난 실행이 정상적으로 끝나지 않았어요(앱 강제 종료 · 전원 꺼짐 등)";
+    const { card } = renderCard(
+      makeSlot({
+        phase: "finished",
+        status: { text: "종료됨 · 매크로만 종료", tone: "muted" },
+        run: makeRun({ finished: { status: "stopped", note: "매크로만 종료", at: 1 } }),
+      }),
+      { compact: true },
+    );
+    expect(line(card).querySelector(".run-row-status")?.textContent).toBe("종료");
+    cleanup();
+    const { card: err } = renderCard(
+      makeSlot({
+        phase: "finished",
+        status: { text: `종료됨 · ${note}`, tone: "danger" },
+        run: makeRun({ finished: { status: "error", note, at: 1 } }),
+      }),
+      { compact: true },
+    );
+    const st = line(err).querySelector(".run-row-status")!;
+    expect(st.textContent).toBe("오류로 멈춤");
+    expect(st.className).toContain("tone-danger");
+    expect(line(err).textContent).not.toContain("지난 실행");
+    expect(line(err).getAttribute("title")).toContain(note);
+  });
+
+  it("시작 전 확인 필요는 그대로", () => {
+    const { card } = renderCard(
+      makeSlot({
+        status: { text: "시작 전 확인 필요", tone: "warn" },
+        readiness: { canStart: false, blocker: "키가 필요해요", needs: null },
+      }),
+      { compact: true },
+    );
+    expect(line(card).querySelector(".run-row-status")?.textContent).toBe("시작 전 확인 필요");
+  });
+});

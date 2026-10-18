@@ -52,6 +52,15 @@ export function statusParts(text: string): [string, string] {
   return i < 0 ? [text, ""] : [text.slice(0, i), text.slice(i + 3)];
 }
 
+/** 대기 묶음 한 줄 행의 상태 낱말 — 끝난 이유 문장은 상세 결과 카드가 말하므로 목록엔 낱말 하나.
+ *  그냥 기다리는 줄('대기 중')은 묶음 이름이 이미 '대기'라 null(전략 이름만). */
+export function rowStatus(slot: Pick<RunSlot, "phase" | "status" | "readiness" | "run">): RunSlot["status"] | null {
+  if (slot.phase === "finished")
+    return { text: slot.run?.finished?.status === "error" ? "오류로 멈춤" : "종료", tone: slot.status.tone };
+  if (slot.phase === "idle" && slot.readiness.canStart) return null;
+  return slot.status;
+}
+
 /** 대기 중이거나 끝난 슬롯만 모드를 바꾸고, 시작하고, 목록에서 뺄 수 있음. */
 export function isIdle(phase: Phase): boolean {
   return phase === "idle" || phase === "finished";
