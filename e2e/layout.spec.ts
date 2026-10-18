@@ -431,13 +431,20 @@ for (const vp of VIEWPORTS) {
     test("설정 › 정보 — [업데이트 확인] · [문의용 정보 복사] · 공인 IP 다시 확인을 눌러도 크기 · 자리 · 줄 높이가 그대로", async ({
       page,
     }) => {
-      await open(page, "?demo=settings");
+      // update=0 — 새 버전이 없는 견본. 기본 견본은 열자마자 자동 확인이 '새 버전 있음'으로 끝나 [업데이트 확인]이
+      // [내려받기]로 바뀌므로(빠르면 처음부터 없음) 단추를 못 찾는 경쟁이 생겼다(WebKit 좁은 창, 2026-10-18).
+      await open(page, "?demo=settings&update=0");
       await page.evaluate(() =>
         Array.from(document.querySelectorAll<HTMLElement>(".settings-nav button"))
           .find((b) => b.textContent?.trim() === "정보")
           ?.click(),
       );
-      await page.waitForTimeout(300);
+      // 자동 확인이 끝나 지금 글자가 [업데이트 확인]일 때부터 잰다.
+      await page.waitForFunction(() =>
+        Array.from(document.querySelectorAll(".settings-body .swap-label > span:not(.is-off)")).some(
+          (e) => e.textContent?.trim() === "업데이트 확인",
+        ),
+      );
       const geo = (label: string) =>
         page.evaluate((label) => {
           const b = Array.from(document.querySelectorAll<HTMLElement>(".settings-body button")).find((x) =>
