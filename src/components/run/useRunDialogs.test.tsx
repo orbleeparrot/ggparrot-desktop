@@ -51,7 +51,7 @@ describe("시작 전 진입 대기 안내", () => {
     expect(screen.getByText("약 2일")).toBeTruthy();
     expect(act).not.toHaveBeenCalledWith("start_run", expect.anything());
     // 알림 끄고 시작
-    fireEvent.click(screen.getByLabelText("사면 알림으로 알려 주기"));
+    fireEvent.click(screen.getByLabelText("사면 소리 · 알림으로 알려 주기"));
     fireEvent.click(screen.getByText("기다리며 시작"));
     await waitFor(() => expect(act).toHaveBeenCalledWith("start_run", { runId: "run-1" }));
     expect(act).toHaveBeenCalledWith("set_entry_notify", { runId: "run-1", on: false });

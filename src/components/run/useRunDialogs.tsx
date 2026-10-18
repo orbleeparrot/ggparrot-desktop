@@ -156,7 +156,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
               checked={waitAsk.notify}
               onChange={(e) => setWaitAsk({ ...waitAsk, notify: e.target.checked })}
             />
-            <span>사면 알림으로 알려 주기</span>
+            <span>사면 소리 · 알림으로 알려 주기</span>
           </label>
         </ConfirmDialog>
       )}
@@ -184,7 +184,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
           {livePreview && (
             <label className="check-row">
               <input type="checkbox" checked={liveNotify} onChange={(e) => setLiveNotify(e.target.checked)} />
-              <span>사면 알림으로 알려 주기</span>
+              <span>사면 소리 · 알림으로 알려 주기</span>
             </label>
           )}
         </ConfirmDialog>

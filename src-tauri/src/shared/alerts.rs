@@ -1,4 +1,5 @@
 //! OS 알림 — 창이 앞에 없을 때 위험한 상황을 알림. 같은 원인으로 여러 실행이 같은 알림을 띄우지 않게 묶음.
+//! 진입 체결 알림('사면 소리 · 알림으로 알려 주기')은 창이 앞에 있어도 소리와 함께 띄움(Windows 오른쪽 아래 토스트).
 
 use super::*;
 
@@ -15,6 +16,13 @@ pub struct AlertSlot {
 
 /// 같은 제목의 OS 알림을 묶는 시간.
 const ALERT_WINDOW_MS: i64 = 60_000;
+
+/// 시스템 기본 알림음 이름 — Windows 토스트는 "Default"(ms-winsoundevent:Notification.Default), macOS 는
+/// NSUserNotificationDefaultSoundName. 그 밖(리눅스 개발 빌드)은 소리 이름 힌트만 보냄.
+#[cfg(target_os = "macos")]
+const NOTIFY_SOUND: &str = "NSUserNotificationDefaultSoundName";
+#[cfg(not(target_os = "macos"))]
+const NOTIFY_SOUND: &str = "Default";
 
 impl Shared {
     /// 창이 앞에 없을 때 OS 알림을 띄움. 같은 실행·같은 제목은 1분에 한 번, 다른 실행의 같은 제목(서버 끊김처럼
@@ -51,7 +59,7 @@ impl Shared {
         match flush_in {
             None => {
                 let head = if symbol.is_empty() { title.to_string() } else { format!("{symbol} · {title}") };
-                self.show_os_notification(&head, body);
+                self.show_os_notification(&head, body, false);
             }
             Some(wait) => {
                 let (me, title, body) = (self.clone(), title.to_string(), body.to_string());
@@ -67,16 +75,38 @@ impl Shared {
                     };
                     if let Some(first) = names.first() {
                         let more = if names.len() > 1 { format!(" 외 {}개", names.len() - 1) } else { String::new() };
-                        me.show_os_notification(&format!("{first}{more} · {title}"), &body);
+                        me.show_os_notification(&format!("{first}{more} · {title}"), &body, false);
                     }
                 });
             }
         }
     }
 
-    fn show_os_notification(&self, title: &str, body: &str) {
+    /// 기다리던 진입이 체결됨 — 창이 앞에 있어도(실행기를 보고 있어도) 소리와 함께 OS 알림. 묶지 않음(실행마다 다른 체결).
+    pub(crate) fn alert_entry_fill(self: &S, run_id: &str, fill: &str) {
+        let (symbol, short) = {
+            let c = self.lock();
+            let Some(r) = c.run(run_id) else { return };
+            let symbol =
+                if r.mode == RunMode::Live { r.symbol() } else { format!("{} · {}", r.symbol(), r.mode.label()) };
+            (symbol, macro_side(&r.macro_) == runner_core::types::Side::Short)
+        };
+        let title = if short {
+            "기다리던 조건이 와서 공매도했어요"
+        } else {
+            "기다리던 조건이 와서 샀어요"
+        };
+        self.show_os_notification(&format!("{symbol} · {title}"), fill, true);
+    }
+
+    /// OS 알림. `sound` 면 시스템 기본 알림음(Windows 토스트 'Default' · macOS 기본 소리) — 아니면 Windows 토스트는 소리 없음.
+    fn show_os_notification(&self, title: &str, body: &str, sound: bool) {
         use tauri_plugin_notification::NotificationExt;
-        if let Err(e) = self.app.notification().builder().title(title).body(body).show() {
+        let mut n = self.app.notification().builder().title(title).body(body);
+        if sound {
+            n = n.sound(NOTIFY_SOUND);
+        }
+        if let Err(e) = n.show() {
             eprintln!("os notification failed: {e}");
         }
     }

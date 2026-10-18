@@ -99,7 +99,7 @@ pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
     Ok(runner_core::server::entry_preview(&s.inner().http, &base, &key, &macro_).await.unwrap_or(none))
 }
 
-/// '사면 알림으로 알려 주기' — 켜 두면 이 실행의 첫 진입 체결 때 OS 알림을 한 번 띄움.
+/// '사면 소리 · 알림으로 알려 주기' — 켜 두면 보유 없이 기다리다 진입 체결될 때마다 소리와 OS 알림을 띄움.
 #[tauri::command]
 pub fn set_entry_notify(s: State<'_, S>, run_id: String, on: bool) {
     if let Some(run) = s.inner().lock().run_mut(&run_id) {
