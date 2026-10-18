@@ -599,7 +599,7 @@ impl Bot {
 
     pub fn snapshot(&self) -> Value {
         let price = self.last_price;
-        json!({
+        let mut snap = json!({
             "in_position": self.in_position,
             "position_uncertain": self.position_uncertain,
             "last_price": price,
@@ -608,19 +608,16 @@ impl Bot {
             "realized_pnl": self.realized,
             "unrealized_pct": if self.in_position && price != 0.0 { pnl_pct(self.entry_price, price, self.side) } else { 0.0 },
             "note": if self.position_uncertain { "주문 결과가 불확실해요 · 거래소에서 주문과 포지션을 확인하세요.".to_string() } else { self.dust_note() },
-        })
+        });
+        self.put_net(&mut snap);
+        snap
     }
 
-    /// 화면으로만 보내는 상태 — 서버 스냅샷에 수수료 반영 손익·투입금·낸 수수료(모르면 null)와
-    /// 전일 대비 등락률(국내만)을 덧붙임. 서버로 가는 값(realized_pnl·unrealized_pct)은 수수료 전 그대로 둠.
-    pub fn ui_snapshot(&self, mut snap: Value) -> Value {
-        let known = |v: f64| if self.fees_complete { json!(v) } else { Value::Null };
-        snap["fees_paid"] = known(self.fees_quote);
-        snap["realized_net"] = known(self.realized_net);
+    /// 수수료 반영 손익 — 화면과 서버(웹)가 같은 숫자를 보이게 둘 다에 실음(2026-10-18: 실행기 +1.23% · 웹 +1.33%).
+    /// 실현손익은 수수료를 다 알 때만, 평가손익은 진입 수수료를 알 때만 — 모르면 null(웹은 수수료 전 값으로 표시).
+    fn put_net(&self, snap: &mut Value) {
+        snap["realized_net"] = if self.fees_complete { json!(self.realized_net) } else { Value::Null };
         let holding = self.in_position && self.entry_price > 0.0 && self.held_qty > 0.0 && self.last_price > 0.0;
-        let fee = if self.open_fee_known { self.open_entry_fee } else { 0.0 };
-        snap["invested"] =
-            json!(if self.in_position { crate::pnl::invested(self.held_qty, self.entry_price, fee) } else { 0.0 });
         let (amount, pct) = if holding && self.open_fee_known {
             let amount = self.unrealized_net(self.last_price);
             let base = crate::pnl::invested(self.held_qty, self.entry_price, self.open_entry_fee);
@@ -632,6 +629,15 @@ impl Bot {
         };
         snap["unrealized_net"] = amount;
         snap["unrealized_net_pct"] = pct;
+    }
+
+    /// 화면으로만 보내는 상태 — 서버 스냅샷(수수료 반영 손익 포함)에 투입금·낸 수수료(모르면 null)와
+    /// 전일 대비 등락률(국내만)을 덧붙임. 서버로 가는 수수료 전 값(realized_pnl·unrealized_pct)은 그대로 둠.
+    pub fn ui_snapshot(&self, mut snap: Value) -> Value {
+        snap["fees_paid"] = if self.fees_complete { json!(self.fees_quote) } else { Value::Null };
+        let fee = if self.open_fee_known { self.open_entry_fee } else { 0.0 };
+        snap["invested"] =
+            json!(if self.in_position { crate::pnl::invested(self.held_qty, self.entry_price, fee) } else { 0.0 });
         snap["day_change"] = json!(self.broker.as_ref().and_then(|b| b.day_change()));
         snap
     }
