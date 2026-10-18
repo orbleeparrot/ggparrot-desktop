@@ -770,3 +770,34 @@
     align-items: flex-start;
   }
 }
+
+/* 화면 테마 고르기 — 회색 틀 안에서 고른 칸만 흰 바탕(노랑은 주요 행동에만 쓰므로 여기선 안 씀) */
+.theme-pick {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--hover);
+}
+.theme-pick-item {
+  min-width: 64px;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.theme-pick-item:hover:not(.is-on) {
+  color: var(--ink);
+}
+.theme-pick-item.is-on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.14);
+}

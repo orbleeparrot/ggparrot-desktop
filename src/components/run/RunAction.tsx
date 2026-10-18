@@ -25,10 +25,11 @@ export function RunAction({ slot }: { slot: RunSlot }) {
     );
   }
   if (action.kind === "stop") {
+    const choices = stopChoices(slot);
     return (
       <StopMenu
-        label={`${name} 종료`}
-        choices={stopChoices(slot)}
+        label={`${name} ${choices.length === 1 ? choices[0].label : "종료"}`}
+        choices={choices}
         onChoose={(mode) => askStop(slot.id, mode)}
         iconOnly
       />

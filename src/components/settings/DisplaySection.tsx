@@ -1,5 +1,6 @@
-// 설정 › 화면 — 백그라운드 실행·개발자 로그 보기.
+// 설정 › 창 · 화면 — 화면 테마(시스템 · 라이트 · 다크) · 백그라운드 실행 · 개발자 로그 보기.
 import { useRunnerContext } from "../../state/context";
+import { THEME_LABELS, useThemePref, type ThemePref } from "../../state/theme";
 import { Section } from "./Section";
 import { Toggle } from "./Toggle";
 
@@ -8,9 +9,32 @@ const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform
 export function DisplaySection() {
   const { state, act } = useRunnerContext();
   const where = isMac ? "메뉴 막대" : "작업 표시줄 알림 영역";
+  const [theme, setTheme] = useThemePref();
   return (
     <Section id="display" title="창 · 화면">
       <div className="plain-card">
+        <div className="toggle-row">
+          <div className="toggle-text">
+            <span id="theme-label" className="strong">
+              화면 테마
+            </span>
+            <span className="muted">시스템은 OS의 라이트 · 다크 설정을 따라가요.</span>
+          </div>
+          <div className="theme-pick" role="radiogroup" aria-labelledby="theme-label">
+            {(Object.keys(THEME_LABELS) as ThemePref[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="radio"
+                aria-checked={theme === k}
+                className={`theme-pick-item ${theme === k ? "is-on" : ""}`}
+                onClick={() => setTheme(k)}
+              >
+                {THEME_LABELS[k]}
+              </button>
+            ))}
+          </div>
+        </div>
         <Toggle
           label="창을 닫아도 계속 실행"
           hint={`창을 닫으면 ${where}의 껄무새 아이콘으로 숨어요. 매크로는 계속 돌고, 아이콘을 눌러 다시 열 수 있어요.${

@@ -658,6 +658,39 @@ for (const vp of VIEWPORTS) {
       expect(r).toEqual([]);
     });
 
+    test("매크로 추가 시트 — 위 단추 · 아래 폴더 줄은 고정, 목록만 안에서 굴러감", async ({ page }, info) => {
+      await open(page, "?demo=library");
+      await page.locator(".side-sheet").waitFor();
+      await snap(page, info, "library");
+      const before = await page.evaluate(() => {
+        const g = window.__geo;
+        const sheet = g.box(document.querySelector(".side-sheet")!);
+        const body = document.querySelector<HTMLElement>(".lib-scroll")!;
+        return {
+          sheet,
+          ih: innerHeight,
+          actions: g.box(document.querySelector(".lib-actions")!),
+          foot: g.box(document.querySelector(".lib-foot")!),
+          overflow: getComputedStyle(body).overflowY,
+          scrollable: body.scrollHeight > body.clientHeight,
+        };
+      });
+      expect(before.sheet.b, "시트가 창 아래로 넘치지 않음").toBeLessThanOrEqual(before.ih + 0.5);
+      expect(before.foot.b, "아래 폴더 줄이 창 안").toBeLessThanOrEqual(before.ih + 0.5);
+      expect(["auto", "scroll"]).toContain(before.overflow);
+      if (before.scrollable) {
+        await page.locator(".lib-scroll").evaluate((el) => el.scrollBy(0, 400));
+        const after = await page.evaluate(() => ({
+          actions: window.__geo.box(document.querySelector(".lib-actions")!),
+          foot: window.__geo.box(document.querySelector(".lib-foot")!),
+          top: document.querySelector<HTMLElement>(".lib-scroll")!.scrollTop,
+        }));
+        expect(after.top, "목록이 굴러감").toBeGreaterThan(0);
+        expect(after.actions.t, "위 단추는 그대로").toBe(before.actions.t);
+        expect(after.foot.t, "아래 폴더 줄은 그대로").toBe(before.foot.t);
+      }
+    });
+
     test("가로 넘침 없음 — 주요 화면", async ({ page }) => {
       const problems: string[] = [];
       for (const q of [
