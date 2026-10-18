@@ -140,11 +140,12 @@ impl Shared {
             let c = self.lock();
             let r = c.run(id).ok_or(FAILED)?;
             let head = format!(
-                "[껄무새 활동 기록] {} {} · {} · v{}",
+                "[껄무새 활동 기록] {} {} · {} · v{} · {}",
                 runner_core::types::exchange_label(&r.exchange_name()),
                 r.symbol(),
                 r.mode.label(),
-                self.version
+                self.version,
+                crate::state::copied_at(chrono::Local::now())
             );
             crate::state::activity_copy_text(&head, &r.activity, crate::state::ACTIVITY_COPY_CHARS)
         };

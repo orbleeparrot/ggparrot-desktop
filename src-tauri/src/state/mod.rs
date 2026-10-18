@@ -33,16 +33,26 @@ pub fn clip_chars(s: &str, max: usize) -> String {
     }
 }
 
+/// 복사 글의 줄 시각 — 연도까지("2026-10-18 19:00:05", 이 PC 시간대). 해를 넘긴 기록도 헷갈리지 않게(2026-10-19).
+pub fn copy_line_time(ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|d| d.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_default()
+}
+
+/// 복사 글 머리말 끝 — 복사한 시각과 시간대("복사 2026-10-19 00:12 (+09:00)"). 줄 시각이 어느 시간대인지 알려 줌.
+pub fn copied_at(now: chrono::DateTime<chrono::Local>) -> String {
+    format!("복사 {}", now.format("%Y-%m-%d %H:%M (%:z)"))
+}
+
 /// 활동 기록 복사 글 — 맨 위 머리말, 줄마다 날짜·시각. 한도를 넘으면 오래된 줄부터 빼고 뺀 수를 적음.
 pub fn activity_copy_text(head: &str, items: &[ActivityDto], max_chars: usize) -> String {
     let lines: Vec<String> = items
         .iter()
         .map(|a| {
-            let t = chrono::DateTime::from_timestamp_millis(a.at)
-                .map(|d| d.with_timezone(&chrono::Local).format("%m-%d %H:%M:%S").to_string())
-                .unwrap_or_default();
-            // 원문 줄(자세히 보기)이 여러 줄이면(오류 코드 줄 등) 같은 들여쓰기로 이음. 원문 로그 줄의 제목은 한 줄로.
-            const INDENT: &str = "\n                ";
+            let t = copy_line_time(a.at);
+            // 원문 줄(자세히 보기)이 여러 줄이면(오류 코드 줄 등) 같은 들여쓰기로 이음(시각 19자 + 빈칸 2). 원문 로그 줄의 제목은 한 줄로.
+            const INDENT: &str = "\n                     ";
             let mut line = format!("{t}  {}", a.title.replace('\n', " "));
             if !a.detail.is_empty() {
                 line.push_str(&format!(" — {}", a.detail));

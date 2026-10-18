@@ -63,7 +63,7 @@ const LOG_LEVEL_LABELS: Record<AppLogLevel, string> = { info: "알림", warn: "�
 export function appLogLine(e: AppLogEntry): string {
   const d = new Date(e.at);
   const p = (n: number) => String(n).padStart(2, "0");
-  const t = `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  const t = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
   const detail = e.detail
     .split("\n")
     .map((l) => l.trim())
