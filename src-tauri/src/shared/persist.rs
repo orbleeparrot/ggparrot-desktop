@@ -47,7 +47,8 @@ impl Shared {
             &json!({
                 "show_dev_log": c.show_dev_log,
                 "close_to_tray": c.close_to_tray,
-                "notify_fills": c.notify_fills,
+                // 키 이름은 옛 '매수 체결 알림' 그대로 — 켜 둔 · 끈 값을 이어받음.
+                "notify_fills": c.notify,
                 "last_version": self.version,
             }),
         )
@@ -89,7 +90,7 @@ impl Shared {
             if let Ok(v) = serde_json::from_str::<Value>(&text) {
                 c.show_dev_log = v.get("show_dev_log").and_then(Value::as_bool).unwrap_or(false);
                 c.close_to_tray = v.get("close_to_tray").and_then(Value::as_bool).unwrap_or(true);
-                c.notify_fills = v.get("notify_fills").and_then(Value::as_bool).unwrap_or(true);
+                c.notify = v.get("notify_fills").and_then(Value::as_bool).unwrap_or(true);
                 let last = v.get("last_version").and_then(Value::as_str).unwrap_or("");
                 if is_newer(&self.version, last) {
                     c.update.updated_from = last.to_string();

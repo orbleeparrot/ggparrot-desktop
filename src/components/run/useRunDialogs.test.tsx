@@ -9,9 +9,8 @@ vi.mock("../../ipc", () => ({ on: () => Promise.resolve(() => undefined) }));
 
 afterEach(cleanup);
 
-function Harness({ act, notify = {} }: { act: Act; notify?: { notifyFills?: boolean } }) {
-  const base = makeState({ runs: [makeSlot()] });
-  const state = { ...base, settings: { ...base.settings, ...notify } };
+function Harness({ act }: { act: Act }) {
+  const state = makeState({ runs: [makeSlot()] });
   const flows = useRunDialogs({ state, act, toast: vi.fn(), openSettings: vi.fn() });
   return (
     <>
@@ -52,18 +51,10 @@ describe("시작 전 진입 대기 안내", () => {
     expect(screen.getByText("21번 진입")).toBeTruthy();
     expect(screen.getByText("약 2일")).toBeTruthy();
     expect(act).not.toHaveBeenCalledWith("start_run", expect.anything());
-    // 알림 끄고 시작
-    fireEvent.click(screen.getByLabelText("사면 소리 · 알림으로 알려 주기"));
+    // 알림은 설정 '알림' 하나로 켜고 끔 — 시작 확인 창에 실행마다 고르는 체크가 없다
+    expect(screen.queryByRole("checkbox")).toBeNull();
     fireEvent.click(screen.getByText("기다리며 시작"));
     await waitFor(() => expect(act).toHaveBeenCalledWith("start_run", { runId: "run-1" }));
-    expect(act).toHaveBeenCalledWith("set_entry_notify", { runId: "run-1", on: false });
-  });
-
-  it("설정에서 매수 체결 알림을 끄면 시작 확인 창에 체크가 없다", async () => {
-    render(<Harness act={fakeAct(waiting)} notify={{ notifyFills: false }} />);
-    fireEvent.click(screen.getByText("시작"));
-    expect(await screen.findByText("이 매크로는 바로 사지 않아요")).toBeTruthy();
-    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
   it("기다리지 않는 매크로나 서버가 답하지 않으면 안내 없이 바로 시작", async () => {

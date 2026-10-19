@@ -1,7 +1,27 @@
-//! OS 알림 — 창이 앞에 없을 때 위험한 상황을 알림. 같은 원인으로 여러 실행이 같은 알림을 띄우지 않게 묶음.
-//! 진입 체결 알림('사면 소리 · 알림으로 알려 주기')은 창이 앞에 있어도 소리와 함께 띄움(Windows 오른쪽 아래 토스트).
+//! OS 알림 — 체결 · 평가손익 구간 · 오류 · 위험 · 서버 끊김 · 실행 멈춤을 알림음과 함께 띄움(Windows 오른쪽 아래 토스트).
+//! 켜고 끄는 곳은 설정 › 창 · 화면 '알림' 하나(2026-10-20 — 예전엔 매수 체결만 따로 켜고, 나머지는 창이 뒤에 있을 때만 떴다).
+//! 같은 원인으로 여러 실행이 같은 알림을 띄우지 않게 묶음(서버 끊김처럼 원인이 하나인 것).
 
 use super::*;
+
+/// OS 알림 한 건. `group` 이면 1분 안에 다른 실행에서 온 같은 제목을 '외 N개' 한 번으로 묶음(체결 · 손익처럼 실행마다
+/// 다른 소식은 묶지 않음).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Alert {
+    pub title: String,
+    pub body: String,
+    pub group: bool,
+}
+
+impl Alert {
+    pub fn once(title: &str, body: &str) -> Alert {
+        Alert { title: title.into(), body: body.into(), group: false }
+    }
+
+    pub fn grouped(title: &str, body: &str) -> Alert {
+        Alert { title: title.into(), body: body.into(), group: true }
+    }
+}
 
 /// 제목 하나의 OS 알림 묶음. 첫 알림은 바로, 1분 안에 다른 실행에서 온 같은 알림은 모아서 한 번 더.
 #[derive(Default)]
@@ -25,26 +45,36 @@ const NOTIFY_SOUND: &str = "NSUserNotificationDefaultSoundName";
 const NOTIFY_SOUND: &str = "Default";
 
 impl Shared {
-    /// 창이 앞에 없을 때 OS 알림을 띄움. 같은 실행·같은 제목은 1분에 한 번, 다른 실행의 같은 제목(서버 끊김처럼
-    /// 원인이 하나인 경우)은 1분 동안 모아 '외 N개' 한 번으로.
-    pub(crate) fn alert_os(self: &S, run_id: &str, title: &str, body: &str) {
-        let watching = self
-            .app
-            .get_webview_window("main")
-            .is_some_and(|w| w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false));
-        if watching {
+    /// 알림을 띄움 — 설정 '알림'이 꺼져 있으면 아무것도 안 함. 창을 보고 있어도 띄움(소리 포함).
+    /// 묶는 알림은 같은 실행 · 같은 제목을 1분에 한 번, 다른 실행의 같은 제목은 1분 동안 모아 '외 N개' 한 번으로.
+    pub(crate) fn alert_os(self: &S, run_id: &str, alert: Alert) {
+        let symbol =
+            {
+                let c = self.lock();
+                if !c.notify {
+                    return;
+                }
+                // 모의 · 테스트넷이면 모드를 붙임(실전과 헷갈리지 않게).
+                c.run(run_id)
+                    .map(|r| {
+                        if r.mode == RunMode::Live {
+                            r.symbol()
+                        } else {
+                            format!("{} · {}", r.symbol(), r.mode.label())
+                        }
+                    })
+                    .unwrap_or_default()
+            };
+        let Alert { title, body, group } = alert;
+        if !group {
+            let head = if symbol.is_empty() { title } else { format!("{symbol} · {title}") };
+            self.show_os_notification(&head, &body, true);
             return;
         }
-        // 트레이에 숨겨 둔 사람이 모의인지 알 수 있게 실전이 아니면 모드를 붙임.
-        let symbol = self
-            .lock()
-            .run(run_id)
-            .map(|r| if r.mode == RunMode::Live { r.symbol() } else { format!("{} · {}", r.symbol(), r.mode.label()) })
-            .unwrap_or_default();
         let now = now_ms();
         let flush_in = {
             let mut alerts = lock_or_recover(&self.os_alerts);
-            let slot = alerts.entry(title.to_string()).or_default();
+            let slot = alerts.entry(title.clone()).or_default();
             if now - slot.at >= ALERT_WINDOW_MS {
                 *slot = AlertSlot { at: now, shown: [run_id.to_string()].into(), pending: vec![] };
                 None
@@ -58,11 +88,11 @@ impl Shared {
         };
         match flush_in {
             None => {
-                let head = if symbol.is_empty() { title.to_string() } else { format!("{symbol} · {title}") };
-                self.show_os_notification(&head, body, false);
+                let head = if symbol.is_empty() { title } else { format!("{symbol} · {title}") };
+                self.show_os_notification(&head, &body, true);
             }
             Some(wait) => {
-                let (me, title, body) = (self.clone(), title.to_string(), body.to_string());
+                let me = self.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(wait.max(0) as u64)).await;
                     let names = {
@@ -75,29 +105,11 @@ impl Shared {
                     };
                     if let Some(first) = names.first() {
                         let more = if names.len() > 1 { format!(" 외 {}개", names.len() - 1) } else { String::new() };
-                        me.show_os_notification(&format!("{first}{more} · {title}"), &body, false);
+                        me.show_os_notification(&format!("{first}{more} · {title}"), &body, true);
                     }
                 });
             }
         }
-    }
-
-    /// 기다리던 진입이 체결됨 — 창이 앞에 있어도(실행기를 보고 있어도) 소리와 함께 OS 알림. 묶지 않음(실행마다 다른 체결).
-    /// 끄는 곳은 설정 › 창 · 화면 '매수 체결 알림' 하나(소리만 끄려면 OS 알림 설정에서).
-    pub(crate) fn alert_entry_fill(self: &S, run_id: &str, fill: &str) {
-        let (symbol, short) = {
-            let c = self.lock();
-            let Some(r) = c.run(run_id) else { return };
-            let symbol =
-                if r.mode == RunMode::Live { r.symbol() } else { format!("{} · {}", r.symbol(), r.mode.label()) };
-            (symbol, macro_side(&r.macro_) == runner_core::types::Side::Short)
-        };
-        let title = if short {
-            "기다리던 조건이 와서 공매도했어요"
-        } else {
-            "기다리던 조건이 와서 샀어요"
-        };
-        self.show_os_notification(&format!("{symbol} · {title}"), fill, true);
     }
 
     /// OS 알림. `sound` 면 시스템 기본 알림음(Windows 토스트 'Default' · macOS 기본 소리) — 아니면 Windows 토스트는 소리 없음.

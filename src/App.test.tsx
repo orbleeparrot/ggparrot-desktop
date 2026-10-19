@@ -166,10 +166,10 @@ describe("실전 확인 시트", () => {
     const box = within(sheet).getByRole("region", { name: "이 매크로는 바로 사지 않아요" });
     expect(box.textContent).toContain("RSI(14)가 30 아래로 내려가면 사요. 조건이 맞을 때만 사요.");
     expect(within(box).getByText("21번 진입")).toBeTruthy();
-    fireEvent.click(within(sheet).getByRole("checkbox", { name: "사면 소리 · 알림으로 알려 주기" }));
+    // 알림은 설정 › 창 · 화면 '알림' 하나로 — 실행마다 고르는 체크는 없음
+    expect(within(sheet).queryByRole("checkbox")).toBeNull();
     fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
     await waitFor(() => expect(calledWith("start_run_confirmed")).toHaveLength(1));
-    expect(calledWith("set_entry_notify")).toEqual([["set_entry_notify", { runId: "run-1", on: false }]]);
   });
 
   it("검사가 끝난 뒤 온 runner:confirm 도 같은 시트 · Esc 로 닫으면 시작하지 않는다", async () => {

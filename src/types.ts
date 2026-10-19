@@ -245,8 +245,8 @@ export interface SettingsState {
   showDevLog: boolean;
   /** 창을 닫으면 트레이(메뉴 막대·알림 영역)로 숨기고 매크로는 계속 실행함. */
   closeToTray: boolean;
-  /** 매수 체결 알림(기본 켬, 소리 포함) — 끄면 시작 확인 창의 '사면 소리 · 알림' 체크도 숨김. */
-  notifyFills: boolean;
+  /** 알림(기본 켬, 소리 포함) — 체결 · 평가손익 구간 · 오류 · 서버 끊김 · 실행 멈춤 OS 알림을 한 스위치로. */
+  notify: boolean;
   serverBase: string;
   /** 기본 운영 서버가 아닌 곳에 연결됨 — 정보 화면에 서버 주소를 보여 줌. */
   serverCustom: boolean;

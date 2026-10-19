@@ -177,7 +177,7 @@ mod deep_link;
 mod keys;
 pub(crate) use keys::ConnectedSlot;
 mod launch;
-pub use alerts::AlertSlot;
+pub use alerts::{Alert, AlertSlot};
 #[cfg(test)]
 pub(crate) use launch::leftover_warning;
 mod library_folder;

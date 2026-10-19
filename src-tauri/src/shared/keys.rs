@@ -413,8 +413,8 @@ impl Shared {
         self.set_pref(|c| c.close_to_tray = value);
     }
 
-    pub fn set_notify_fills(self: &S, value: bool) {
-        self.set_pref(|c| c.notify_fills = value);
+    pub fn set_notify(self: &S, value: bool) {
+        self.set_pref(|c| c.notify = value);
     }
 
     pub fn set_show_dev_log(self: &S, show: bool) {
