@@ -45,7 +45,7 @@ export function DisplaySection() {
         />
         <Toggle
           label="알림"
-          hint="사고판 체결 · 평가손익 ±3%부터 구간마다 · 주문 오류와 잔고 부족 · 서버 끊김 · 실행이 멈춤을 알림음과 함께 화면 구석(Windows는 오른쪽 아래)에 띄워요."
+          hint="사고판 체결 · 평가손익 ±2%부터 구간마다 · 주문 오류와 잔고 부족 · 서버 끊김 · 실행이 멈춤을 알림음과 함께 화면 구석(Windows는 오른쪽 아래)에 띄워요."
           checked={state.settings.notify}
           onChange={(value) => act("set_notify", { value })}
         />

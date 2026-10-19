@@ -104,8 +104,8 @@ impl Shared {
     }
 }
 
-/// 평가손익 알림 구간(%) — 웹 [내 에이전트] 알림(서버 PNL_ALERT_BANDS)과 같음.
-const PNL_BANDS: [f64; 7] = [3.0, 5.0, 10.0, 15.0, 20.0, 30.0, 50.0];
+/// 평가손익 알림 구간(%) — ±2%부터(2026-10-20 사용자 결정, 웹 [내 에이전트] 알림은 ±3%부터).
+const PNL_BANDS: [f64; 7] = [2.0, 5.0, 10.0, 15.0, 20.0, 30.0, 50.0];
 
 /// 지금 평가손익이 든 가장 깊은 구간(부호 포함). 어느 구간에도 안 들면 0.
 fn pnl_band(pct: f64) -> f64 {
@@ -113,7 +113,7 @@ fn pnl_band(pct: f64) -> f64 {
 }
 
 impl Core {
-    /// 상태 스냅샷을 반영함. 보유 중 평가손익이 새 구간(±3 · 5 · 10 …%)에 처음 들어가면 알림을 돌려줌 —
+    /// 상태 스냅샷을 반영함. 보유 중 평가손익이 새 구간(±2 · 5 · 10 …%)에 처음 들어가면 알림을 돌려줌 —
     /// 같은 쪽 더 깊은 구간이거나 반대쪽 구간일 때만(경계에서 오르내려도 반복하지 않음). 무포지션이면 처음부터 셈.
     /// 실행기 화면과 같은 수수료 반영 값을 쓰고, 모르면 평단 대비 가격(수수료 전)이라고 밝힘.
     pub(crate) fn apply_snapshot(&mut self, id: &str, snap: Value) -> Option<Alert> {
@@ -252,29 +252,29 @@ mod tests {
     async fn pnl_alerts_fire_once_per_band_and_reset_when_flat() {
         let mut c = core_running();
         let mut seen = vec![];
-        for pct in [0.4, 2.9, 1.1, 3.2, 2.8, 3.4, 4.9, 5.1, -3.3, -4.0, -3.1] {
+        for pct in [0.4, 1.9, 1.1, 2.2, 1.8, 2.4, 4.9, 5.1, -2.3, -4.0, -2.1] {
             if let Some(a) = c.apply_snapshot("a", holding(pct)) {
                 seen.push(a.title);
             }
         }
-        assert_eq!(seen, ["수익이 +3%를 넘었어요", "수익이 +5%를 넘었어요", "손실이 -3%를 넘었어요"]);
+        assert_eq!(seen, ["수익이 +2%를 넘었어요", "수익이 +5%를 넘었어요", "손실이 -2%를 넘었어요"]);
         // 정리 뒤(무포지션) 다시 들면 처음부터 셈
         assert!(c.apply_snapshot("a", json!({"in_position": false})).is_none());
-        let a = c.apply_snapshot("a", holding(-3.5)).unwrap();
-        assert_eq!(a, Alert::once("손실이 -3%를 넘었어요", "지금 평가손익 -3.50%"));
+        let a = c.apply_snapshot("a", holding(-2.5)).unwrap();
+        assert_eq!(a, Alert::once("손실이 -2%를 넘었어요", "지금 평가손익 -2.50%"));
         assert_eq!(pnl_band(-12.0), -10.0);
-        assert_eq!(pnl_band(2.99), 0.0);
+        assert_eq!(pnl_band(1.99), 0.0);
     }
 
     #[tokio::test]
     async fn pnl_alert_says_when_it_uses_the_price_move_before_fees() {
         let mut c = core_running();
-        let a = c.apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 3.2})).unwrap();
-        assert_eq!(a.body, "지금 평가손익 +3.20% (수수료 전)");
-        // 수수료 반영 값이 있으면 그 값으로 — 가격은 +3% 를 넘었어도 수수료를 빼면 아직이면 조용함
+        let a = c.apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 2.2})).unwrap();
+        assert_eq!(a.body, "지금 평가손익 +2.20% (수수료 전)");
+        // 수수료 반영 값이 있으면 그 값으로 — 가격은 +2% 를 넘었어도 수수료를 빼면 아직이면 조용함
         let mut c = core_running();
         assert!(c
-            .apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 3.1, "unrealized_net_pct": 2.9}))
+            .apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 2.1, "unrealized_net_pct": 1.9}))
             .is_none());
     }
 
