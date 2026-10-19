@@ -99,14 +99,6 @@ pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
     Ok(runner_core::server::entry_preview(&s.inner().http, &base, &key, &macro_).await.unwrap_or(none))
 }
 
-/// '사면 소리 · 알림으로 알려 주기' — 켜 두면 보유 없이 기다리다 진입 체결될 때마다 소리와 OS 알림을 띄움.
-#[tauri::command]
-pub fn set_entry_notify(s: State<'_, S>, run_id: String, on: bool) {
-    if let Some(run) = s.inner().lock().run_mut(&run_id) {
-        run.notify_entry_fill = on;
-    }
-}
-
 #[tauri::command]
 pub fn stop_run(s: State<'_, S>, run_id: String, mode: String) -> R<()> {
     let mode = StopMode::parse(&mode).ok_or("알 수 없는 종료 방식이에요.")?;
@@ -185,10 +177,10 @@ pub fn set_close_to_tray(s: State<'_, S>, value: bool) {
     s.inner().set_close_to_tray(value);
 }
 
-/// 설정 › 창 · 화면 '매수 체결 알림'.
+/// 설정 › 창 · 화면 '알림' — 모든 OS 알림을 켜고 끔.
 #[tauri::command]
-pub fn set_notify_fills(s: State<'_, S>, value: bool) {
-    s.inner().set_notify_fills(value);
+pub fn set_notify(s: State<'_, S>, value: bool) {
+    s.inner().set_notify(value);
 }
 
 #[tauri::command]

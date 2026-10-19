@@ -442,7 +442,6 @@ export function createMockBackend(
       const w = mockEntryWait(Date.now(), 0);
       return { waiting: true, sentence: w.sentence, typical: w.typical, interval_label: w.interval_label };
     },
-    set_entry_notify: () => undefined,
     stop_run: ({ runId, mode }) => stop(findRun(runId), mode as StopMode),
     copy_activity: ({ runId }) => {
       const text = activityText(activity.get(String(runId)) ?? [], formatClock);
@@ -513,8 +512,8 @@ export function createMockBackend(
     set_close_to_tray: ({ value }) => {
       m.closeToTray = Boolean(value);
     },
-    set_notify_fills: ({ value }) => {
-      m.notifyFills = Boolean(value);
+    set_notify: ({ value }) => {
+      m.notify = Boolean(value);
     },
     set_show_dev_log: ({ show }) => {
       m.showDevLog = Boolean(show);

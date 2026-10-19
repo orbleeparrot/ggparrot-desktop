@@ -1,4 +1,4 @@
-// 설정 › 창 · 화면 — 화면 테마(시스템 · 라이트 · 다크) · 백그라운드 실행 · 매수 체결 알림 · 개발자 로그 보기.
+// 설정 › 창 · 화면 — 화면 테마(시스템 · 라이트 · 다크) · 백그라운드 실행 · 알림 · 개발자 로그 보기.
 import { useRunnerContext } from "../../state/context";
 import { THEME_LABELS, useThemePref, type ThemePref } from "../../state/theme";
 import { Section } from "./Section";
@@ -44,10 +44,10 @@ export function DisplaySection() {
           onChange={(value) => act("set_close_to_tray", { value })}
         />
         <Toggle
-          label="매수 체결 알림"
-          hint="기다리던 조건이 와서 사면 알림음과 함께 화면 구석(Windows는 오른쪽 아래)에 알림을 띄워요."
-          checked={state.settings.notifyFills}
-          onChange={(value) => act("set_notify_fills", { value })}
+          label="알림"
+          hint="사고판 체결 · 평가손익 ±2%부터 구간마다 · 주문 오류와 잔고 부족 · 서버 끊김 · 실행이 멈춤을 알림음과 함께 화면 구석(Windows는 오른쪽 아래)에 띄워요."
+          checked={state.settings.notify}
+          onChange={(value) => act("set_notify", { value })}
         />
         <Toggle
           label="개발자 로그 보기"

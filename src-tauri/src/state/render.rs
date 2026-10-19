@@ -208,7 +208,7 @@ impl Core {
             },
             show_dev_log: self.show_dev_log,
             close_to_tray: self.close_to_tray,
-            notify_fills: self.notify_fills,
+            notify: self.notify,
             server_base: self.server_base.clone(),
             server_custom: !is_default_server(&self.server_base),
             os: crate::shared::os_summary().into(),
@@ -779,7 +779,7 @@ pub(crate) struct SettingsDto {
     storage: StorageDto,
     show_dev_log: bool,
     close_to_tray: bool,
-    notify_fills: bool,
+    notify: bool,
     server_base: String,
     /// 기본 운영 서버가 아닌 곳(개발 서버·환경 변수)에 연결됨 — 정보 화면에 서버 주소를 보여 줌.
     server_custom: bool,

@@ -303,7 +303,7 @@ export interface Model {
   memberPending: string;
   showDevLog: boolean;
   closeToTray: boolean;
-  notifyFills: boolean;
+  notify: boolean;
   storage: SettingsState["storage"];
   wizard: WizardState | null;
   /** 정보 화면의 공인 IP(미리보기는 정해진 주소). */
@@ -348,7 +348,7 @@ export function initialModel(params: URLSearchParams, now = Date.now()): Model {
     memberPending: "",
     showDevLog: params.get("dev") === "1",
     closeToTray: true,
-    notifyFills: true,
+    notify: true,
     storage: broken
       ? {
           status: broken,

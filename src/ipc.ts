@@ -40,7 +40,6 @@ export interface CommandMap {
   start_run: { args: RunArg; ret: StartReply };
   start_run_confirmed: { args: RunArg; ret: StartReply };
   entry_preview: { args: RunArg; ret: EntryPreview };
-  set_entry_notify: { args: RunArg & { on: boolean }; ret: void };
   stop_run: { args: RunArg & { mode: StopMode }; ret: void };
   copy_activity: { args: RunArg; ret: void };
   open_market_page: { args: RunArg; ret: void };
@@ -65,7 +64,7 @@ export interface CommandMap {
   reveal_member_key: { args: NoArgs; ret: string };
   set_show_dev_log: { args: { show: boolean }; ret: void };
   set_close_to_tray: { args: { value: boolean }; ret: void };
-  set_notify_fills: { args: { value: boolean }; ret: void };
+  set_notify: { args: { value: boolean }; ret: void };
   recover_storage: { args: NoArgs; ret: void };
   reload_storage: { args: NoArgs; ret: void };
   resolve_member_key: { args: { accept: boolean }; ret: void };
