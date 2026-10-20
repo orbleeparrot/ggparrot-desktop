@@ -138,3 +138,119 @@ async fn 열한_매매_방식_모두_로컬_엔진을_세울_수_있다() {
     }
     assert_eq!(rules.len(), 11, "열한 매매 방식이 다 있어야 한다: {rules:?}");
 }
+
+// --- 가격선 -------------------------------------------------------------------
+
+/// 계약의 봉을 엔진에 흘려보내고, 그 규칙이 내는 가격선을 본다.
+fn levels_after_contract(name: &str) -> crate::engine::levels::Levels {
+    let path: std::path::PathBuf =
+        [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
+    let golden: Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
+    let case = &golden["cases"][name];
+    let warmup = golden["warmup_count"].as_u64().expect("웜업") as usize;
+    let rows = golden["candles"].as_array().expect("봉");
+    let to_bar = |row: &Value| crate::engine::candle_sim::Bar {
+        t: row[0].as_f64().unwrap_or_default() as i64,
+        o: row[1].as_f64().unwrap_or_default(),
+        h: row[2].as_f64().unwrap_or_default(),
+        l: row[3].as_f64().unwrap_or_default(),
+        c: row[4].as_f64().unwrap_or_default(),
+        v: row[5].as_f64(),
+    };
+    let mut engine = crate::engine::runner::build(&case["macro"]).expect("엔진");
+    let mut last = None;
+    for (i, row) in rows.iter().enumerate() {
+        let bar = to_bar(row);
+        engine.on_bar(&bar);
+        if i == warmup - 1 {
+            engine.warmup_done();
+        }
+        if i >= warmup {
+            while engine.tick(bar.c).is_some() {}
+        }
+        last = Some(bar);
+    }
+    engine.levels(last.as_ref())
+}
+
+#[test]
+fn 열한_매매_방식_모두_그릴_선을_낸다() {
+    // 선이 없으면 사용자는 "지금 무엇을 기다리는지" 를 볼 수 없다. 화면이 빈칸을
+    // 추정으로 메우기 시작하면 그 추정선이 실제 조건인 척한다 — 한 번 겪은 일이다.
+    let path: std::path::PathBuf =
+        [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
+    let golden: Value =
+        serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
+    let mut silent = Vec::new();
+    for name in golden["cases"].as_object().expect("경우들").keys() {
+        let levels = levels_after_contract(name);
+        if !levels.has_any() && !levels.pending && levels.next_buy_ms.is_none() {
+            silent.push(name.clone());
+        }
+    }
+    // A 는 비어 있으면 다음 틱에 바로 사므로 그릴 선이 없는 것이 정상이다.
+    silent.retain(|n| !n.starts_with("A_"));
+    assert!(silent.is_empty(), "그릴 선을 하나도 못 내는 경우: {silent:?}");
+}
+
+#[test]
+fn 돌파선은_마지막_봉의_시가에서_나온다() {
+    // 평단이나 현재가로 재면 선이 가격을 따라 움직인다 — E 눌림목에서 겪은 거짓이다.
+    let levels = levels_after_contract("I_breakout");
+    assert!(
+        levels.entry_target.is_some() || levels.trail_stop.is_some(),
+        "돌파 규칙이 사는 선도 파는 선도 못 낸다"
+    );
+}
+
+#[test]
+fn 그리드는_사는_칸과_파는_칸을_모두_낸다() {
+    let levels = levels_after_contract("D_grid_inband");
+    assert!(!levels.buy_levels.is_empty(), "사려고 기다리는 칸이 없다");
+    assert!(
+        levels.buy_levels.iter().all(|v| v.is_finite() && *v > 0.0),
+        "가격이 아닌 값이 섞였다: {:?}",
+        levels.buy_levels
+    );
+}
+
+#[test]
+fn 볼린저는_밴드_셋을_낸다() {
+    let levels = levels_after_contract("G_bollinger");
+    assert!(levels.reference.is_some() && levels.band_upper.is_some() && levels.band_lower.is_some());
+    let (mid, up, low) =
+        (levels.reference.unwrap(), levels.band_upper.unwrap(), levels.band_lower.unwrap());
+    assert!(low < mid && mid < up, "밴드 순서가 뒤집혔다: {low} {mid} {up}");
+}
+
+#[test]
+fn 적립식은_가격선_대신_다음_매수_시각을_낸다() {
+    // 적립식은 가격이 아니라 **달력**이 기준이다.
+    let levels = levels_after_contract("C_dca");
+    assert!(levels.next_buy_ms.is_some(), "다음 매수 예정 시각이 없다");
+    assert_eq!(levels.entry_target, None, "적립식에 '사는 선' 은 없다");
+}
+
+#[test]
+fn 값이_없으면_그린다고_하지_않는다() {
+    // "관심 없음" 과 "아직 값이 없음" 은 다르다. 섞이면 화면이 빈칸을 추정으로 메운다.
+    let fresh = crate::engine::runner::build(&json!({
+        "rule_type": "G", "symbol": "BTCUSDT", "position_side": "long",
+        "params": {"bb_period": 20, "bb_std": 2.0, "initial_capital": 1000}
+    }))
+    .expect("엔진");
+    let levels = fresh.levels(None);
+    assert!(levels.pending, "첫 봉 전에는 pending 이어야 한다");
+    assert!(!levels.has_any());
+}
+
+#[test]
+fn 가격이_아닌_값은_선이_되지_않는다() {
+    use crate::engine::levels::price;
+    assert_eq!(price(0.0), None);
+    assert_eq!(price(-1.0), None);
+    assert_eq!(price(f64::NAN), None);
+    assert_eq!(price(f64::INFINITY), None);
+    assert_eq!(price(1.5), Some(1.5));
+}

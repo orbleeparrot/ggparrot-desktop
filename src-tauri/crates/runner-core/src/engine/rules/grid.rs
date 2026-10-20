@@ -13,6 +13,7 @@
 use std::collections::BTreeMap;
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
+use crate::engine::levels::Levels;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BandExit {
@@ -140,6 +141,15 @@ impl Strategy for Grid {
                     self.holdings.insert(level, lot_id);
                 }
             }
+        }
+    }
+
+    fn levels(&self, _avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
+        // 칸마다 독립이라 선이 여러 개다 — 사려고 기다리는 칸과 팔려고 기다리는 칸.
+        Levels {
+            buy_levels: self.open_buy_levels(),
+            sell_levels: self.open_sell_levels(),
+            ..Default::default()
         }
     }
 

@@ -12,6 +12,7 @@
 //! 보여 준 결과와 실거래가 갈리는 가장 흔한 원인이다.
 
 use super::ledger::{Fill, Ledger, Side};
+use super::levels::Levels;
 
 /// 봉 하나. [`crate::candles::Candle`] 를 엔진이 쓰는 모양으로 좁힌 것.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -87,6 +88,14 @@ pub trait Strategy {
 
     /// 틱에 실행하기로 **예약해 둔** 청산이 있으면 그 가격에 실행한다.
     fn execute_pending(&mut self, _ctx: &mut SimContext<'_>, _price: f64) {}
+
+    /// 지금 그려야 할 가격선. 실행기 차트와 웹 화면이 **같은 값**을 쓴다.
+    ///
+    /// `avg_entry` 는 평단(비어 있으면 0), `last_bar` 는 마지막으로 본 봉이다
+    /// (돌파선처럼 그 봉의 시가가 필요한 규칙이 있다).
+    fn levels(&self, _avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
+        Levels::pending()
+    }
 }
 
 /// 규칙이 장부와 공통 위험에 닿는 통로. 한 봉 동안만 산다.
@@ -403,6 +412,23 @@ impl<S: Strategy> CandleSim<S> {
         if let Some(strategy) = self.strategy.as_mut() {
             strategy.on_warmup_reset();
         }
+    }
+
+    /// 지금 그려야 할 가격선. 공통 손절선은 여기서 채운다 — 규칙마다 다시 쓰지 않게.
+    pub fn levels(&self, last_bar: Option<&Bar>) -> Levels {
+        let avg = self.ledger.avg_entry();
+        let mut out = self.strategy().levels(avg, last_bar);
+        if out.stop_loss.is_none() && self.ledger.in_position() {
+            if let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0) {
+                let line = if self.ledger.side == Side::Short {
+                    avg * (1.0 + sl / 100.0)
+                } else {
+                    avg * (1.0 - sl / 100.0)
+                };
+                out.stop_loss = super::levels::price(line);
+            }
+        }
+        out
     }
 
     /// 아직 안 꺼낸 체결 수.

@@ -9,6 +9,7 @@
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::ledger::Side;
+use crate::engine::levels::{price, Levels};
 
 /// 다음 봉에 할 일.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +36,11 @@ pub trait Signal {
 
     /// 포지션에 매인 상태가 있으면 되돌린다(연속 횟수 등은 시장 사실이라 그대로 둔다).
     fn on_warmup_reset(&mut self) {}
+
+    /// 화면에 그릴 지표선(밴드 · 이동평균). 아직 값이 없으면 `pending`.
+    fn levels(&self) -> Levels {
+        Levels::pending()
+    }
 }
 
 /// 지표형 규칙 하나 — 판정은 [`Signal`] 에 맡기고 실행을 맡는다.
@@ -124,6 +130,16 @@ impl<S: Signal> Strategy for IndicatorRule<S> {
     fn execute_pending(&mut self, ctx: &mut SimContext<'_>, price: f64) {
         // 마감봉만 오는 실시간에서 다음 봉까지 기다리면 한 간격 늦게 체결된다.
         self.drain(ctx, price, price);
+    }
+
+    fn levels(&self, avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
+        let mut out = self.signal.levels();
+        if avg_entry > 0.0 {
+            if let Some(tp) = self.take_profit {
+                out.exit_target = price(avg_entry * (1.0 + tp / 100.0));
+            }
+        }
+        out
     }
 
     fn on_warmup_reset(&mut self) {

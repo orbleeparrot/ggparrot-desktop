@@ -26,6 +26,7 @@
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::ledger::Side;
+use crate::engine::levels::{price, Levels};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -204,6 +205,28 @@ impl Strategy for Sar {
         if ctx.open_long(margin, bar.c, bar.c, "진입") {
             self.phase = Phase::Long;
             self.defended = false;
+        }
+    }
+
+    fn levels(&self, avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
+        if avg_entry <= 0.0 {
+            return Levels::default();
+        }
+        if self.phase == Phase::Short {
+            // 숏 구간 — 더 떨어지면 익절, 튀어오르면 손절.
+            return Levels {
+                exit_target: price(avg_entry * (1.0 - self.short_take_profit / 100.0)),
+                stop_loss: price(avg_entry * (1.0 + self.short_stop_loss / 100.0)),
+                ..Default::default()
+            };
+        }
+        Levels {
+            exit_target: self
+                .long_take_profit
+                .and_then(|tp| price(avg_entry * (1.0 + tp / 100.0))),
+            // 방어 발동선이 롱 구간의 손절 역할이다(공통 손절선은 꺼 두었다).
+            stop_loss: self.defense_price(avg_entry).and_then(price),
+            ..Default::default()
         }
     }
 

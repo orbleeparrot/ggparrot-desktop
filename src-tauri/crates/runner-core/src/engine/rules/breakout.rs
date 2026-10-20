@@ -14,6 +14,7 @@
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::indicators::{Ma, MaType};
+use crate::engine::levels::{price, Levels};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitMode {
@@ -39,7 +40,7 @@ pub struct Breakout {
     /// 직전 봉까지의 이동평균 값.
     ma_value: Option<f64>,
     /// 직전 봉의 고가 − 저가. 돌파선의 재료다.
-    prev_range: Option<f64>,
+    pub(crate) prev_range: Option<f64>,
     /// 보유 중 고점(트레일용).
     peak: f64,
     /// 다음 틱에 팔기로 예약했는가(`next_open`).
@@ -165,6 +166,27 @@ impl Strategy for Breakout {
     fn execute_pending(&mut self, ctx: &mut SimContext<'_>, price: f64) {
         // 마감봉만 오는 실시간에서 다음 봉까지 기다리면 한 간격 늦게 체결된다.
         self.drain_pending(ctx, price);
+    }
+
+    fn levels(&self, avg_entry: f64, last_bar: Option<&Bar>) -> Levels {
+        let mut out = Levels { reference: self.ma_value.and_then(price), ..Default::default() };
+        if avg_entry > 0.0 {
+            out.trail_stop = self.trail_stop().and_then(price);
+            out.armed = self.exit_mode == ExitMode::Trailing;
+            if let (ExitMode::TakeProfit, Some(tp)) = (self.exit_mode, self.take_profit) {
+                out.exit_target = price(avg_entry * (1.0 + tp / 100.0));
+            }
+            return out;
+        }
+        // 비어 있다 — 돌파선은 **이번 봉의 시가** 에서 재므로 마지막 봉이 있어야 한다.
+        match last_bar.and_then(|bar| self.entry_target(bar.o)).and_then(price) {
+            Some(target) => {
+                out.entry_target = Some(target);
+                out
+            }
+            None if self.prev_range.is_none() => Levels::pending(),
+            None => out,
+        }
     }
 
     fn on_warmup_reset(&mut self) {

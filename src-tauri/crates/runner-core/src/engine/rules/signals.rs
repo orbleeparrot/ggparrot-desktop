@@ -11,6 +11,7 @@ use crate::engine::ledger::Side;
 use crate::money::{py_g, py_gp};
 
 use super::indicator::{Intent, Pending, Signal};
+use crate::engine::levels::{price, Indicator, Levels};
 
 /// 몇 봉 연속으로 조건이 맞아야 믿을 것인가. 1 이면 한 봉만 맞아도 된다.
 fn streak(hit: bool, current: u32) -> u32 {
@@ -92,6 +93,24 @@ impl Signal for RsiSignal {
     }
 
     fn on_warmup_reset(&mut self) {}
+
+    fn levels(&self) -> Levels {
+        // RSI 는 0~100 지표라 그릴 **가격** 선이 없다 — 가격축에 섞으면 축이 망가진다.
+        // 대신 값과 두 문턱을 따로 실어, 화면이 아래 칸에 그리고 "지금 조건에 얼마나
+        // 가까운가" 를 보여 줄 수 있게 한다.
+        match self.last {
+            Some(value) => Levels {
+                indicator: Some(Indicator {
+                    name: "RSI",
+                    value,
+                    entry_threshold: Some(self.entry_threshold),
+                    exit_threshold: Some(self.exit_threshold),
+                }),
+                ..Default::default()
+            },
+            None => Levels::pending(),
+        }
+    }
 }
 
 // --- G: 볼린저 밴드 ---------------------------------------------------------
@@ -201,6 +220,19 @@ impl Signal for BollingerSignal {
             pending.intent = Some(Intent::Exit);
         }
     }
+
+    fn levels(&self) -> Levels {
+        // 밴드 셋을 그대로 그린다 — 중심 · 위 · 아래.
+        match self.value() {
+            Some((mid, upper, lower)) => Levels {
+                reference: price(mid),
+                band_upper: price(upper),
+                band_lower: price(lower),
+                ..Default::default()
+            },
+            None => Levels::pending(),
+        }
+    }
 }
 
 // --- J: 이동평균 교차 -------------------------------------------------------
@@ -268,6 +300,16 @@ impl Signal for MaCrossSignal {
         } else if self.exit_by_indicator && exit_now {
             pending.note = if short { "골든크로스".to_string() } else { "데드크로스".to_string() };
             pending.intent = Some(Intent::Exit);
+        }
+    }
+
+    fn levels(&self) -> Levels {
+        // 두 이동평균을 그린다. 교차가 신호이므로 둘이 같이 보여야 뜻이 있다.
+        match self.value() {
+            Some((fast, slow)) => {
+                Levels { reference: price(fast), band_upper: price(slow), ..Default::default() }
+            }
+            None => Levels::pending(),
         }
     }
 }

@@ -13,6 +13,7 @@
 pub mod candle_sim;
 pub mod indicators;
 pub mod ledger;
+pub mod levels;
 pub mod rules;
 pub mod runner;
 pub mod tick_sim;

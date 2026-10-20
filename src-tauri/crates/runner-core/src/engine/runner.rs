@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use super::candle_sim::{Bar, CandleSim, Risk};
 use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
+use super::levels::{price, Levels};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::indicator::IndicatorRule;
@@ -205,6 +206,33 @@ impl Engine {
             Engine::Sar(sim) => sim.ledger.equity(price),
             Engine::Tick(sim) => sim.equity(price),
             Engine::Dca(sim) => sim.equity(price),
+        }
+    }
+
+    /// 지금 그려야 할 가격선. 실행기 차트와 웹 화면이 **같은 값**을 쓴다.
+    ///
+    /// `last_bar` 는 마지막으로 본 마감봉 — 돌파선처럼 그 봉의 시가가 필요한 규칙이 있다.
+    pub fn levels(&self, last_bar: Option<&Bar>) -> Levels {
+        match self {
+            Engine::Grid(sim) => sim.levels(last_bar),
+            Engine::Trailing(sim) => sim.levels(last_bar),
+            Engine::Breakout(sim) => sim.levels(last_bar),
+            Engine::Rsi(sim) => sim.levels(last_bar),
+            Engine::Bollinger(sim) => sim.levels(last_bar),
+            Engine::MaCross(sim) => sim.levels(last_bar),
+            Engine::Martingale(sim) => sim.levels(last_bar),
+            Engine::Sar(sim) => sim.levels(last_bar),
+            Engine::Tick(sim) => tick_levels(sim),
+            Engine::Dca(sim) => Levels {
+                // 적립식은 가격이 아니라 **달력**이 기준이다 — 그릴 가격선이 없고,
+                // 대신 다음 매수 예정 시각을 보여 준다.
+                stop_loss: sim
+                    .stop_loss_pct
+                    .filter(|v| *v > 0.0 && sim.qty > 0.0)
+                    .and_then(|sl| price(sim.cost_basis / sim.qty * (1.0 - sl / 100.0))),
+                next_buy_ms: sim.next_buy_ms(),
+                ..Default::default()
+            },
         }
     }
 
@@ -468,4 +496,40 @@ pub fn command_from_fill(fill: &Fill, initial: f64) -> Command {
         signal_price: fill.price,
         reason: fill.reason.clone(),
     }
+}
+
+/// A · B 의 가격선. 틱 기계는 평단이 아니라 **진입 체결가**를 기준으로 본다.
+fn tick_levels(sim: &TickSim) -> Levels {
+    let mut out = Levels::default();
+    if sim.in_position {
+        out.stop_loss = sim
+            .risk
+            .stop_loss_pct
+            .filter(|v| *v > 0.0)
+            .and_then(|sl| {
+                price(if sim.side == Side::Short {
+                    sim.entry_fill * (1.0 + sl / 100.0)
+                } else {
+                    sim.entry_fill * (1.0 - sl / 100.0)
+                })
+            });
+        out.exit_target = match sim.rule {
+            TickRule::TakeProfitReentry => price(if sim.side == Side::Short {
+                sim.entry_fill * (1.0 - sim.take_profit_pct / 100.0)
+            } else {
+                sim.entry_fill * (1.0 + sim.take_profit_pct / 100.0)
+            }),
+            // B 는 정해 둔 가격이다 — 평단과 무관하다.
+            TickRule::Band => {
+                price(if sim.side == Side::Short { sim.buy_price } else { sim.sell_price })
+            }
+        };
+        return out;
+    }
+    // 비어 있다 — A 는 다음 틱에 바로 사므로 그릴 선이 없고, B 는 정해 둔 가격을 기다린다.
+    if sim.rule == TickRule::Band {
+        out.entry_target =
+            price(if sim.side == Side::Short { sim.sell_price } else { sim.buy_price });
+    }
+    out
 }

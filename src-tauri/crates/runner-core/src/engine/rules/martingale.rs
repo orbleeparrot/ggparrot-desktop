@@ -13,6 +13,7 @@
 //! 0 으로 돌아가 이미 채운 단계를 다시 산다.
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
+use crate::engine::levels::{price, Levels};
 
 #[derive(Debug, Clone)]
 pub struct Martingale {
@@ -134,6 +135,23 @@ impl Strategy for Martingale {
         if ctx.open_long(self.base_order_size, bar.c, bar.c, "진입") {
             self.base_price = ctx.avg_entry();
             self.so_done = 0;
+        }
+    }
+
+    fn levels(&self, avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
+        if avg_entry <= 0.0 {
+            // 비어 있다 — 다음 봉에 기준 매수로 들어간다. 그릴 선이 없다.
+            return Levels::default();
+        }
+        Levels {
+            exit_target: price(self.take_profit_price(avg_entry)),
+            // 다음 안전주문이 걸리는 자리. 다 채웠으면 더 살 곳이 없다.
+            entry_target: if self.so_done < self.max_safety_orders {
+                price(self.next_safety_price())
+            } else {
+                None
+            },
+            ..Default::default()
         }
     }
 

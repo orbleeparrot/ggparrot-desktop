@@ -15,6 +15,7 @@
 //! (2026-10-12 KRW-CKB 제보가 그것이었다).
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
+use crate::engine::levels::{price, Levels};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryMode {
@@ -151,6 +152,27 @@ impl Strategy for Trailing {
             // 고점은 **산 봉의 종가**에서 시작한다 — 산 뒤의 고점만 세야 한다.
             self.peak = bar.c;
             self.armed = false;
+        }
+    }
+
+    fn levels(&self, avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
+        if avg_entry > 0.0 {
+            // 보유 중 — 발동 전이면 켜지는 선을, 발동 뒤면 따라가는 손절선을 그린다.
+            return Levels {
+                trail_stop: self.trail_stop().and_then(price),
+                trail_activation: self.activation_price(avg_entry).and_then(price),
+                armed: self.armed,
+                ..Default::default()
+            };
+        }
+        match self.entry_mode {
+            // 바로 사는 설정은 그릴 선이 없다 — 다음 봉에 산다.
+            EntryMode::Immediate => Levels::default(),
+            // 눌림목은 기준가를 잡기 전까지 선이 없다(첫 봉 마감 전).
+            EntryMode::Dip => match self.entry_target().and_then(price) {
+                Some(target) => Levels { entry_target: Some(target), ..Default::default() },
+                None => Levels::pending(),
+            },
         }
     }
 

@@ -33,6 +33,9 @@ const MAX_FILLS_PER_TICK: usize = 50;
 /// 한 번에 되짚는 봉 수. 절전 · 네트워크 끊김으로 몇 봉을 놓쳐도 주워 온다.
 const POLL_LOOKBACK: usize = 5;
 
+/// 화면에 들고 있는 최근 봉 수. 차트 한 화면에 넉넉하고, 메모리는 수십 KB 다.
+pub const CHART_BARS: usize = 300;
+
 /// 로컬 판단에 필요한 것들. 서버가 켜 준 세션에서만 만든다.
 pub struct LocalEngine {
     engine: Engine,
@@ -44,6 +47,10 @@ pub struct LocalEngine {
     pending_fills: Vec<Value>,
     /// 봉을 못 받은 것이 이어진 횟수 — 처음과 가끔만 알린다.
     fetch_failures: u32,
+    /// 마지막으로 본 마감봉. 돌파선처럼 **그 봉의 시가**가 필요한 규칙이 있다.
+    last_bar: Option<Bar>,
+    /// 화면이 그릴 최근 봉들(차트용). 오래된 것부터.
+    recent: std::collections::VecDeque<Bar>,
 }
 
 impl LocalEngine {
@@ -55,6 +62,24 @@ impl LocalEngine {
     /// 지금 보유 중인가(엔진 장부 기준).
     pub fn in_position(&self) -> bool {
         self.engine.in_position()
+    }
+
+    /// 화면이 그릴 최근 봉들(오래된 것부터).
+    pub fn recent_bars(&self) -> impl Iterator<Item = &Bar> {
+        self.recent.iter()
+    }
+
+    /// 지금 그려야 할 가격선.
+    pub fn levels(&self) -> crate::engine::levels::Levels {
+        self.engine.levels(self.last_bar.as_ref())
+    }
+
+    fn remember(&mut self, bar: Bar) {
+        self.last_bar = Some(bar);
+        if self.recent.len() == CHART_BARS {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(bar);
     }
 }
 
@@ -96,9 +121,13 @@ impl Bot {
             seq: 0,
             pending_fills: Vec::new(),
             fetch_failures: 0,
+            last_bar: None,
+            recent: Default::default(),
         };
         for candle in &history {
-            local.engine.on_bar(&Bar::from(*candle));
+            let bar = Bar::from(*candle);
+            local.engine.on_bar(&bar);
+            local.remember(bar);
         }
         // 지표는 두고 장부만 되돌린다 — 웜업 중의 가짜 매수가 실거래 포지션으로 둔갑하지 않게.
         local.engine.warmup_done();
@@ -143,7 +172,9 @@ impl Bot {
                     self.logger.log("봉 수집이 복구됐어요.");
                 }
                 for candle in fresh {
-                    local.engine.on_bar(&Bar::from(candle));
+                    let bar = Bar::from(candle);
+                    local.engine.on_bar(&bar);
+                    local.remember(bar);
                 }
             }
             Err(e) => {
@@ -260,12 +291,16 @@ impl Bot {
 
     /// 서버가 화면에 비출 전략 상태 사본.
     fn local_strategy_state(&self, local: &LocalEngine) -> Value {
+        let levels = local.levels();
         json!({
             "engine_version": crate::engine::ENGINE_VERSION,
             "checkpoint_ms": now_ms(),
             "in_position": local.engine.in_position(),
             "equity": local.engine.equity(self.last_price),
             "last_candle_ms": local.stream.last_t,
+            // 가격선은 **엔진 상태에서만** 나온다. 웹이 다시 계산하면 산수가 두 벌이 되고,
+            // 실제로 그 일이 있었다(E 눌림목 선이 현재가를 따라 내려왔다).
+            "levels": levels,
         })
     }
 
