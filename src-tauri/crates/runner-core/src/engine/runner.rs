@@ -13,6 +13,8 @@ use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::indicator::IndicatorRule;
+use super::rules::martingale::Martingale;
+use super::rules::sar::Sar;
 use super::rules::signals::{
     BandExitTarget, BandStrategy, BollingerSignal, MaCrossSignal, RsiSignal,
 };
@@ -108,6 +110,8 @@ pub enum Engine {
     Rsi(CandleSim<IndicatorRule<RsiSignal>>),
     Bollinger(CandleSim<IndicatorRule<BollingerSignal>>),
     MaCross(CandleSim<IndicatorRule<MaCrossSignal>>),
+    Martingale(CandleSim<Martingale>),
+    Sar(CandleSim<Sar>),
 }
 
 macro_rules! dispatch {
@@ -119,6 +123,8 @@ macro_rules! dispatch {
             Engine::Rsi($sim) => $body,
             Engine::Bollinger($sim) => $body,
             Engine::MaCross($sim) => $body,
+            Engine::Martingale($sim) => $body,
+            Engine::Sar($sim) => $body,
         }
     };
 }
@@ -289,6 +295,41 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 risk,
                 IndicatorRule::new(signal, tp, risk.invest_ratio),
             )))
+        }
+        "H" => {
+            let need = |key: &str| {
+                p(key).ok_or_else(|| BuildError::BadMacro(format!("H: {key} 가 없어요")))
+            };
+            let strategy = Martingale::new(
+                need("base_order_size")?,
+                need("safety_order_size")?,
+                need("price_deviation")?,
+                p("safety_order_step_scale").unwrap_or(1.0),
+                p("safety_order_volume_scale").unwrap_or(1.0),
+                p("max_safety_orders").unwrap_or(5.0) as u32,
+                need("take_profit")?,
+            );
+            Ok(Engine::Martingale(CandleSim::new(ledger, risk, strategy)))
+        }
+        "K" => {
+            let need = |key: &str| {
+                p(key).ok_or_else(|| BuildError::BadMacro(format!("K: {key} 가 없어요")))
+            };
+            let strategy = Sar::new(
+                p("long_take_profit_pct"),
+                need("drop_trigger_pct")?,
+                p("partial_exit_pct").unwrap_or(50.0),
+                flag(macro_, &["params", "flip_to_short"], true),
+                need("short_take_profit_pct")?,
+                need("short_stop_loss_pct")?,
+                flag(macro_, &["params", "reenter_long_after"], true),
+                risk.invest_ratio,
+            );
+            // 공통 손절선은 끈다 — 방어 발동이 롱 구간의 손절이고, 숏 구간은 자기 손절선을
+            // 따로 갖는다. 둘을 같이 걸면 방어가 뜨기 전에 손절이 먼저 나가 전환이 안 일어난다.
+            let mut risk = risk;
+            risk.stop_loss_pct = None;
+            Ok(Engine::Sar(CandleSim::new(ledger, risk, strategy)))
         }
         other => Err(BuildError::NotPorted(other.to_string())),
     }

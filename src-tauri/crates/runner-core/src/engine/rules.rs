@@ -9,6 +9,8 @@
 
 pub mod breakout;
 pub mod indicator;
+pub mod martingale;
+pub mod sar;
 pub mod signals;
 pub mod grid;
 pub mod trailing;
