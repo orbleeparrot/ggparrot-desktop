@@ -629,15 +629,17 @@ impl Bot {
         };
         snap["unrealized_net"] = amount;
         snap["unrealized_net_pct"] = pct;
-    }
-
-    /// 화면으로만 보내는 상태 — 서버 스냅샷(수수료 반영 손익 포함)에 투입금·낸 수수료(모르면 null)와
-    /// 전일 대비 등락률(국내만)을 덧붙임. 서버로 가는 수수료 전 값(realized_pnl·unrealized_pct)은 그대로 둠.
-    pub fn ui_snapshot(&self, mut snap: Value) -> Value {
-        snap["fees_paid"] = if self.fees_complete { json!(self.fees_quote) } else { Value::Null };
+        // 투입금 — 지금 포지션에 들어간 돈(수량×평단 + 진입 수수료, 모르면 수수료 빼고). 웹 '투입금'도 이 값(2026-10-20:
+        // 웹이 세션 중 최대 금액을 '투입금'으로 보여 마틴게일처럼 나눠 사는 매크로에서 실행기와 크게 달랐다).
         let fee = if self.open_fee_known { self.open_entry_fee } else { 0.0 };
         snap["invested"] =
             json!(if self.in_position { crate::pnl::invested(self.held_qty, self.entry_price, fee) } else { 0.0 });
+    }
+
+    /// 화면으로만 보내는 상태 — 서버 스냅샷(수수료 반영 손익 · 투입금 포함)에 낸 수수료(모르면 null)와
+    /// 전일 대비 등락률(국내만)을 덧붙임. 서버로 가는 수수료 전 값(realized_pnl·unrealized_pct)은 그대로 둠.
+    pub fn ui_snapshot(&self, mut snap: Value) -> Value {
+        snap["fees_paid"] = if self.fees_complete { json!(self.fees_quote) } else { Value::Null };
         snap["day_change"] = json!(self.broker.as_ref().and_then(|b| b.day_change()));
         snap
     }
