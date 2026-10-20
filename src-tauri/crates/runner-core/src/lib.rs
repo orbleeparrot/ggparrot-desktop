@@ -18,11 +18,13 @@ pub const APP_TITLE: &str = "껄무새";
 
 pub mod bot;
 pub mod brokers;
+pub mod candles;
 pub mod check;
 pub mod clock;
 pub mod connection;
 pub mod credentials;
 pub mod exits;
+pub mod intervals;
 pub mod library;
 pub mod log_kind;
 pub mod macro_info;
