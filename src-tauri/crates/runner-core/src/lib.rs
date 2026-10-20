@@ -23,6 +23,7 @@ pub mod check;
 pub mod clock;
 pub mod connection;
 pub mod credentials;
+pub mod engine;
 pub mod exits;
 pub mod intervals;
 pub mod library;
