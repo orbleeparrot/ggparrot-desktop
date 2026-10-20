@@ -147,6 +147,11 @@ pub struct ClosePnl {
     pub fees_known: bool,
 }
 
+/// 지금 유닉스 ms. 봉 마감 판정 · 쿨다운 · 적립식 달력이 이 값을 본다.
+fn now_ms() -> i64 {
+    crate::clock::unix_ms() as i64
+}
+
 fn obj(v: Value) -> Map<String, Value> {
     match v {
         Value::Object(m) => m,
@@ -689,6 +694,7 @@ impl Bot {
 mod commands;
 mod entry_guard;
 mod finish;
+mod local;
 mod logger;
 mod orders;
 mod price;
@@ -698,3 +704,6 @@ mod setup;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod local_tests;

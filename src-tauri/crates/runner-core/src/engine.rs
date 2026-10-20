@@ -16,3 +16,9 @@ pub mod ledger;
 pub mod rules;
 pub mod runner;
 pub mod tick_sim;
+
+/// 이 실행기에 묶여 있는 판단 코드의 세대. 서버(`engine/version.py` 의 `ENGINE_VERSION`)와
+/// 같은 숫자를 센다 — 세션을 시작할 때 서버에 알리고, 서버가 더 높은 세대를 요구하면
+/// 426 으로 막는다. 판단 계약(`tests/fixtures/engine_golden.json`)의 값과도 같아야 하며,
+/// 다르면 `tests/engine_golden.rs` 가 먼저 깨진다.
+pub const ENGINE_VERSION: u32 = 1;

@@ -34,6 +34,26 @@ impl Bot {
         }
         let mut guard = self.risk_guard();
         let broker = self.broker()?;
+        // 서버가 "네가 판단해라" 고 한 세션이면 로컬 엔진을 세운다. 세우지 못하면
+        // **아무도 판단하지 않는다** — 서버도 이 세션의 드라이버를 띄우지 않았다.
+        let mut local = if self.decides_locally() {
+            match self.start_local_engine().await {
+                Ok(engine) => Some(engine),
+                Err(why) => {
+                    self.logger.log_full(
+                        &why,
+                        Some("error"),
+                        "ERROR",
+                        "runner.local_engine_failed",
+                        "",
+                        &obj(json!({"error": why})),
+                    );
+                    return Ok(("error".into(), why));
+                }
+            }
+        } else {
+            None
+        };
         loop {
             let tick = std::time::Instant::now();
             self.check_wall_gap();
@@ -51,8 +71,32 @@ impl Bot {
             guard.roll_day();
             // 3) 로컬 안전망 — 일일 손실·최대 보유시간 + 손절
             self.enforce_safety_net(&mut guard, price).await?;
-            // 4) 하트비트 — 상태·ack을 올리고 명령을 받아 순서대로 실행
-            let reply = self.report_status().await;
+            // 4) 로컬 판단 — 마감봉을 받아 스스로 사고판다(서버가 켜 준 세션만).
+            //    안전망(3) 뒤에 둔다: 손절이 이미 포지션을 닫았으면 그 상태로 판단한다.
+            if let Some(engine) = local.as_mut() {
+                self.local_round(engine, price, &mut guard).await?;
+            }
+
+            // 5) 하트비트 — 상태·ack을 올리고 명령을 받아 순서대로 실행
+            let sent_fills = local.as_ref().map(|e| e.unsent()).unwrap_or(0);
+            let reply = match local.as_ref() {
+                Some(engine) => {
+                    let mut snap = self.snapshot();
+                    if let (Some(base), Value::Object(extra)) =
+                        (snap.as_object_mut(), self.local_snapshot_extra(engine))
+                    {
+                        base.extend(extra);
+                    }
+                    self.report_snapshot(snap).await
+                }
+                None => self.report_status().await,
+            };
+            if !reply.offline {
+                if let Some(engine) = local.as_mut() {
+                    // 서버가 받았다 — 보낸 만큼만 비운다(그 사이 새로 난 체결은 남긴다).
+                    self.clear_sent_fills(engine, sent_fills);
+                }
+            }
             // 하트비트를 기다리는 동안(최대 10초) 시세가 움직였을 수 있음 — 명령이 있으면 새 시세로 안전망을 다시 보고
             // 그 값으로 주문 크기를 정함.
             let price = if reply.commands.is_empty() {
@@ -67,8 +111,23 @@ impl Bot {
                     _ => price,
                 }
             };
-            self.apply_reply(&reply, &mut guard, price).await?;
-            // 5) 대기(종료 명령 시 즉시 깨어남) — 이번 틱에 걸린 시간을 빼서 5초 주기를 지킴.
+            if local.is_some() {
+                // 판단은 이 PC 가 한다 — 서버 명령이 섞여 오면 같은 신호로 두 번 산다.
+                // 원격 종료 · 청산은 그대로 듣는다.
+                if let Some(m) = StopMode::parse(&reply.action) {
+                    self.note_remote_stop(&reply, m);
+                }
+                if !reply.commands.is_empty() {
+                    self.skip_commands(
+                        &reply.commands,
+                        "local_decisions",
+                        "이 실행은 앱이 직접 판단해서 서버 명령을 쓰지 않아요",
+                    );
+                }
+            } else {
+                self.apply_reply(&reply, &mut guard, price).await?;
+            }
+            // 6) 대기(종료 명령 시 즉시 깨어남) — 이번 틱에 걸린 시간을 빼서 5초 주기를 지킴.
             self.sleep_until_next(tick).await;
         }
     }

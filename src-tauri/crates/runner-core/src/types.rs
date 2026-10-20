@@ -502,6 +502,11 @@ pub fn session_payload(m: &Value, testnet: bool, mode: RunMode) -> Value {
         "mode": mode.as_str(),
         "human_summary": m.get("human_summary").cloned().unwrap_or(Value::String(String::new())),
         "runner_version": SERVER_LINK_LEVEL,
+        // 이 앱에 묶여 있는 판단 엔진의 세대. 서버가 매크로마다 필요한 세대와 견준다.
+        "engine_version": crate::engine::ENGINE_VERSION.to_string(),
+        // 실행기는 스스로 판단할 줄 안다고 말한다. 실제로 켤지는 **서버가** 정한다
+        // (응답의 "decides") — 양쪽이 동시에 판단하면 같은 신호로 두 번 산다.
+        "decides": "local",
         "macro": m,
     })
 }

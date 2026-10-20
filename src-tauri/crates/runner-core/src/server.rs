@@ -171,6 +171,8 @@ struct Inner {
     namespace: String,
     session_id: Mutex<Option<i64>>,
     macro_origin: Mutex<String>,
+    /// 이 세션의 판단을 누가 하는가 — 서버가 시작 응답으로 정한다. 모르면 "server".
+    decides: Mutex<String>,
     state: Mutex<EventState>,
     on_event_warning: Mutex<Option<LogFn>>,
     unsent_acks: Mutex<Vec<Value>>,
@@ -198,6 +200,7 @@ impl ServerClient {
                 outbox,
                 session_id: Mutex::new(None),
                 macro_origin: Mutex::new(String::new()),
+                decides: Mutex::new("server".to_string()),
                 state: Mutex::new(EventState {
                     events: vec![],
                     event_sessions: HashMap::new(),
@@ -225,6 +228,11 @@ impl ServerClient {
     pub fn session_id(&self) -> Option<i64> {
         *self.inner.session_id.lock().unwrap()
     }
+    /// 이 세션을 실행기가 직접 판단하는가. 서버가 시작 응답으로 정한 값이다.
+    pub fn decides_locally(&self) -> bool {
+        self.inner.decides.lock().unwrap().as_str() == "local"
+    }
+
     pub fn macro_origin(&self) -> String {
         self.inner.macro_origin.lock().unwrap().clone()
     }
@@ -569,6 +577,11 @@ impl ServerClient {
         *self.inner.macro_origin.lock().unwrap() = match data.get("macro_origin") {
             Some(Value::String(s)) => s.clone(),
             _ => String::new(),
+        };
+        // 판단 주체. 모르면 서버 — 가장 보수적인 쪽(지금까지의 동작)이다.
+        *self.inner.decides.lock().unwrap() = match data.get("decides") {
+            Some(Value::String(s)) if s == "local" => "local".to_string(),
+            _ => "server".to_string(),
         };
         self.schedule_event_recovery(false);
         Ok(data)

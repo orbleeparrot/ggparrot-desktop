@@ -18,7 +18,7 @@ struct FakeState {
     price_down: bool,
 }
 
-struct FakeBroker {
+pub(super) struct FakeBroker {
     st: Mutex<FakeState>,
     market: Market,
     side: Side,
@@ -26,7 +26,7 @@ struct FakeBroker {
 }
 
 impl FakeBroker {
-    fn new(price: f64, market: Market, side: Side) -> Arc<Self> {
+    pub(super) fn new(price: f64, market: Market, side: Side) -> Arc<Self> {
         Arc::new(FakeBroker {
             st: Mutex::new(FakeState { price, ..Default::default() }),
             market,
@@ -37,12 +37,12 @@ impl FakeBroker {
     fn push(&self, o: Order) {
         self.st.lock().unwrap().next.push_back(o);
     }
-    fn submits(&self) -> Vec<SubmitRequest> {
+    pub(super) fn submits(&self) -> Vec<SubmitRequest> {
         self.st.lock().unwrap().submits.clone()
     }
 }
 
-fn filled(qty: f64, price: f64) -> Order {
+pub(super) fn filled(qty: f64, price: f64) -> Order {
     Order {
         status: "FILLED".into(),
         executed_qty: qty,
@@ -110,7 +110,7 @@ impl Broker for FakeBroker {
     }
 }
 
-fn creds() -> Credentials {
+pub(super) fn creds() -> Credentials {
     let mut c = Credentials { member_key: "ggp_member".into(), ..Default::default() };
     for ex in ["binance", "upbit"] {
         c.exchanges.insert(ex.into(), KeyPair { api_key: "k".repeat(24), api_secret: "s".repeat(24) });
@@ -118,7 +118,7 @@ fn creds() -> Credentials {
     c
 }
 
-fn bot_with(m: Value, broker: Arc<FakeBroker>, mode: RunMode) -> (Bot, mpsc::UnboundedReceiver<BotEvent>) {
+pub(super) fn bot_with(m: Value, broker: Arc<FakeBroker>, mode: RunMode) -> (Bot, mpsc::UnboundedReceiver<BotEvent>) {
     let (tx, rx) = mpsc::unbounded_channel();
     let mut bot = Bot::new(m, creds(), mode, None, tx, reqwest::Client::new());
     bot.broker = Some(broker as Arc<dyn Broker>);
