@@ -10,6 +10,8 @@ use serde_json::Value;
 
 use super::candle_sim::{Bar, CandleSim, Risk, Strategy};
 use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
+use super::rules::breakout::{Breakout, ExitMode};
+use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::trailing::{EntryMode, Trailing};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,13 +97,17 @@ fn side_of(macro_: &Value) -> Side {
 
 /// 봉 기반 규칙 하나를 돌리는 엔진.
 pub enum Engine {
+    Grid(CandleSim<Grid>),
     Trailing(CandleSim<Trailing>),
+    Breakout(CandleSim<Breakout>),
 }
 
 macro_rules! dispatch {
     ($self:ident, $sim:ident => $body:expr) => {
         match $self {
+            Engine::Grid($sim) => $body,
             Engine::Trailing($sim) => $body,
+            Engine::Breakout($sim) => $body,
         }
     };
 }
@@ -161,6 +167,47 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 risk.invest_ratio,
             );
             Ok(Engine::Trailing(CandleSim::new(ledger, risk, strategy)))
+        }
+        "D" => {
+            let need = |key: &str| {
+                p(key).ok_or_else(|| BuildError::BadMacro(format!("D: {key} 가 없어요")))
+            };
+            let strategy = Grid::new(
+                need("lower_price")?,
+                need("upper_price")?,
+                need("grid_count")? as usize,
+                if macro_.pointer("/params/grid_mode").and_then(Value::as_str) == Some("geometric") {
+                    GridMode::Geometric
+                } else {
+                    GridMode::Arithmetic
+                },
+                if macro_.pointer("/params/band_exit_action").and_then(Value::as_str) == Some("hold")
+                {
+                    BandExit::Hold
+                } else {
+                    BandExit::Stop
+                },
+                p("per_grid_invest"),
+                risk.invest_ratio,
+                capital,
+            );
+            Ok(Engine::Grid(CandleSim::new(ledger, risk, strategy)))
+        }
+        "I" => {
+            let exit_mode = match macro_.pointer("/params/exit_mode").and_then(Value::as_str) {
+                Some("trailing") => ExitMode::Trailing,
+                Some("take_profit") => ExitMode::TakeProfit,
+                _ => ExitMode::NextOpen,
+            };
+            let strategy = Breakout::new(
+                p("k").unwrap_or(0.5),
+                exit_mode,
+                p("trail_percent").unwrap_or(2.0),
+                p("take_profit"),
+                p("ma_filter_period").map(|v| v as usize),
+                risk.invest_ratio,
+            );
+            Ok(Engine::Breakout(CandleSim::new(ledger, risk, strategy)))
         }
         other => Err(BuildError::NotPorted(other.to_string())),
     }

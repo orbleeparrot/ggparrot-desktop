@@ -7,4 +7,6 @@
 //! * **틱 기반**(A · B · C) — 현재가를 볼 때마다 판단한다. 봉을 기다리면 지정가를
 //!   지나쳐 버리거나(B), 날짜를 못 센다(C).
 
+pub mod breakout;
+pub mod grid;
 pub mod trailing;
