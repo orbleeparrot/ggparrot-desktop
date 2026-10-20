@@ -12,7 +12,12 @@ use super::candle_sim::{Bar, CandleSim, Risk, Strategy};
 use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
+use super::rules::indicator::IndicatorRule;
+use super::rules::signals::{
+    BandExitTarget, BandStrategy, BollingerSignal, MaCrossSignal, RsiSignal,
+};
 use super::rules::trailing::{EntryMode, Trailing};
+use super::indicators::MaType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuildError {
@@ -100,6 +105,9 @@ pub enum Engine {
     Grid(CandleSim<Grid>),
     Trailing(CandleSim<Trailing>),
     Breakout(CandleSim<Breakout>),
+    Rsi(CandleSim<IndicatorRule<RsiSignal>>),
+    Bollinger(CandleSim<IndicatorRule<BollingerSignal>>),
+    MaCross(CandleSim<IndicatorRule<MaCrossSignal>>),
 }
 
 macro_rules! dispatch {
@@ -108,6 +116,9 @@ macro_rules! dispatch {
             Engine::Grid($sim) => $body,
             Engine::Trailing($sim) => $body,
             Engine::Breakout($sim) => $body,
+            Engine::Rsi($sim) => $body,
+            Engine::Bollinger($sim) => $body,
+            Engine::MaCross($sim) => $body,
         }
     };
 }
@@ -208,6 +219,76 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 risk.invest_ratio,
             );
             Ok(Engine::Breakout(CandleSim::new(ledger, risk, strategy)))
+        }
+        "F" => {
+            // exit_mode: indicator | take_profit | both — 지표로 파는 것은 앞뒤 둘뿐이다.
+            let exit_mode =
+                macro_.pointer("/params/exit_mode").and_then(Value::as_str).unwrap_or("indicator");
+            let signal = RsiSignal::new(
+                p("rsi_period").unwrap_or(14.0) as usize,
+                p("entry_threshold").unwrap_or(30.0),
+                p("exit_threshold").unwrap_or(70.0),
+                p("confirm_candles").unwrap_or(1.0) as u32,
+                matches!(exit_mode, "indicator" | "both"),
+            );
+            // 익절은 exit_mode 가 take_profit · both 일 때만 쓴다.
+            let tp = p("take_profit").filter(|_| matches!(exit_mode, "take_profit" | "both"));
+            Ok(Engine::Rsi(CandleSim::new(
+                ledger,
+                risk,
+                IndicatorRule::new(signal, tp, risk.invest_ratio),
+            )))
+        }
+        "G" => {
+            let signal = BollingerSignal::new(
+                p("bb_period").unwrap_or(20.0) as usize,
+                p("bb_std").unwrap_or(2.0),
+                if macro_.pointer("/params/strategy").and_then(Value::as_str) == Some("breakout") {
+                    BandStrategy::Breakout
+                } else {
+                    BandStrategy::Reversion
+                },
+                if macro_.pointer("/params/exit_target").and_then(Value::as_str) == Some("opposite")
+                {
+                    BandExitTarget::Opposite
+                } else {
+                    BandExitTarget::Mid
+                },
+                flag(macro_, &["params", "squeeze_filter"], false),
+                p("squeeze_lookback").unwrap_or(50.0) as usize,
+            );
+            Ok(Engine::Bollinger(CandleSim::new(
+                ledger,
+                risk,
+                IndicatorRule::new(signal, None, risk.invest_ratio),
+            )))
+        }
+        "J" => {
+            let exit_signal = macro_
+                .pointer("/params/exit_signal")
+                .and_then(Value::as_str)
+                .unwrap_or("dead_cross");
+            let signal = MaCrossSignal::new(
+                if macro_.pointer("/params/ma_type").and_then(Value::as_str) == Some("EMA") {
+                    MaType::Ema
+                } else {
+                    MaType::Sma
+                },
+                p("fast_period")
+                    .ok_or_else(|| BuildError::BadMacro("J: fast_period 가 없어요".into()))?
+                    as usize,
+                p("slow_period")
+                    .ok_or_else(|| BuildError::BadMacro("J: slow_period 가 없어요".into()))?
+                    as usize,
+                matches!(exit_signal, "dead_cross" | "both"),
+                p("confirm_candles").unwrap_or(1.0) as u32,
+            );
+            let tp = p("take_profit").filter(|_| matches!(exit_signal, "take_profit" | "both"));
+            Ok(Engine::MaCross(CandleSim::new(
+                ledger,
+                risk,
+                IndicatorRule::new(signal, tp, risk.invest_ratio),
+            )))
         }
         other => Err(BuildError::NotPorted(other.to_string())),
     }
