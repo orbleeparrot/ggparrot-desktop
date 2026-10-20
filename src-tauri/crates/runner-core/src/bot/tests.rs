@@ -1390,7 +1390,7 @@ async fn stop_loss_reads_as_a_price_move_from_the_average() {
 #[tokio::test]
 async fn the_server_snapshot_keeps_its_python_shape() {
     // 서버 하트비트는 파이썬 실행기와 같은 칸·같은 값(수수료 전)에 수수료 반영 손익 세 칸만 더함 —
-    // 웹이 실행기 화면과 같은 숫자를 보이게(2026-10-18). 투입금·낸 수수료 같은 화면용 칸은 새지 않음.
+    // 웹이 실행기 화면과 같은 숫자를 보이게(2026-10-18). 낸 수수료 · 전일 대비 같은 화면용 칸은 새지 않음(투입금은 2026-10-20부터 함께).
     let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
     let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
     fb.push(filled_with_fee(1.0, 100.0, fee(0.1)));
@@ -1404,6 +1404,7 @@ async fn the_server_snapshot_keeps_its_python_shape() {
         [
             "entry_price",
             "in_position",
+            "invested",
             "last_price",
             "note",
             "position_qty",
@@ -1420,6 +1421,9 @@ async fn the_server_snapshot_keeps_its_python_shape() {
     let ui = bot.ui_snapshot(bot.snapshot());
     assert_eq!(snap["unrealized_net"], ui["unrealized_net"]);
     assert_eq!(snap["unrealized_net_pct"], ui["unrealized_net_pct"]);
+    // 투입금도 화면과 같은 값 — 지금 포지션에 들어간 돈(수량×평단 + 진입 수수료)
+    assert_eq!(snap["invested"], ui["invested"]);
+    assert!((snap["invested"].as_f64().unwrap() - 100.1).abs() < 1e-9, "{snap}");
     assert!(snap["unrealized_net_pct"].as_f64().unwrap() < 2.0, "수수료만큼 낮음: {snap}");
     fb.push(filled_with_fee(1.0, 102.0, fee(0.102)));
     assert!(bot.close_position().await.unwrap());
