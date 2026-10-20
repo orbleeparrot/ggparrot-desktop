@@ -84,9 +84,7 @@ fn krw_path(interval: &str) -> Result<String, CandleError> {
         .ok_or_else(|| CandleError::Unsupported(format!("지원하지 않는 봉 간격이에요: {interval}")))?;
     let minutes = step / 60_000;
     if !KRW_MINUTES.contains(&minutes) {
-        return Err(CandleError::Unsupported(format!(
-            "국내 거래소가 지원하지 않는 봉 간격이에요: {interval}"
-        )));
+        return Err(CandleError::Unsupported(format!("국내 거래소가 지원하지 않는 봉 간격이에요: {interval}")));
     }
     Ok(format!("/v1/candles/minutes/{minutes}"))
 }
@@ -128,9 +126,7 @@ fn krw_candle(raw: &Value, interval: &str, exchange: &str) -> Result<Candle, Can
         // 격자에 안 맞으면 간격이나 거래소를 잘못 안 것이다 — 그대로 쓰면 지표가 어긋난다.
         return Err(CandleError::Fetch("거래소 봉 시작 시각이 봉 간격과 맞지 않아요.".into()));
     }
-    let pick = |key: &str| {
-        num(raw.get(key)).ok_or_else(|| CandleError::Fetch("거래소 봉에 값이 모자라요.".into()))
-    };
+    let pick = |key: &str| num(raw.get(key)).ok_or_else(|| CandleError::Fetch("거래소 봉에 값이 모자라요.".into()));
     Ok(Candle {
         t,
         o: pick("opening_price")?,
@@ -146,14 +142,7 @@ fn binance_candle(row: &Value) -> Result<Candle, CandleError> {
     let short = || CandleError::Fetch("거래소 봉에 값이 모자라요.".into());
     let arr = row.as_array().ok_or_else(short)?;
     let at = |i: usize| num(arr.get(i)).ok_or_else(short);
-    Ok(Candle {
-        t: at(0)? as i64,
-        o: at(1)?,
-        h: at(2)?,
-        l: at(3)?,
-        c: at(4)?,
-        v: num(arr.get(5)),
-    })
+    Ok(Candle { t: at(0)? as i64, o: at(1)?, h: at(2)?, l: at(3)?, c: at(4)?, v: num(arr.get(5)) })
 }
 
 /// `(거래소 · 종목 · 간격 · 시장)` 하나의 마감봉을 가져온다.
@@ -241,15 +230,9 @@ impl CandleSource {
             .map_err(|e| CandleError::Fetch(format!("봉을 받지 못했어요: {e}")))?;
         let status = response.status();
         if !status.is_success() {
-            return Err(CandleError::Fetch(format!(
-                "거래소가 봉 요청을 거절했어요(HTTP {}).",
-                status.as_u16()
-            )));
+            return Err(CandleError::Fetch(format!("거래소가 봉 요청을 거절했어요(HTTP {}).", status.as_u16())));
         }
-        response
-            .json()
-            .await
-            .map_err(|_| CandleError::Fetch("거래소 봉 응답을 읽지 못했어요.".into()))
+        response.json().await.map_err(|_| CandleError::Fetch("거래소 봉 응답을 읽지 못했어요.".into()))
     }
 
     async fn fetch_binance(&self, limit: usize) -> Result<Vec<Candle>, CandleError> {
@@ -261,9 +244,7 @@ impl CandleSource {
                 ("limit".into(), want.to_string()),
             ])
             .await?;
-        let rows = body
-            .as_array()
-            .ok_or_else(|| CandleError::Fetch("거래소 봉 응답 모양이 예상과 달라요.".into()))?;
+        let rows = body.as_array().ok_or_else(|| CandleError::Fetch("거래소 봉 응답 모양이 예상과 달라요.".into()))?;
         rows.iter().map(binance_candle).collect()
     }
 
@@ -276,24 +257,18 @@ impl CandleSource {
             if count == 0 {
                 break;
             }
-            let mut query = vec![
-                ("market".to_string(), self.symbol.clone()),
-                ("count".to_string(), count.to_string()),
-            ];
+            let mut query = vec![("market".to_string(), self.symbol.clone()), ("count".to_string(), count.to_string())];
             if let Some(at) = cursor {
                 query.push(("to".to_string(), krw_cursor(at, &self.exchange)));
             }
             let body = self.get(&query).await?;
-            let page = body
-                .as_array()
-                .ok_or_else(|| CandleError::Fetch("거래소 봉 응답 모양이 예상과 달라요.".into()))?;
+            let page =
+                body.as_array().ok_or_else(|| CandleError::Fetch("거래소 봉 응답 모양이 예상과 달라요.".into()))?;
             if page.is_empty() {
                 break;
             }
-            let parsed: Vec<Candle> = page
-                .iter()
-                .map(|raw| krw_candle(raw, &self.interval, &self.exchange))
-                .collect::<Result<_, _>>()?;
+            let parsed: Vec<Candle> =
+                page.iter().map(|raw| krw_candle(raw, &self.interval, &self.exchange)).collect::<Result<_, _>>()?;
             let oldest = parsed.iter().map(|c| c.t).min().unwrap_or(i64::MAX);
             if let Some(at) = cursor {
                 if oldest >= at {
@@ -313,10 +288,8 @@ impl CandleSource {
 
     /// 마감된 봉을 오래된 것부터 `limit` 개까지. 진행 중 봉은 빼고 준다.
     pub async fn recent_closed(&self, limit: usize, now_ms: i64) -> Result<Vec<Candle>, CandleError> {
-        let raw =
-            if self.domestic() { self.fetch_krw(limit).await? } else { self.fetch_binance(limit).await? };
-        let mut closed: Vec<Candle> =
-            raw.into_iter().filter(|c| self.is_closed(c.t, now_ms)).collect();
+        let raw = if self.domestic() { self.fetch_krw(limit).await? } else { self.fetch_binance(limit).await? };
+        let mut closed: Vec<Candle> = raw.into_iter().filter(|c| self.is_closed(c.t, now_ms)).collect();
         if closed.is_empty() {
             return Err(CandleError::Fetch("마감된 봉이 아직 없어요.".into()));
         }

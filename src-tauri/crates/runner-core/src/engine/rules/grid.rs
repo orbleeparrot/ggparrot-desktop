@@ -45,6 +45,7 @@ pub struct Grid {
 }
 
 impl Grid {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         lower: f64,
         upper: f64,
@@ -113,12 +114,7 @@ impl Strategy for Grid {
 
         // 팔기 — 들고 있는 칸 중 **한 칸 위**에 고가가 닿은 것.
         // 낮은 칸부터 본다(서버와 같은 순서 — 체결 순서가 기록에 그대로 남는다).
-        let ready: Vec<usize> = self
-            .holdings
-            .keys()
-            .copied()
-            .filter(|i| bar.h >= self.levels[i + 1])
-            .collect();
+        let ready: Vec<usize> = self.holdings.keys().copied().filter(|i| bar.h >= self.levels[i + 1]).collect();
         for level in ready {
             let sell_price = self.levels[level + 1];
             if let Some(lot_id) = self.holdings.remove(&level) {
@@ -146,11 +142,7 @@ impl Strategy for Grid {
 
     fn levels(&self, _avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
         // 칸마다 독립이라 선이 여러 개다 — 사려고 기다리는 칸과 팔려고 기다리는 칸.
-        Levels {
-            buy_levels: self.open_buy_levels(),
-            sell_levels: self.open_sell_levels(),
-            ..Default::default()
-        }
+        Levels { buy_levels: self.open_buy_levels(), sell_levels: self.open_sell_levels(), ..Default::default() }
     }
 
     fn on_warmup_reset(&mut self) {

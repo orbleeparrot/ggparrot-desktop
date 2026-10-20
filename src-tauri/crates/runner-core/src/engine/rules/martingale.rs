@@ -146,11 +146,7 @@ impl Strategy for Martingale {
         Levels {
             exit_target: price(self.take_profit_price(avg_entry)),
             // 다음 안전주문이 걸리는 자리. 다 채웠으면 더 살 곳이 없다.
-            entry_target: if self.so_done < self.max_safety_orders {
-                price(self.next_safety_price())
-            } else {
-                None
-            },
+            entry_target: if self.so_done < self.max_safety_orders { price(self.next_safety_price()) } else { None },
             ..Default::default()
         }
     }

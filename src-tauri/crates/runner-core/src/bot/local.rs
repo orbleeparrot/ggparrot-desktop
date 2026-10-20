@@ -59,19 +59,25 @@ impl LocalEngine {
         self.pending_fills.len()
     }
 
-    /// 지금 보유 중인가(엔진 장부 기준).
-    pub fn in_position(&self) -> bool {
-        self.engine.in_position()
-    }
-
-    /// 화면이 그릴 최근 봉들(오래된 것부터).
-    pub fn recent_bars(&self) -> impl Iterator<Item = &Bar> {
-        self.recent.iter()
-    }
-
     /// 지금 그려야 할 가격선.
     pub fn levels(&self) -> crate::engine::levels::Levels {
         self.engine.levels(self.last_bar.as_ref())
+    }
+
+    /// 화면이 그릴 차트 한 벌 — 받은 마감봉과 지금의 가격선.
+    ///
+    /// 봉은 거래소에서 받은 **그대로**이고, 선은 엔진이 낸 **그대로**다. 화면은 둘을
+    /// 겹쳐 그리기만 한다 — 화면이 다시 계산하면 규칙 산수가 두 벌이 된다.
+    pub fn chart(&self, macro_: &serde_json::Value) -> Value {
+        json!({
+            "interval": crate::macro_info::candle_interval(macro_),
+            "bars": self
+                .recent
+                .iter()
+                .map(|b| json!([b.t, b.o, b.h, b.l, b.c]))
+                .collect::<Vec<_>>(),
+            "levels": self.levels(),
+        })
     }
 
     fn remember(&mut self, bar: Bar) {
@@ -163,7 +169,7 @@ impl Bot {
         guard: &mut RiskGuard,
     ) -> Result<(), String> {
         // 틱 기반 규칙(A · B · C)은 봉이 아니라 시계를 본다.
-        local.engine.set_clock(now_ms() as i64);
+        local.engine.set_clock(now_ms());
 
         match local.stream.poll(POLL_LOOKBACK, now_ms()).await {
             Ok(fresh) => {
@@ -171,10 +177,16 @@ impl Bot {
                     local.fetch_failures = 0;
                     self.logger.log("봉 수집이 복구됐어요.");
                 }
+                let arrived = !fresh.is_empty();
                 for candle in fresh {
                     let bar = Bar::from(candle);
                     local.engine.on_bar(&bar);
                     local.remember(bar);
+                }
+                if arrived {
+                    // 봉이 새로 마감됐을 때만 보낸다 — 매 틱 보내면 300개 배열이
+                    // 5초마다 화면으로 간다.
+                    let _ = self.tx.send(BotEvent::Chart(local.chart(&self.macro_)));
                 }
             }
             Err(e) => {
@@ -207,7 +219,7 @@ impl Bot {
     fn note_candle_failure(&mut self, local: &mut LocalEngine, error: &CandleError) {
         local.fetch_failures += 1;
         // 장애가 길어져도 활동 기록을 채우지 않게 — 처음과 그 뒤 가끔만.
-        if local.fetch_failures == 1 || local.fetch_failures % 60 == 0 {
+        if local.fetch_failures == 1 || local.fetch_failures.is_multiple_of(60) {
             self.logger.log_full(
                 &format!("  일시 오류(봉): {} — 다음 틱에 다시 받아요", error.message()),
                 Some("warn"),
@@ -239,13 +251,7 @@ impl Bot {
             guard.entry_blocked()
         };
         if blocked && is_entry {
-            self.logger.activity(
-                "blocked",
-                "진입을 미뤘어요",
-                why.clone(),
-                format!("  ⏸ 진입 보류: {why}"),
-                "warn",
-            );
+            self.logger.activity("blocked", "진입을 미뤘어요", why.clone(), format!("  ⏸ 진입 보류: {why}"), "warn");
             return Ok(());
         }
 

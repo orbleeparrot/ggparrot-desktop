@@ -212,8 +212,7 @@ impl SimContext<'_> {
             Some(fill) => {
                 *self.entry_time_ms = None;
                 if is_stop && self.risk.cooldown_minutes > 0.0 {
-                    *self.cooldown_until_ms =
-                        Some(self.now_ms + (self.risk.cooldown_minutes * MS_MINUTE) as i64);
+                    *self.cooldown_until_ms = Some(self.now_ms + (self.risk.cooldown_minutes * MS_MINUTE) as i64);
                 }
                 self.fills.push(fill);
                 true
@@ -260,19 +259,15 @@ impl SimContext<'_> {
         if let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0) {
             if self.ledger.in_position() && self.ledger.stop_hit(bar.l, bar.h, sl) {
                 let avg = self.ledger.avg_entry();
-                let px = if self.ledger.side == Side::Short {
-                    avg * (1.0 + sl / 100.0)
-                } else {
-                    avg * (1.0 - sl / 100.0)
-                };
+                let px =
+                    if self.ledger.side == Side::Short { avg * (1.0 + sl / 100.0) } else { avg * (1.0 - sl / 100.0) };
                 forced = self.close_all(px, px, true, "");
             }
         }
 
         // 2) 최대 보유시간 — 종가에 강제 청산.
         if !forced {
-            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, *self.entry_time_ms)
-            {
+            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, *self.entry_time_ms) {
                 if self.ledger.in_position() && bar.t - entered >= (hours * MS_HOUR) as i64 {
                     forced = self.close_all(bar.c, bar.c, false, "");
                 }
@@ -383,9 +378,7 @@ impl<S: Strategy> CandleSim<S> {
         if self.queue.is_empty() {
             let mut fills = Vec::new();
             let now = self.entry_time_ms.unwrap_or(0);
-            self.with_strategy(now, &mut fills, |strategy, ctx| {
-                strategy.execute_pending(ctx, price)
-            });
+            self.with_strategy(now, &mut fills, |strategy, ctx| strategy.execute_pending(ctx, price));
             self.queue.extend(fills);
         }
         self.queue.pop_front()
@@ -420,11 +413,8 @@ impl<S: Strategy> CandleSim<S> {
         let mut out = self.strategy().levels(avg, last_bar);
         if out.stop_loss.is_none() && self.ledger.in_position() {
             if let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0) {
-                let line = if self.ledger.side == Side::Short {
-                    avg * (1.0 + sl / 100.0)
-                } else {
-                    avg * (1.0 - sl / 100.0)
-                };
+                let line =
+                    if self.ledger.side == Side::Short { avg * (1.0 + sl / 100.0) } else { avg * (1.0 - sl / 100.0) };
                 out.stop_loss = super::levels::price(line);
             }
         }

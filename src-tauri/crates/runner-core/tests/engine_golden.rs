@@ -48,10 +48,9 @@ struct Command {
 }
 
 fn load() -> Golden {
-    let path: PathBuf =
-        [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
-    let raw = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("판단 계약을 읽지 못했다 {}: {e}", path.display()));
+    let path: PathBuf = [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
+    let raw =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("판단 계약을 읽지 못했다 {}: {e}", path.display()));
     serde_json::from_str(&raw).expect("판단 계약 모양이 예상과 다르다")
 }
 
@@ -115,8 +114,7 @@ fn 계약의_매크로를_실행기가_알아본다() {
     for (name, case) in &golden.cases {
         let rule = case.macro_.get("rule_type").and_then(|v| v.as_str()).unwrap_or("");
         assert!(!rule.is_empty(), "{name}: rule_type 이 없다");
-        let interval =
-            case.macro_.get("candle_interval").and_then(|v| v.as_str()).unwrap_or_default();
+        let interval = case.macro_.get("candle_interval").and_then(|v| v.as_str()).unwrap_or_default();
         assert!(runner_core::intervals::step_ms(interval).is_some(), "{name}: {interval}");
         let exchange = case.macro_.get("exchange").and_then(|v| v.as_str()).unwrap_or_default();
         assert!(matches!(exchange, "binance" | "upbit" | "bithumb"), "{name}: {exchange}");
@@ -211,9 +209,15 @@ fn 포팅한_규칙은_계약대로_판단한다() {
     }
     println!("포팅됨 {}/{}: {ported:?}", ported.len(), golden.cases.len());
     println!("남음: {waiting:?}");
-    assert!(wrong.is_empty(), "{}", wrong.join("
+    assert!(
+        wrong.is_empty(),
+        "{}",
+        wrong.join(
+            "
 
-"));
+"
+        )
+    );
 }
 
 #[test]
@@ -227,11 +231,8 @@ fn 열한_규칙이_모두_포팅됐다() {
         .map(|(name, _)| name)
         .collect();
     assert!(missing.is_empty(), "아직 못 세우는 규칙: {missing:?}");
-    let rules: std::collections::BTreeSet<&str> = golden
-        .cases
-        .values()
-        .filter_map(|c| c.macro_.get("rule_type").and_then(|v| v.as_str()))
-        .collect();
+    let rules: std::collections::BTreeSet<&str> =
+        golden.cases.values().filter_map(|c| c.macro_.get("rule_type").and_then(|v| v.as_str())).collect();
     assert_eq!(rules.len(), 11, "계약이 열한 규칙을 다 담고 있어야 한다: {rules:?}");
 }
 
@@ -245,10 +246,7 @@ fn 모르는_규칙은_로컬_판단을_열지_않는다() {
         Err(err) => err.to_string(),
         Ok(_) => panic!("모르는 규칙인데 엔진을 세웠다"),
     };
-    assert!(
-        text.contains("아직") && text.contains("Z"),
-        "거절 문구가 무엇이 문제인지 말하지 않는다: {text}"
-    );
+    assert!(text.contains("아직") && text.contains("Z"), "거절 문구가 무엇이 문제인지 말하지 않는다: {text}");
 }
 
 #[test]
@@ -264,11 +262,7 @@ fn 필수_설정이_없으면_세우지_않는다() {
         ("C_dca", "amount_per_buy"),
     ] {
         let mut broken = golden.cases[name].macro_.clone();
-        broken["params"]
-            .as_object_mut()
-            .expect("params")
-            .remove(key)
-            .expect("있던 칸이어야 한다");
+        broken["params"].as_object_mut().expect("params").remove(key).expect("있던 칸이어야 한다");
         let text = match runner_core::engine::runner::build(&broken) {
             Err(err) => err.to_string(),
             Ok(_) => panic!("{name}: {key} 없이도 세워졌다"),

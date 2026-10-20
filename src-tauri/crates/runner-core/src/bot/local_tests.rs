@@ -31,11 +31,8 @@ fn local_command(seq: u64, action: &str, frac: f64) -> Value {
 async fn 로컬_명령도_서버_명령과_같은_길로_나간다() {
     // 길이 하나여야 주문 상한 · 최소 수량 · 수수료 보정이 양쪽에 똑같이 걸린다.
     let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
-    let (mut bot, _rx) = bot_with(
-        json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}),
-        fb.clone(),
-        RunMode::Live,
-    );
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb.clone(), RunMode::Live);
     let ack = bot.execute_command(&local_command(1, "buy", 0.05), 100.0).await.unwrap();
     assert_eq!(ack["ok"], true);
     assert_eq!(fb.submits()[0].base_qty, Some(0.5), "서버 명령과 같은 수량 계산");
@@ -46,11 +43,8 @@ async fn 로컬_명령도_서버_명령과_같은_길로_나간다() {
 async fn 로컬_명령_번호는_서버_명령_번호와_섞이지_않는다() {
     // 겹치면 "이미 했다" 기억이 서로의 명령을 지워 주문이 통째로 사라진다.
     let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
-    let (mut bot, _rx) = bot_with(
-        json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}),
-        fb.clone(),
-        RunMode::Live,
-    );
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb.clone(), RunMode::Live);
     // 서버 명령 1 번과 로컬 명령 1 번은 **다른 것**이다.
     bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.05, "reason": "서버"}), 100.0)
         .await
@@ -58,20 +52,14 @@ async fn 로컬_명령_번호는_서버_명령_번호와_섞이지_않는다() {
     let before = fb.submits().len();
     let ack = bot.execute_command(&local_command(1, "sell", 1.0), 100.0).await.unwrap();
     assert_eq!(ack["ok"], true);
-    assert!(
-        fb.submits().len() > before,
-        "로컬 1 번이 서버 1 번과 같은 것으로 읽혀 주문이 사라졌다"
-    );
+    assert!(fb.submits().len() > before, "로컬 1 번이 서버 1 번과 같은 것으로 읽혀 주문이 사라졌다");
 }
 
 #[tokio::test]
 async fn 같은_로컬_명령을_두_번_실행하지_않는다() {
     let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
-    let (mut bot, _rx) = bot_with(
-        json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}),
-        fb.clone(),
-        RunMode::Live,
-    );
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb.clone(), RunMode::Live);
     let cmd = local_command(7, "buy", 0.05);
     bot.execute_command(&cmd, 100.0).await.unwrap();
     let after_first = fb.submits().len();
@@ -126,14 +114,12 @@ async fn 열한_매매_방식_모두_로컬_엔진을_세울_수_있다() {
     // 하나라도 못 세우면 그 매크로는 로컬 판단으로 못 돈다.
     let path: std::path::PathBuf =
         [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
-    let golden: Value =
-        serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
+    let golden: Value = serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
     let cases = golden["cases"].as_object().expect("경우들");
     let mut rules: std::collections::BTreeSet<String> = Default::default();
     for (name, case) in cases {
         let macro_ = &case["macro"];
-        crate::engine::runner::build(macro_)
-            .unwrap_or_else(|_| panic!("{name}: 로컬 엔진을 세우지 못했다"));
+        crate::engine::runner::build(macro_).unwrap_or_else(|_| panic!("{name}: 로컬 엔진을 세우지 못했다"));
         rules.insert(macro_["rule_type"].as_str().unwrap_or_default().to_string());
     }
     assert_eq!(rules.len(), 11, "열한 매매 방식이 다 있어야 한다: {rules:?}");
@@ -145,8 +131,7 @@ async fn 열한_매매_방식_모두_로컬_엔진을_세울_수_있다() {
 fn levels_after_contract(name: &str) -> crate::engine::levels::Levels {
     let path: std::path::PathBuf =
         [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
-    let golden: Value =
-        serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
+    let golden: Value = serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
     let case = &golden["cases"][name];
     let warmup = golden["warmup_count"].as_u64().expect("웜업") as usize;
     let rows = golden["candles"].as_array().expect("봉");
@@ -180,8 +165,7 @@ fn 열한_매매_방식_모두_그릴_선을_낸다() {
     // 추정으로 메우기 시작하면 그 추정선이 실제 조건인 척한다 — 한 번 겪은 일이다.
     let path: std::path::PathBuf =
         [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
-    let golden: Value =
-        serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
+    let golden: Value = serde_json::from_str(&std::fs::read_to_string(path).expect("판단 계약")).expect("모양");
     let mut silent = Vec::new();
     for name in golden["cases"].as_object().expect("경우들").keys() {
         let levels = levels_after_contract(name);
@@ -198,10 +182,7 @@ fn 열한_매매_방식_모두_그릴_선을_낸다() {
 fn 돌파선은_마지막_봉의_시가에서_나온다() {
     // 평단이나 현재가로 재면 선이 가격을 따라 움직인다 — E 눌림목에서 겪은 거짓이다.
     let levels = levels_after_contract("I_breakout");
-    assert!(
-        levels.entry_target.is_some() || levels.trail_stop.is_some(),
-        "돌파 규칙이 사는 선도 파는 선도 못 낸다"
-    );
+    assert!(levels.entry_target.is_some() || levels.trail_stop.is_some(), "돌파 규칙이 사는 선도 파는 선도 못 낸다");
 }
 
 #[test]
@@ -219,8 +200,7 @@ fn 그리드는_사는_칸과_파는_칸을_모두_낸다() {
 fn 볼린저는_밴드_셋을_낸다() {
     let levels = levels_after_contract("G_bollinger");
     assert!(levels.reference.is_some() && levels.band_upper.is_some() && levels.band_lower.is_some());
-    let (mid, up, low) =
-        (levels.reference.unwrap(), levels.band_upper.unwrap(), levels.band_lower.unwrap());
+    let (mid, up, low) = (levels.reference.unwrap(), levels.band_upper.unwrap(), levels.band_lower.unwrap());
     assert!(low < mid && mid < up, "밴드 순서가 뒤집혔다: {low} {mid} {up}");
 }
 

@@ -3,16 +3,15 @@
 #[tokio::main]
 async fn main() {
     let http = runner_core::net::http_client();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64;
-    for (exchange, symbol, interval) in
-        [("bithumb", "KRW-BTC", "1h"), ("bithumb", "KRW-BTC", "1d"), ("upbit", "KRW-BTC", "1d"), ("binance", "BTCUSDT", "1h")]
-    {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
+    for (exchange, symbol, interval) in [
+        ("bithumb", "KRW-BTC", "1h"),
+        ("bithumb", "KRW-BTC", "1d"),
+        ("upbit", "KRW-BTC", "1d"),
+        ("binance", "BTCUSDT", "1h"),
+    ] {
         let source =
-            runner_core::candles::CandleSource::new(exchange, symbol, interval, "spot", http.clone(), None)
-                .unwrap();
+            runner_core::candles::CandleSource::new(exchange, symbol, interval, "spot", http.clone(), None).unwrap();
         match source.recent_closed(5, now).await {
             Ok(rows) => {
                 for c in rows {

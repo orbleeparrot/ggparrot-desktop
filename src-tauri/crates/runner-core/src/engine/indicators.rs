@@ -115,8 +115,7 @@ impl Bollinger {
         }
         let mean = self.window.mean();
         // 표본이 아니라 **모집단** 분산(n 으로 나눈다) — 서버와 같다.
-        let var = self.window.values.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>()
-            / self.window.period as f64;
+        let var = self.window.values.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / self.window.period as f64;
         let sd = var.sqrt();
         Some((mean, mean + self.num_std * sd, mean - self.num_std * sd))
     }

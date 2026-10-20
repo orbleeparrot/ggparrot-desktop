@@ -111,15 +111,7 @@ impl TickSim {
         let return_pct = (equity_after - self.initial_capital) / self.initial_capital * 100.0;
         let after = if self.in_position { self.qty } else { 0.0 };
         let qty_before = if is_exit(side) { after + qty } else { (after - qty).max(0.0) };
-        Fill {
-            side,
-            price,
-            qty,
-            equity_after,
-            return_pct,
-            reason: reason.to_string(),
-            qty_before,
-        }
+        Fill { side, price, qty, equity_after, return_pct, reason: reason.to_string(), qty_before }
     }
 
     /// 손절선에 닿았는가 — 진입가 기준, **현재가**로 본다(봉의 극값이 아니다).
@@ -170,20 +162,12 @@ impl TickSim {
             let exit_comm = self.qty * f * comm / 100.0;
             self.cash += self.margin + self.qty * (f - self.entry_fill) - exit_comm;
             // 봉 기계와 달리 **진입 수수료까지 뺀다** — 서버 `PositionSim._do_close` 그대로.
-            (
-                "sell",
-                f,
-                self.qty * (f - self.entry_fill) - self.entry_commission - exit_comm,
-            )
+            ("sell", f, self.qty * (f - self.entry_fill) - self.entry_commission - exit_comm)
         } else {
             let f = buy_fill(exec_price, self.costs.slippage_pct); // cover
             let exit_comm = self.qty * f * comm / 100.0;
             self.cash += self.qty * (self.entry_fill - f) - exit_comm;
-            (
-                "cover",
-                f,
-                self.qty * (self.entry_fill - f) - self.entry_commission - exit_comm,
-            )
+            ("cover", f, self.qty * (self.entry_fill - f) - self.entry_commission - exit_comm)
         };
         self.closed_trades.push(pnl);
         self.in_position = false;
@@ -191,8 +175,7 @@ impl TickSim {
         self.margin = 0.0;
         self.entry_time_ms = None;
         if is_stop && self.risk.cooldown_minutes > 0.0 {
-            self.cooldown_until_ms =
-                Some(now_ms + (self.risk.cooldown_minutes * MS_MINUTE) as i64);
+            self.cooldown_until_ms = Some(now_ms + (self.risk.cooldown_minutes * MS_MINUTE) as i64);
         }
         self.fill(side, f, traded, mark, if is_stop { "손절" } else { "청산" })
     }
@@ -217,8 +200,7 @@ impl TickSim {
             if self.stop_hit(price) {
                 return Some(self.close(price, price, now_ms, true));
             }
-            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, self.entry_time_ms)
-            {
+            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, self.entry_time_ms) {
                 if now_ms - entered >= (hours * MS_HOUR) as i64 {
                     return Some(self.close(price, price, now_ms, false));
                 }
@@ -256,11 +238,7 @@ impl TickSim {
         self.qty = notional / f;
         self.entry_commission = notional * self.costs.commission_pct / 100.0;
         // 롱은 증거금까지 현금에서 빼고, 숏은 증거금을 현금에 남긴다(서버와 같다).
-        self.cash -= if self.side == Side::Long {
-            margin + self.entry_commission
-        } else {
-            self.entry_commission
-        };
+        self.cash -= if self.side == Side::Long { margin + self.entry_commission } else { self.entry_commission };
         self.entry_fill = f;
         self.margin = margin;
         self.in_position = true;
@@ -367,15 +345,7 @@ impl DcaSim {
         let equity_after = self.equity(mark);
         let return_pct = (equity_after - self.initial_capital) / self.initial_capital * 100.0;
         let qty_before = if is_exit(side) { self.qty + qty } else { (self.qty - qty).max(0.0) };
-        Fill {
-            side,
-            price,
-            qty,
-            equity_after,
-            return_pct,
-            reason: reason.to_string(),
-            qty_before,
-        }
+        Fill { side, price, qty, equity_after, return_pct, reason: reason.to_string(), qty_before }
     }
 
     pub fn step(&mut self, price: f64, now_ms: i64) -> Option<Fill> {
@@ -390,8 +360,7 @@ impl DcaSim {
 
         // 쌓아 둔 물량의 손절 — 넣은 돈 대비로 본다.
         if let Some(sl) = self.stop_loss_pct.filter(|v| *v > 0.0) {
-            if self.qty > 0.0 && !self.stopped && self.qty * price <= self.cost_basis * (1.0 - sl / 100.0)
-            {
+            if self.qty > 0.0 && !self.stopped && self.qty * price <= self.cost_basis * (1.0 - sl / 100.0) {
                 let f = sell_fill(price, self.costs.slippage_pct);
                 let proceeds = self.qty * f;
                 let traded = self.qty;
@@ -406,20 +375,16 @@ impl DcaSim {
         // 일일 한도 — 그날은 더 사지 않는다(들고 있는 것은 그대로. 적립식은 쥐고 간다).
         if let Some(limit) = self.daily_max_loss_pct.filter(|v| *v > 0.0) {
             if self.day_start_equity > 0.0 {
-                let drawdown =
-                    (self.equity(price) - self.day_start_equity) / self.day_start_equity * 100.0;
+                let drawdown = (self.equity(price) - self.day_start_equity) / self.day_start_equity * 100.0;
                 if drawdown <= -limit {
                     self.halted_today = true;
                 }
             }
         }
 
-        let scheduled = matches!(self.next_buy_ms, None) || matches!(self.next_buy_ms, Some(at) if now_ms >= at);
-        let can_buy = !self.stopped
-            && !self.halted_today
-            && scheduled
-            && self.cash >= self.amount_per_buy
-            && fill.is_none();
+        let scheduled = self.next_buy_ms.is_none() || matches!(self.next_buy_ms, Some(at) if now_ms >= at);
+        let can_buy =
+            !self.stopped && !self.halted_today && scheduled && self.cash >= self.amount_per_buy && fill.is_none();
         if can_buy {
             // 수수료를 **금액 안에서** 뗀다 — 정해진 금액만 쓰는 것이 적립식의 약속이다.
             let fee = self.amount_per_buy * self.costs.commission_pct / 100.0;

@@ -95,6 +95,9 @@ pub enum BotEvent {
     /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None 이면 대기 아님(샀거나 해당 없음).
     /// 서버와 끊긴 틱에는 보내지 않아 마지막 값이 남음.
     EntryWait(Option<Value>),
+    /// 실행기가 직접 판단하는 세션의 **차트 재료** — 받은 마감봉과 지금 그릴 가격선.
+    /// 봉이 새로 마감됐을 때만 보냄(매 틱 보내면 300개 배열이 5초마다 화면으로 간다).
+    Chart(Value),
     Finished {
         status: String,
         note: String,

@@ -221,9 +221,7 @@ impl Strategy for Sar {
             };
         }
         Levels {
-            exit_target: self
-                .long_take_profit
-                .and_then(|tp| price(avg_entry * (1.0 + tp / 100.0))),
+            exit_target: self.long_take_profit.and_then(|tp| price(avg_entry * (1.0 + tp / 100.0))),
             // 방어 발동선이 롱 구간의 손절 역할이다(공통 손절선은 꺼 두었다).
             stop_loss: self.defense_price(avg_entry).and_then(price),
             ..Default::default()

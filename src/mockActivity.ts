@@ -193,6 +193,8 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     online: true,
     authFailed: false,
     rejected: 0,
+    // 모의는 서버가 판단하던 때와 같은 화면 — 봉 차트는 앱이 직접 판단할 때만 나온다.
+    chart: null,
     offlineSince: 0,
     priceStaleSince: 0,
     closeFailures: 0,

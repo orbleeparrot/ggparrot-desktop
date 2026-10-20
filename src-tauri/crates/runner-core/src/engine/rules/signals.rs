@@ -80,14 +80,12 @@ impl Signal for RsiSignal {
         if !in_position {
             if self.entry_streak >= self.confirm {
                 let threshold = if short { self.exit_threshold } else { self.entry_threshold };
-                pending.note =
-                    format!("RSI {v:.1} {} {}", if short { "≥" } else { "≤" }, py_g(threshold));
+                pending.note = format!("RSI {v:.1} {} {}", if short { "≥" } else { "≤" }, py_g(threshold));
                 pending.intent = Some(Intent::Enter);
             }
         } else if self.exit_by_indicator && self.exit_streak >= self.confirm {
             let threshold = if short { self.entry_threshold } else { self.exit_threshold };
-            pending.note =
-                format!("RSI {v:.1} {} {}", if short { "≤" } else { "≥" }, py_g(threshold));
+            pending.note = format!("RSI {v:.1} {} {}", if short { "≤" } else { "≥" }, py_g(threshold));
             pending.intent = Some(Intent::Exit);
         }
     }
@@ -197,8 +195,7 @@ impl Signal for BollingerSignal {
             };
             if hit && squeezed {
                 let level = if short { upper } else { lower };
-                pending.note =
-                    format!("볼린저 {} {} 이탈", if short { "상단" } else { "하단" }, py_gp(level, 4));
+                pending.note = format!("볼린저 {} {} 이탈", if short { "상단" } else { "하단" }, py_gp(level, 4));
                 pending.intent = Some(Intent::Enter);
             }
             return;
@@ -251,13 +248,7 @@ pub struct MaCrossSignal {
 }
 
 impl MaCrossSignal {
-    pub fn new(
-        kind: MaType,
-        fast_period: usize,
-        slow_period: usize,
-        exit_by_indicator: bool,
-        confirm: u32,
-    ) -> Self {
+    pub fn new(kind: MaType, fast_period: usize, slow_period: usize, exit_by_indicator: bool, confirm: u32) -> Self {
         Self {
             fast: Ma::new(kind, fast_period),
             slow: Ma::new(kind, slow_period),
@@ -286,15 +277,12 @@ impl Signal for MaCrossSignal {
         self.golden_streak = streak(diff > 0.0, self.golden_streak);
         self.dead_streak = streak(diff < 0.0, self.dead_streak);
         let short = side == Side::Short;
-        let enter_now =
-            if short { self.dead_streak >= self.confirm } else { self.golden_streak >= self.confirm };
-        let exit_now =
-            if short { self.golden_streak >= self.confirm } else { self.dead_streak >= self.confirm };
+        let enter_now = if short { self.dead_streak >= self.confirm } else { self.golden_streak >= self.confirm };
+        let exit_now = if short { self.golden_streak >= self.confirm } else { self.dead_streak >= self.confirm };
 
         if !in_position {
             if enter_now {
-                pending.note =
-                    if short { "데드크로스".to_string() } else { "골든크로스".to_string() };
+                pending.note = if short { "데드크로스".to_string() } else { "골든크로스".to_string() };
                 pending.intent = Some(Intent::Enter);
             }
         } else if self.exit_by_indicator && exit_now {
@@ -306,9 +294,7 @@ impl Signal for MaCrossSignal {
     fn levels(&self) -> Levels {
         // 두 이동평균을 그린다. 교차가 신호이므로 둘이 같이 보여야 뜻이 있다.
         match self.value() {
-            Some((fast, slow)) => {
-                Levels { reference: price(fast), band_upper: price(slow), ..Default::default() }
-            }
+            Some((fast, slow)) => Levels { reference: price(fast), band_upper: price(slow), ..Default::default() },
             None => Levels::pending(),
         }
     }

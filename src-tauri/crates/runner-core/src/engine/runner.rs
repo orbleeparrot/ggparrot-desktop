@@ -9,6 +9,7 @@
 use serde_json::Value;
 
 use super::candle_sim::{Bar, CandleSim, Risk};
+use super::indicators::MaType;
 use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
 use super::levels::{price, Levels};
 use super::rules::breakout::{Breakout, ExitMode};
@@ -16,12 +17,9 @@ use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::indicator::IndicatorRule;
 use super::rules::martingale::Martingale;
 use super::rules::sar::Sar;
-use super::tick_sim::{DcaSim, TickRule, TickSim};
-use super::rules::signals::{
-    BandExitTarget, BandStrategy, BollingerSignal, MaCrossSignal, RsiSignal,
-};
+use super::rules::signals::{BandExitTarget, BandStrategy, BollingerSignal, MaCrossSignal, RsiSignal};
 use super::rules::trailing::{EntryMode, Trailing};
-use super::indicators::MaType;
+use super::tick_sim::{DcaSim, TickRule, TickSim};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuildError {
@@ -266,14 +264,12 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
 
     match rule.as_str() {
         "E" => {
-            let entry_mode =
-                if macro_.pointer("/params/entry_mode").and_then(Value::as_str) == Some("dip") {
-                    EntryMode::Dip
-                } else {
-                    EntryMode::Immediate
-                };
-            let trail = p("trail_percent")
-                .ok_or_else(|| BuildError::BadMacro("E: trail_percent 가 없어요".into()))?;
+            let entry_mode = if macro_.pointer("/params/entry_mode").and_then(Value::as_str) == Some("dip") {
+                EntryMode::Dip
+            } else {
+                EntryMode::Immediate
+            };
+            let trail = p("trail_percent").ok_or_else(|| BuildError::BadMacro("E: trail_percent 가 없어요".into()))?;
             let strategy = Trailing::new(
                 entry_mode,
                 p("entry_dip").unwrap_or(3.0),
@@ -285,9 +281,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             Ok(Engine::Trailing(CandleSim::new(ledger, risk, strategy)))
         }
         "D" => {
-            let need = |key: &str| {
-                p(key).ok_or_else(|| BuildError::BadMacro(format!("D: {key} 가 없어요")))
-            };
+            let need = |key: &str| p(key).ok_or_else(|| BuildError::BadMacro(format!("D: {key} 가 없어요")));
             let strategy = Grid::new(
                 need("lower_price")?,
                 need("upper_price")?,
@@ -297,8 +291,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 } else {
                     GridMode::Arithmetic
                 },
-                if macro_.pointer("/params/band_exit_action").and_then(Value::as_str) == Some("hold")
-                {
+                if macro_.pointer("/params/band_exit_action").and_then(Value::as_str) == Some("hold") {
                     BandExit::Hold
                 } else {
                     BandExit::Stop
@@ -327,8 +320,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
         }
         "F" => {
             // exit_mode: indicator | take_profit | both — 지표로 파는 것은 앞뒤 둘뿐이다.
-            let exit_mode =
-                macro_.pointer("/params/exit_mode").and_then(Value::as_str).unwrap_or("indicator");
+            let exit_mode = macro_.pointer("/params/exit_mode").and_then(Value::as_str).unwrap_or("indicator");
             let signal = RsiSignal::new(
                 p("rsi_period").unwrap_or(14.0) as usize,
                 p("entry_threshold").unwrap_or(30.0),
@@ -338,11 +330,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             );
             // 익절은 exit_mode 가 take_profit · both 일 때만 쓴다.
             let tp = p("take_profit").filter(|_| matches!(exit_mode, "take_profit" | "both"));
-            Ok(Engine::Rsi(CandleSim::new(
-                ledger,
-                risk,
-                IndicatorRule::new(signal, tp, risk.invest_ratio),
-            )))
+            Ok(Engine::Rsi(CandleSim::new(ledger, risk, IndicatorRule::new(signal, tp, risk.invest_ratio))))
         }
         "G" => {
             let signal = BollingerSignal::new(
@@ -353,8 +341,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 } else {
                     BandStrategy::Reversion
                 },
-                if macro_.pointer("/params/exit_target").and_then(Value::as_str) == Some("opposite")
-                {
+                if macro_.pointer("/params/exit_target").and_then(Value::as_str) == Some("opposite") {
                     BandExitTarget::Opposite
                 } else {
                     BandExitTarget::Mid
@@ -362,43 +349,26 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 flag(macro_, &["params", "squeeze_filter"], false),
                 p("squeeze_lookback").unwrap_or(50.0) as usize,
             );
-            Ok(Engine::Bollinger(CandleSim::new(
-                ledger,
-                risk,
-                IndicatorRule::new(signal, None, risk.invest_ratio),
-            )))
+            Ok(Engine::Bollinger(CandleSim::new(ledger, risk, IndicatorRule::new(signal, None, risk.invest_ratio))))
         }
         "J" => {
-            let exit_signal = macro_
-                .pointer("/params/exit_signal")
-                .and_then(Value::as_str)
-                .unwrap_or("dead_cross");
+            let exit_signal = macro_.pointer("/params/exit_signal").and_then(Value::as_str).unwrap_or("dead_cross");
             let signal = MaCrossSignal::new(
                 if macro_.pointer("/params/ma_type").and_then(Value::as_str) == Some("EMA") {
                     MaType::Ema
                 } else {
                     MaType::Sma
                 },
-                p("fast_period")
-                    .ok_or_else(|| BuildError::BadMacro("J: fast_period 가 없어요".into()))?
-                    as usize,
-                p("slow_period")
-                    .ok_or_else(|| BuildError::BadMacro("J: slow_period 가 없어요".into()))?
-                    as usize,
+                p("fast_period").ok_or_else(|| BuildError::BadMacro("J: fast_period 가 없어요".into()))? as usize,
+                p("slow_period").ok_or_else(|| BuildError::BadMacro("J: slow_period 가 없어요".into()))? as usize,
                 matches!(exit_signal, "dead_cross" | "both"),
                 p("confirm_candles").unwrap_or(1.0) as u32,
             );
             let tp = p("take_profit").filter(|_| matches!(exit_signal, "take_profit" | "both"));
-            Ok(Engine::MaCross(CandleSim::new(
-                ledger,
-                risk,
-                IndicatorRule::new(signal, tp, risk.invest_ratio),
-            )))
+            Ok(Engine::MaCross(CandleSim::new(ledger, risk, IndicatorRule::new(signal, tp, risk.invest_ratio))))
         }
         "H" => {
-            let need = |key: &str| {
-                p(key).ok_or_else(|| BuildError::BadMacro(format!("H: {key} 가 없어요")))
-            };
+            let need = |key: &str| p(key).ok_or_else(|| BuildError::BadMacro(format!("H: {key} 가 없어요")));
             let strategy = Martingale::new(
                 need("base_order_size")?,
                 need("safety_order_size")?,
@@ -411,9 +381,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             Ok(Engine::Martingale(CandleSim::new(ledger, risk, strategy)))
         }
         "K" => {
-            let need = |key: &str| {
-                p(key).ok_or_else(|| BuildError::BadMacro(format!("K: {key} 가 없어요")))
-            };
+            let need = |key: &str| p(key).ok_or_else(|| BuildError::BadMacro(format!("K: {key} 가 없어요")));
             let strategy = Sar::new(
                 p("long_take_profit_pct"),
                 need("drop_trigger_pct")?,
@@ -431,18 +399,15 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             Ok(Engine::Sar(CandleSim::new(ledger, risk, strategy)))
         }
         "A" | "B" => {
-            let tick_rule =
-                if rule == "A" { TickRule::TakeProfitReentry } else { TickRule::Band };
-            let mut sim =
-                TickSim::new(side_of(macro_), costs_of(macro_), risk, tick_rule, capital);
+            let tick_rule = if rule == "A" { TickRule::TakeProfitReentry } else { TickRule::Band };
+            let mut sim = TickSim::new(side_of(macro_), costs_of(macro_), risk, tick_rule, capital);
             if tick_rule == TickRule::Band {
-                sim.buy_price = p("buy_price")
-                    .ok_or_else(|| BuildError::BadMacro("B: buy_price 가 없어요".into()))?;
-                sim.sell_price = p("sell_price")
-                    .ok_or_else(|| BuildError::BadMacro("B: sell_price 가 없어요".into()))?;
+                sim.buy_price = p("buy_price").ok_or_else(|| BuildError::BadMacro("B: buy_price 가 없어요".into()))?;
+                sim.sell_price =
+                    p("sell_price").ok_or_else(|| BuildError::BadMacro("B: sell_price 가 없어요".into()))?;
             } else {
-                sim.take_profit_pct = p("take_profit_pct")
-                    .ok_or_else(|| BuildError::BadMacro("A: take_profit_pct 가 없어요".into()))?;
+                sim.take_profit_pct =
+                    p("take_profit_pct").ok_or_else(|| BuildError::BadMacro("A: take_profit_pct 가 없어요".into()))?;
             }
             Ok(Engine::Tick(sim))
         }
@@ -450,8 +415,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             costs_of(macro_),
             risk.stop_loss_pct,
             risk.daily_max_loss_pct,
-            p("amount_per_buy")
-                .ok_or_else(|| BuildError::BadMacro("C: amount_per_buy 가 없어요".into()))?,
+            p("amount_per_buy").ok_or_else(|| BuildError::BadMacro("C: amount_per_buy 가 없어요".into()))?,
             p("interval_days").unwrap_or(1.0) as i64,
             capital,
         ))),
@@ -475,8 +439,7 @@ pub struct Command {
 
 pub fn command_from_fill(fill: &Fill, initial: f64) -> Command {
     if is_exit(fill.side) {
-        let mut frac =
-            if fill.qty_before <= 0.0 { 1.0 } else { (fill.qty / fill.qty_before).min(1.0) };
+        let mut frac = if fill.qty_before <= 0.0 { 1.0 } else { (fill.qty / fill.qty_before).min(1.0) };
         if frac >= 0.999 {
             frac = 1.0;
         }
@@ -502,17 +465,13 @@ pub fn command_from_fill(fill: &Fill, initial: f64) -> Command {
 fn tick_levels(sim: &TickSim) -> Levels {
     let mut out = Levels::default();
     if sim.in_position {
-        out.stop_loss = sim
-            .risk
-            .stop_loss_pct
-            .filter(|v| *v > 0.0)
-            .and_then(|sl| {
-                price(if sim.side == Side::Short {
-                    sim.entry_fill * (1.0 + sl / 100.0)
-                } else {
-                    sim.entry_fill * (1.0 - sl / 100.0)
-                })
-            });
+        out.stop_loss = sim.risk.stop_loss_pct.filter(|v| *v > 0.0).and_then(|sl| {
+            price(if sim.side == Side::Short {
+                sim.entry_fill * (1.0 + sl / 100.0)
+            } else {
+                sim.entry_fill * (1.0 - sl / 100.0)
+            })
+        });
         out.exit_target = match sim.rule {
             TickRule::TakeProfitReentry => price(if sim.side == Side::Short {
                 sim.entry_fill * (1.0 - sim.take_profit_pct / 100.0)
@@ -520,16 +479,13 @@ fn tick_levels(sim: &TickSim) -> Levels {
                 sim.entry_fill * (1.0 + sim.take_profit_pct / 100.0)
             }),
             // B 는 정해 둔 가격이다 — 평단과 무관하다.
-            TickRule::Band => {
-                price(if sim.side == Side::Short { sim.buy_price } else { sim.sell_price })
-            }
+            TickRule::Band => price(if sim.side == Side::Short { sim.buy_price } else { sim.sell_price }),
         };
         return out;
     }
     // 비어 있다 — A 는 다음 틱에 바로 사므로 그릴 선이 없고, B 는 정해 둔 가격을 기다린다.
     if sim.rule == TickRule::Band {
-        out.entry_target =
-            price(if sim.side == Side::Short { sim.sell_price } else { sim.buy_price });
+        out.entry_target = price(if sim.side == Side::Short { sim.sell_price } else { sim.buy_price });
     }
     out
 }

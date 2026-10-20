@@ -13,8 +13,7 @@ const DAY: i64 = 24 * HOUR;
 
 fn source(server: &MockServer, exchange: &str, interval: &str) -> CandleSource {
     let symbol = if exchange == "binance" { "BTCUSDT" } else { "KRW-BTC" };
-    CandleSource::new(exchange, symbol, interval, "spot", reqwest::Client::new(), Some(server.uri()))
-        .expect("source")
+    CandleSource::new(exchange, symbol, interval, "spot", reqwest::Client::new(), Some(server.uri())).expect("source")
 }
 
 /// 거래소가 주는 모양 그대로 — 최신이 먼저.
@@ -40,9 +39,14 @@ fn binance_rows(start_ms: i64, count: i64, step: i64) -> Vec<serde_json::Value> 
     (0..count)
         .map(|i| {
             let t = start_ms + i * step;
-            json!([t, format!("{}", 100.0 + i as f64), format!("{}", 102.0 + i as f64),
-                   format!("{}", 99.0 + i as f64), format!("{}", 101.0 + i as f64),
-                   format!("{}", 10.0 + i as f64)])
+            json!([
+                t,
+                format!("{}", 100.0 + i as f64),
+                format!("{}", 102.0 + i as f64),
+                format!("{}", 99.0 + i as f64),
+                format!("{}", 101.0 + i as f64),
+                format!("{}", 10.0 + i as f64)
+            ])
         })
         .collect()
 }
@@ -157,9 +161,7 @@ async fn 빗썸은_한국시간_커서를_오프셋_없이_보낸다() {
         .await
         .unwrap()
         .iter()
-        .filter_map(|r: &Request| {
-            r.url.query_pairs().find(|(k, _)| k == "to").map(|(_, v)| v.into_owned())
-        })
+        .filter_map(|r: &Request| r.url.query_pairs().find(|(k, _)| k == "to").map(|(_, v)| v.into_owned()))
         .collect();
     assert!(!cursors.is_empty(), "커서를 한 번은 보내야 한다");
     for cursor in &cursors {
@@ -177,9 +179,7 @@ async fn 업비트는_협정시_오프셋을_붙여_보낸다() {
         .await
         .unwrap()
         .iter()
-        .find_map(|r: &Request| {
-            r.url.query_pairs().find(|(k, _)| k == "to").map(|(_, v)| v.into_owned())
-        })
+        .find_map(|r: &Request| r.url.query_pairs().find(|(k, _)| k == "to").map(|(_, v)| v.into_owned()))
         .expect("커서");
     assert!(cursor.ends_with("+00:00"), "업비트 커서: {cursor}");
 }
@@ -198,9 +198,7 @@ async fn 격자에_안_맞는_봉은_거부한다() {
 #[test]
 fn 모르는_거래소와_간격은_만들_때_막는다() {
     let http = reqwest::Client::new();
-    for (exchange, symbol, interval) in
-        [("coinbase", "BTC-USD", "1h"), ("binance", "BTCUSDT", "2h")]
-    {
+    for (exchange, symbol, interval) in [("coinbase", "BTC-USD", "1h"), ("binance", "BTCUSDT", "2h")] {
         let err = CandleSource::new(exchange, symbol, interval, "spot", http.clone(), None).unwrap_err();
         assert!(!err.retryable(), "다시 시도해도 같다: {}", err.message());
     }
@@ -208,8 +206,7 @@ fn 모르는_거래소와_간격은_만들_때_막는다() {
 
 #[test]
 fn 국내는_선물_봉이_없다() {
-    let err = CandleSource::new("upbit", "KRW-BTC", "1h", "futures", reqwest::Client::new(), None)
-        .unwrap_err();
+    let err = CandleSource::new("upbit", "KRW-BTC", "1h", "futures", reqwest::Client::new(), None).unwrap_err();
     assert!(!err.retryable());
 }
 
@@ -264,10 +261,7 @@ async fn 폴을_건너뛰어도_그_사이_봉을_주워_온다() {
     mount(&server, "/api/v3/klines", json!(binance_rows(7 * HOUR, 7, HOUR))).await;
     let mut stream = ClosedCandleStream::new(source(&server, "binance", "1h"), Some(9 * HOUR));
     let fresh = stream.poll(5, 13 * HOUR).await.unwrap();
-    assert_eq!(
-        fresh.iter().map(|c| c.t).collect::<Vec<_>>(),
-        vec![10 * HOUR, 11 * HOUR, 12 * HOUR]
-    );
+    assert_eq!(fresh.iter().map(|c| c.t).collect::<Vec<_>>(), vec![10 * HOUR, 11 * HOUR, 12 * HOUR]);
 }
 
 #[tokio::test]

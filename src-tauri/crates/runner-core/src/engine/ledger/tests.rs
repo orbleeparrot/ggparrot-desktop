@@ -22,11 +22,7 @@ fn near(got: f64, want: f64) {
 
 /// 실제 AZIT 매크로와 같은 비용 — 빗썸 현물 0.04%, 슬리피지 0.05%.
 fn azit() -> Ledger {
-    Ledger::new(
-        Side::Long,
-        Costs { commission_pct: 0.04, slippage_pct: 0.05, ..Costs::default() },
-        40_000.0,
-    )
+    Ledger::new(Side::Long, Costs { commission_pct: 0.04, slippage_pct: 0.05, ..Costs::default() }, 40_000.0)
 }
 
 // --- 진입 -------------------------------------------------------------------
@@ -49,11 +45,8 @@ fn 진입이_서버와_같은_수량과_현금을_만든다() {
 
 #[test]
 fn 현금보다_많이_넣으려_하면_현금까지만_쓴다() {
-    let mut l = Ledger::new(
-        Side::Long,
-        Costs { commission_pct: 0.04, slippage_pct: 0.05, ..Costs::default() },
-        1_000.0,
-    );
+    let mut l =
+        Ledger::new(Side::Long, Costs { commission_pct: 0.04, slippage_pct: 0.05, ..Costs::default() }, 1_000.0);
     let f = l.open_long(5_000.0, 10.0, 10.0, "진입").expect("체결");
     near(f.qty, 99.95002498750625);
     near(l.cash, -0.39999999999997726);

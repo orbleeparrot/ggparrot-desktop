@@ -178,13 +178,7 @@ impl Ledger {
 
     /// 그리드 한 칸을 산다 — **정해진 가격**에 정해진 돈만큼. 돌려주는 번호로 나중에
     /// 그 칸만 판다. 돈이 모자라면 None(다른 칸은 그대로 둔다).
-    pub fn open_lot(
-        &mut self,
-        margin: f64,
-        price: f64,
-        mark: f64,
-        reason: &str,
-    ) -> Option<(u64, Fill)> {
+    pub fn open_lot(&mut self, margin: f64, price: f64, mark: f64, reason: &str) -> Option<(u64, Fill)> {
         if margin <= 1e-9 || self.cash < margin {
             return None;
         }

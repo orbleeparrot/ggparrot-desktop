@@ -13,21 +13,13 @@ fn closes() -> Vec<f64> {
         [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
     let raw = std::fs::read_to_string(path).expect("판단 계약");
     let golden: serde_json::Value = serde_json::from_str(&raw).expect("판단 계약 모양");
-    golden["candles"]
-        .as_array()
-        .expect("봉")
-        .iter()
-        .map(|row| row[4].as_f64().expect("종가"))
-        .collect()
+    golden["candles"].as_array().expect("봉").iter().map(|row| row[4].as_f64().expect("종가")).collect()
 }
 
 #[track_caller]
 fn near(got: f64, want: f64) {
     let scale = want.abs().max(1.0);
-    assert!(
-        (got - want).abs() <= 1e-12 * scale,
-        "서버와 다르다: got {got:.17}, want {want:.17}"
-    );
+    assert!((got - want).abs() <= 1e-12 * scale, "서버와 다르다: got {got:.17}, want {want:.17}");
 }
 
 /// 값이 나오기 시작한 **첫 자리**와 마지막 몇 개를 함께 본다.
@@ -51,12 +43,7 @@ fn rsi_가_서버와_같다() {
     let mut rsi = Rsi::new(7);
     let (first, values) = feed(|c| rsi.update(c));
     assert_eq!(first, 7, "첫 값이 나오는 자리가 서버와 다르다");
-    let want = [
-        20.74414947566696,
-        24.791521889455097,
-        18.743700291920675,
-        18.73302922092651,
-    ];
+    let want = [20.74414947566696, 24.791521889455097, 18.743700291920675, 18.73302922092651];
     for (got, want) in values[values.len() - 4..].iter().zip(want) {
         near(*got, want);
     }
@@ -78,12 +65,7 @@ fn 단순이동평균이_서버와_같다() {
     let mut ma = Ma::new(MaType::Sma, 20);
     let (first, values) = feed(|c| ma.update(c));
     assert_eq!(first, 19, "20봉 평균은 20번째 봉에서 처음 나온다");
-    let want = [
-        1.7935899632153596,
-        1.733551156602362,
-        1.6741991931549496,
-        1.614863619789493,
-    ];
+    let want = [1.7935899632153596, 1.733551156602362, 1.6741991931549496, 1.614863619789493];
     for (got, want) in values[values.len() - 4..].iter().zip(want) {
         near(*got, want);
     }
@@ -94,12 +76,7 @@ fn 지수이동평균이_서버와_같다() {
     let mut ma = Ma::new(MaType::Ema, 12);
     let (first, values) = feed(|c| ma.update(c));
     assert_eq!(first, 11, "첫 값은 단순 평균으로 심는다");
-    let want = [
-        1.5530055304315444,
-        1.5140658703161167,
-        1.4568701986206423,
-        1.4084253310004398,
-    ];
+    let want = [1.5530055304315444, 1.5140658703161167, 1.4568701986206423, 1.4084253310004398];
     for (got, want) in values[values.len() - 4..].iter().zip(want) {
         near(*got, want);
     }
