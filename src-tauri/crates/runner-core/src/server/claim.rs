@@ -48,7 +48,13 @@ pub async fn claim_ticket(http: &reqwest::Client, base: &str, ticket: &str) -> R
     use ClaimError::Failed;
     let r = http
         .post(format!("{}{}", base.trim_end_matches('/'), PROTOCOL_CLAIM_PATH))
-        .json(&json!({"ticket": ticket, "runner_version": SERVER_LINK_LEVEL}))
+        .json(&json!({
+            "ticket": ticket,
+            "runner_version": SERVER_LINK_LEVEL,
+            "engine_version": crate::engine::ENGINE_VERSION.to_string(),
+            // 실행기는 스스로 판단할 줄 안다고 말한다 — 적립식 · SAR 은 그때만 열린다.
+            "decides": "local",
+        }))
         .timeout(Duration::from_secs(15))
         .send()
         .await
