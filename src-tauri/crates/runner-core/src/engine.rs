@@ -10,4 +10,7 @@
 //!   규칙 여섯이 전부 이 위에 올라탄다.
 //! * 규칙(D · E · F · G · H · I) — "언제 살까" 만 정한다. 아직 포팅 전.
 
+pub mod candle_sim;
 pub mod ledger;
+pub mod rules;
+pub mod runner;

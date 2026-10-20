@@ -120,22 +120,98 @@ fn 계약의_매크로를_실행기가_알아본다() {
     }
 }
 
-// --- 엔진이 붙으면 켜지는 시험 ----------------------------------------------
+// --- 엔진이 계약대로 판단하는가 ------------------------------------------
 //
-// 규칙 하나를 구현할 때마다 아래 `ignore` 를 떼고 그 규칙을 목록에 넣는다. 전부 켜지면
+// 규칙을 하나 포팅할 때마다 그 규칙이 `포팅됨` 으로 넘어간다. 열하나가 전부 넘어가면
 // 실행기가 서버와 같은 자리에서 사고판다는 뜻이고, 그때 서버의
 // `RUNNER_LOCAL_DECISIONS` 를 켤 수 있다.
+
+/// 계약의 봉을 서버와 **같은 순서로** 흘려보낸다 — 봉을 넣고, 그 봉의 종가로 체결을 다 꺼낸다.
+fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<Vec<Command>, String> {
+    let mut engine = runner_core::engine::runner::build(macro_).map_err(|e| e.to_string())?;
+    let initial = runner_core::engine::runner::session_capital(macro_);
+    let to_bar = |row: &[f64; 6]| runner_core::engine::candle_sim::Bar {
+        t: row[0] as i64,
+        o: row[1],
+        h: row[2],
+        l: row[3],
+        c: row[4],
+        v: Some(row[5]),
+    };
+    for row in &golden.candles[..golden.warmup_count] {
+        // 웜업은 지표만 세우고 장부는 건드리지 않는다 — 체결을 꺼내지 않는다.
+        engine.on_bar(&to_bar(row));
+    }
+    engine.warmup_done();
+    let mut out = Vec::new();
+    for row in &golden.candles[golden.warmup_count..] {
+        let bar = to_bar(row);
+        engine.on_bar(&bar);
+        while let Some(fill) = engine.tick(bar.c) {
+            let cmd = runner_core::engine::runner::command_from_fill(&fill, initial);
+            out.push(Command {
+                candle_t: bar.t,
+                action: cmd.action.to_string(),
+                notional_frac: round10(cmd.notional_frac),
+                qty_frac: round10(cmd.qty_frac),
+                signal_price: round10(cmd.signal_price),
+                reason: cmd.reason,
+            });
+            if out.len() > 500 {
+                return Err("체결이 끝없이 나온다".into());
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// 계약 파일은 **유효숫자 10자리**로 적혀 있다(파이썬 `f"{v:.10g}"`). 견주기 전에 같은
+/// 자리로 맞춘다 — 지수 표기에서 소수점 아래 9자리가 유효숫자 10자리다.
+fn round10(v: f64) -> f64 {
+    format!("{v:.9e}").parse().unwrap_or(v)
+}
+
 #[test]
-#[ignore = "엔진 미구현 — 규칙을 포팅하면서 하나씩 켠다"]
-fn 엔진이_계약대로_판단한다() {
+fn 포팅한_규칙은_계약대로_판단한다() {
     let golden = load();
-    let warmup = &golden.candles[..golden.warmup_count];
-    let live = &golden.candles[golden.warmup_count..];
-    let _ = (warmup, live);
+    let mut ported = Vec::new();
+    let mut waiting = Vec::new();
+    let mut wrong = Vec::new();
     for (name, case) in &golden.cases {
-        // TODO(engine): 드라이버를 세우고 warmup → 봉마다 push → 틱으로 체결을 꺼내
-        //               case.commands 와 글자까지 대조한다.
-        let _ = (name, &case.commands);
-        unimplemented!("전략 엔진 포팅 전");
+        match run_case(&case.macro_, &golden) {
+            Err(why) if why.contains("아직 직접 판단하지 못해요") => waiting.push(name.clone()),
+            Err(why) => wrong.push(format!("{name}: {why}")),
+            Ok(got) => {
+                if got == case.commands {
+                    ported.push(name.clone());
+                } else {
+                    wrong.push(format!(
+                        "{name}: 판단이 계약과 다르다
+  서버: {:#?}
+  실행기: {:#?}",
+                        case.commands, got
+                    ));
+                }
+            }
+        }
+    }
+    println!("포팅됨 {}/{}: {ported:?}", ported.len(), golden.cases.len());
+    println!("남음: {waiting:?}");
+    assert!(wrong.is_empty(), "{}", wrong.join("
+
+"));
+}
+
+#[test]
+fn 포팅하지_않은_규칙은_로컬_판단을_열지_않는다() {
+    // 조용히 다르게 사는 것보다 안 여는 쪽이 낫다.
+    let golden = load();
+    for (name, case) in &golden.cases {
+        if let Err(why) = runner_core::engine::runner::build(&case.macro_) {
+            assert!(
+                why.to_string().contains("아직") || why.to_string().contains("못"),
+                "{name}: 거절 문구가 사용자에게 무엇을 뜻하는지 말하지 않는다: {why}"
+            );
+        }
     }
 }
