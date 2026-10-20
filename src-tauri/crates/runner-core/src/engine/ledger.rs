@@ -22,6 +22,10 @@ pub enum Side {
 /// 진입 한 번이 만든 묶음. 그리드 · 마틴게일은 여러 개가 쌓인다.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lot {
+    /// 이 묶음을 가리키는 번호. 그리드는 "몇 번 칸에서 산 묶음" 을 기억했다가 그 묶음만
+    /// 판다 — 서버가 객체 동일성으로 하던 것을 번호로 옮겼다. 자리(인덱스)로 기억하면
+    /// 앞 묶음이 팔릴 때마다 가리키는 곳이 밀린다.
+    pub id: u64,
     /// 수량.
     pub qty: f64,
     /// 체결가(슬리피지를 이미 반영한 값).
@@ -99,11 +103,20 @@ pub struct Ledger {
     pub lots: Vec<Lot>,
     /// 청산마다 쌓이는 실현손익(수수료 뺀 값).
     pub closed_trades: Vec<f64>,
+    next_lot_id: u64,
 }
 
 impl Ledger {
     pub fn new(side: Side, costs: Costs, initial_capital: f64) -> Self {
-        Self { side, costs, initial_capital, cash: initial_capital, lots: Vec::new(), closed_trades: Vec::new() }
+        Self {
+            side,
+            costs,
+            initial_capital,
+            cash: initial_capital,
+            lots: Vec::new(),
+            closed_trades: Vec::new(),
+            next_lot_id: 1,
+        }
     }
 
     // --- 조회 ---------------------------------------------------------
@@ -155,6 +168,51 @@ impl Ledger {
         Fill { side, price, qty, equity_after, return_pct, reason, qty_before }
     }
 
+    /// 묶음 하나를 장부에 더하고 그 번호를 준다.
+    fn push_lot(&mut self, qty: f64, fill: f64, margin: f64) -> u64 {
+        let id = self.next_lot_id;
+        self.next_lot_id += 1;
+        self.lots.push(Lot { id, qty, fill, margin });
+        id
+    }
+
+    /// 그리드 한 칸을 산다 — **정해진 가격**에 정해진 돈만큼. 돌려주는 번호로 나중에
+    /// 그 칸만 판다. 돈이 모자라면 None(다른 칸은 그대로 둔다).
+    pub fn open_lot(
+        &mut self,
+        margin: f64,
+        price: f64,
+        mark: f64,
+        reason: &str,
+    ) -> Option<(u64, Fill)> {
+        if margin <= 1e-9 || self.cash < margin {
+            return None;
+        }
+        let notional = margin * self.costs.leverage;
+        let f = buy_fill(price, self.costs.slippage_pct);
+        let qty = notional / f;
+        self.cash -= margin + notional * self.costs.commission_pct / 100.0;
+        let id = self.push_lot(qty, f, margin);
+        Some((id, self.fill("buy", f, qty, mark, reason)))
+    }
+
+    /// 묶음 **하나만** 판다(그리드 칸). 그 칸의 증거금과 실현손익만 현금으로 돌린다 —
+    /// 다른 칸은 건드리지 않는다. 이미 팔렸으면 None.
+    pub fn close_lot(&mut self, id: u64, price: f64, mark: f64, reason: &str) -> Option<Fill> {
+        let index = self.lots.iter().position(|l| l.id == id)?;
+        let lot = self.lots.remove(index);
+        let f = sell_fill(price, self.costs.slippage_pct);
+        let exit_comm = lot.qty * f * self.costs.commission_pct / 100.0;
+        self.cash += lot.margin + lot.qty * (f - lot.fill) - exit_comm;
+        self.closed_trades.push(lot.qty * (f - lot.fill) - exit_comm);
+        Some(self.fill("sell", f, lot.qty, mark, reason))
+    }
+
+    /// 번호로 묶음을 찾는다(화면 표시 · 상태 저장용).
+    pub fn lot(&self, id: u64) -> Option<&Lot> {
+        self.lots.iter().find(|l| l.id == id)
+    }
+
     // --- 열기 · 닫기 ---------------------------------------------------
     /// 롱 진입. `margin` 은 넣을 **자기 돈**(현금보다 많으면 현금까지만).
     ///
@@ -168,7 +226,7 @@ impl Ledger {
         let f = buy_fill(close, self.costs.slippage_pct);
         let qty = notional / f;
         self.cash -= margin + notional * self.costs.commission_pct / 100.0;
-        self.lots.push(Lot { qty, fill: f, margin });
+        self.push_lot(qty, f, margin);
         Some(self.fill("buy", f, qty, mark, reason))
     }
 
@@ -181,7 +239,7 @@ impl Ledger {
         let f = sell_fill(close, self.costs.slippage_pct);
         let qty = notional / f;
         self.cash -= notional * self.costs.commission_pct / 100.0;
-        self.lots.push(Lot { qty, fill: f, margin });
+        self.push_lot(qty, f, margin);
         Some(self.fill("short", f, qty, mark, reason))
     }
 

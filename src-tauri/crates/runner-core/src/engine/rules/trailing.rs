@@ -97,6 +97,14 @@ impl Trailing {
 
 impl Strategy for Trailing {
     fn on_bar(&mut self, ctx: &mut SimContext<'_>, bar: &Bar) {
+        // 손절 · 보유시간 · 일일 한도가 먼저다. 끌려 나갔으면 이 봉에서 더 판단하지 않는다 —
+        // 다만 "한 번 팔면 다시 사지 않는다" 는 설정은 그때도 지킨다.
+        if ctx.common_risk(bar) {
+            if !self.reenter_after_exit {
+                ctx.stop_rule();
+            }
+            return;
+        }
         if ctx.in_position() {
             let avg = ctx.avg_entry();
             self.peak = self.peak.max(bar.h);
@@ -150,12 +158,5 @@ impl Strategy for Trailing {
         self.peak = 0.0;
         self.armed = false;
         self.dip_ref = None;
-    }
-
-    fn on_forced_exit(&mut self, ctx: &mut SimContext<'_>) {
-        // 손절 · 보유시간 · 일일 한도로 끌려 나갔을 때도 재진입 설정을 지킨다.
-        if !self.reenter_after_exit {
-            ctx.stop_rule();
-        }
     }
 }
