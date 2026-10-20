@@ -34,7 +34,6 @@ struct Case {
     macro_: serde_json::Value,
     commands: Vec<Command>,
     trade_count: u32,
-    #[allow(dead_code)]
     equity: f64,
 }
 
@@ -74,8 +73,13 @@ fn 계약과_실행기_엔진_세대가_같다() {
 fn 계약이_실제로_사고파는_것을_담고_있다() {
     // 아무것도 안 사는 계약은 아무것도 보장하지 않는다.
     let golden = load();
-    let empty: Vec<&String> =
-        golden.cases.iter().filter(|(_, c)| c.commands.is_empty()).map(|(k, _)| k).collect();
+    // 이름이 `_blocked` 로 끝나는 경우는 거래가 **없는 것**이 요점이다(필터가 막았다).
+    let empty: Vec<&String> = golden
+        .cases
+        .iter()
+        .filter(|(name, c)| c.commands.is_empty() && !name.ends_with("_blocked"))
+        .map(|(k, _)| k)
+        .collect();
     assert!(empty.is_empty(), "주문이 하나도 없는 규칙: {empty:?}");
     let total: usize = golden.cases.values().map(|c| c.commands.len()).sum();
     assert!(total >= 20, "거래가 너무 적다: {total}");
@@ -116,7 +120,9 @@ fn 계약의_매크로를_실행기가_알아본다() {
         assert!(runner_core::intervals::step_ms(interval).is_some(), "{name}: {interval}");
         let exchange = case.macro_.get("exchange").and_then(|v| v.as_str()).unwrap_or_default();
         assert!(matches!(exchange, "binance" | "upbit" | "bithumb"), "{name}: {exchange}");
-        assert!(case.trade_count > 0, "{name}: 거래가 없다");
+        if !name.ends_with("_blocked") {
+            assert!(case.trade_count > 0, "{name}: 거래가 없다");
+        }
     }
 }
 
@@ -127,7 +133,7 @@ fn 계약의_매크로를_실행기가_알아본다() {
 // `RUNNER_LOCAL_DECISIONS` 를 켤 수 있다.
 
 /// 계약의 봉을 서버와 **같은 순서로** 흘려보낸다 — 봉을 넣고, 그 봉의 종가로 체결을 다 꺼낸다.
-fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<Vec<Command>, String> {
+fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<(Vec<Command>, f64), String> {
     let mut engine = runner_core::engine::runner::build(macro_).map_err(|e| e.to_string())?;
     let initial = runner_core::engine::runner::session_capital(macro_);
     let to_bar = |row: &[f64; 6]| runner_core::engine::candle_sim::Bar {
@@ -162,7 +168,9 @@ fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<Vec<Command>,
             }
         }
     }
-    Ok(out)
+    // 마지막 봉 종가 기준 자산. 명령이 같아도 장부 식이 틀리면 여기서 갈린다.
+    let last_close = golden.candles.last().map(|row| row[4]).unwrap_or(0.0);
+    Ok((out, round10(engine.equity(last_close))))
 }
 
 /// 계약 파일은 **유효숫자 10자리**로 적혀 있다(파이썬 `f"{v:.10g}"`). 견주기 전에 같은
@@ -181,16 +189,22 @@ fn 포팅한_규칙은_계약대로_판단한다() {
         match run_case(&case.macro_, &golden) {
             Err(why) if why.contains("아직 직접 판단하지 못해요") => waiting.push(name.clone()),
             Err(why) => wrong.push(format!("{name}: {why}")),
-            Ok(got) => {
-                if got == case.commands {
-                    ported.push(name.clone());
-                } else {
+            Ok((got, equity)) => {
+                if got != case.commands {
                     wrong.push(format!(
                         "{name}: 판단이 계약과 다르다
   서버: {:#?}
   실행기: {:#?}",
                         case.commands, got
                     ));
+                } else if (equity - case.equity).abs() > 1e-9 * case.equity.abs().max(1.0) {
+                    // 명령이 같아도 장부가 다르면 다음 봉부터 갈린다.
+                    wrong.push(format!(
+                        "{name}: 명령은 같은데 끝 자산이 다르다 — 서버 {}, 실행기 {equity}",
+                        case.equity
+                    ));
+                } else {
+                    ported.push(name.clone());
                 }
             }
         }
@@ -203,15 +217,62 @@ fn 포팅한_규칙은_계약대로_판단한다() {
 }
 
 #[test]
-fn 포팅하지_않은_규칙은_로컬_판단을_열지_않는다() {
+fn 열한_규칙이_모두_포팅됐다() {
+    // 하나라도 빠지면 그 매크로는 로컬 판단으로 못 돈다. 계약의 규칙 수와 맞춘다.
+    let golden = load();
+    let missing: Vec<&String> = golden
+        .cases
+        .iter()
+        .filter(|(_, case)| runner_core::engine::runner::build(&case.macro_).is_err())
+        .map(|(name, _)| name)
+        .collect();
+    assert!(missing.is_empty(), "아직 못 세우는 규칙: {missing:?}");
+    let rules: std::collections::BTreeSet<&str> = golden
+        .cases
+        .values()
+        .filter_map(|c| c.macro_.get("rule_type").and_then(|v| v.as_str()))
+        .collect();
+    assert_eq!(rules.len(), 11, "계약이 열한 규칙을 다 담고 있어야 한다: {rules:?}");
+}
+
+#[test]
+fn 모르는_규칙은_로컬_판단을_열지_않는다() {
     // 조용히 다르게 사는 것보다 안 여는 쪽이 낫다.
     let golden = load();
-    for (name, case) in &golden.cases {
-        if let Err(why) = runner_core::engine::runner::build(&case.macro_) {
-            assert!(
-                why.to_string().contains("아직") || why.to_string().contains("못"),
-                "{name}: 거절 문구가 사용자에게 무엇을 뜻하는지 말하지 않는다: {why}"
-            );
-        }
+    let mut unknown = golden.cases["E_trailing"].macro_.clone();
+    unknown["rule_type"] = serde_json::json!("Z");
+    let text = match runner_core::engine::runner::build(&unknown) {
+        Err(err) => err.to_string(),
+        Ok(_) => panic!("모르는 규칙인데 엔진을 세웠다"),
+    };
+    assert!(
+        text.contains("아직") && text.contains("Z"),
+        "거절 문구가 무엇이 문제인지 말하지 않는다: {text}"
+    );
+}
+
+#[test]
+fn 필수_설정이_없으면_세우지_않는다() {
+    // 기본값으로 때우면 사용자가 안 정한 값으로 실제 주문이 나간다.
+    let golden = load();
+    for (name, key) in [
+        ("E_trailing", "trail_percent"),
+        ("D_grid", "lower_price"),
+        ("H_martingale", "take_profit"),
+        ("A_tp_sl", "take_profit_pct"),
+        ("B_band", "buy_price"),
+        ("C_dca", "amount_per_buy"),
+    ] {
+        let mut broken = golden.cases[name].macro_.clone();
+        broken["params"]
+            .as_object_mut()
+            .expect("params")
+            .remove(key)
+            .expect("있던 칸이어야 한다");
+        let text = match runner_core::engine::runner::build(&broken) {
+            Err(err) => err.to_string(),
+            Ok(_) => panic!("{name}: {key} 없이도 세워졌다"),
+        };
+        assert!(text.contains(key), "{name}: 어느 칸이 없는지 말해야 한다 — {text}");
     }
 }

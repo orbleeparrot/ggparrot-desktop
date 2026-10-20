@@ -15,3 +15,4 @@ pub mod indicators;
 pub mod ledger;
 pub mod rules;
 pub mod runner;
+pub mod tick_sim;

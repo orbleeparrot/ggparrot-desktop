@@ -8,13 +8,14 @@
 
 use serde_json::Value;
 
-use super::candle_sim::{Bar, CandleSim, Risk, Strategy};
+use super::candle_sim::{Bar, CandleSim, Risk};
 use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::indicator::IndicatorRule;
 use super::rules::martingale::Martingale;
 use super::rules::sar::Sar;
+use super::tick_sim::{DcaSim, TickRule, TickSim};
 use super::rules::signals::{
     BandExitTarget, BandStrategy, BollingerSignal, MaCrossSignal, RsiSignal,
 };
@@ -112,45 +113,115 @@ pub enum Engine {
     MaCross(CandleSim<IndicatorRule<MaCrossSignal>>),
     Martingale(CandleSim<Martingale>),
     Sar(CandleSim<Sar>),
-}
-
-macro_rules! dispatch {
-    ($self:ident, $sim:ident => $body:expr) => {
-        match $self {
-            Engine::Grid($sim) => $body,
-            Engine::Trailing($sim) => $body,
-            Engine::Breakout($sim) => $body,
-            Engine::Rsi($sim) => $body,
-            Engine::Bollinger($sim) => $body,
-            Engine::MaCross($sim) => $body,
-            Engine::Martingale($sim) => $body,
-            Engine::Sar($sim) => $body,
-        }
-    };
+    /// A · B — 틱 기계. 봉을 넣어도 시계만 맞추고, 판단은 틱에서 한다.
+    Tick(TickSim),
+    /// C — 적립식. 달력이 기준이다.
+    Dca(DcaSim),
 }
 
 impl Engine {
     /// 마감봉 하나. 돌려주는 값은 대기 중인 체결 수 — 주문은 [`Engine::tick`] 에서 나온다.
+    ///
+    /// 틱 기반 규칙(A · B · C)은 봉을 보지 않는다. 다만 **봉의 시각**은 받아 둔다 —
+    /// 쿨다운 · 보유시간 · 적립식 달력이 그 시계를 본다.
     pub fn on_bar(&mut self, bar: &Bar) -> usize {
-        dispatch!(self, sim => sim.on_bar(bar))
+        match self {
+            Engine::Grid(sim) => sim.on_bar(bar),
+            Engine::Trailing(sim) => sim.on_bar(bar),
+            Engine::Breakout(sim) => sim.on_bar(bar),
+            Engine::Rsi(sim) => sim.on_bar(bar),
+            Engine::Bollinger(sim) => sim.on_bar(bar),
+            Engine::MaCross(sim) => sim.on_bar(bar),
+            Engine::Martingale(sim) => sim.on_bar(bar),
+            Engine::Sar(sim) => sim.on_bar(bar),
+            Engine::Tick(sim) => {
+                sim.clock_ms = bar.t;
+                0
+            }
+            Engine::Dca(sim) => {
+                sim.clock_ms = bar.t;
+                0
+            }
+        }
     }
 
-    /// 현재가 한 틱 — 대기 중인 체결 하나.
+    /// 틱 기계의 시계를 지금으로 맞춘다. 실행기가 매 바퀴 부른다.
+    pub fn set_clock(&mut self, now_ms: i64) {
+        match self {
+            Engine::Tick(sim) => sim.clock_ms = now_ms,
+            Engine::Dca(sim) => sim.clock_ms = now_ms,
+            _ => {}
+        }
+    }
+
+    /// 현재가 한 틱 — 체결 하나.
     pub fn tick(&mut self, price: f64) -> Option<Fill> {
-        dispatch!(self, sim => sim.tick(price))
+        match self {
+            Engine::Grid(sim) => sim.tick(price),
+            Engine::Trailing(sim) => sim.tick(price),
+            Engine::Breakout(sim) => sim.tick(price),
+            Engine::Rsi(sim) => sim.tick(price),
+            Engine::Bollinger(sim) => sim.tick(price),
+            Engine::MaCross(sim) => sim.tick(price),
+            Engine::Martingale(sim) => sim.tick(price),
+            Engine::Sar(sim) => sim.tick(price),
+            Engine::Tick(sim) => {
+                let now = sim.clock_ms;
+                sim.step(price, now)
+            }
+            Engine::Dca(sim) => {
+                let now = sim.clock_ms;
+                sim.step(price, now)
+            }
+        }
     }
 
     /// 웜업이 끝났다 — 지표는 두고 장부만 되돌린다.
     pub fn warmup_done(&mut self) {
-        dispatch!(self, sim => sim.warmup_done())
+        match self {
+            Engine::Grid(sim) => sim.warmup_done(),
+            Engine::Trailing(sim) => sim.warmup_done(),
+            Engine::Breakout(sim) => sim.warmup_done(),
+            Engine::Rsi(sim) => sim.warmup_done(),
+            Engine::Bollinger(sim) => sim.warmup_done(),
+            Engine::MaCross(sim) => sim.warmup_done(),
+            Engine::Martingale(sim) => sim.warmup_done(),
+            Engine::Sar(sim) => sim.warmup_done(),
+            Engine::Tick(sim) => sim.warmup_done(),
+            Engine::Dca(sim) => sim.warmup_done(),
+        }
     }
 
-    pub fn ledger(&self) -> &Ledger {
-        dispatch!(self, sim => &sim.ledger)
+    /// 지금 가격 기준 자산. 명령이 같아도 이 값이 다르면 장부 식이 어긋난 것이다.
+    pub fn equity(&self, price: f64) -> f64 {
+        match self {
+            Engine::Grid(sim) => sim.ledger.equity(price),
+            Engine::Trailing(sim) => sim.ledger.equity(price),
+            Engine::Breakout(sim) => sim.ledger.equity(price),
+            Engine::Rsi(sim) => sim.ledger.equity(price),
+            Engine::Bollinger(sim) => sim.ledger.equity(price),
+            Engine::MaCross(sim) => sim.ledger.equity(price),
+            Engine::Martingale(sim) => sim.ledger.equity(price),
+            Engine::Sar(sim) => sim.ledger.equity(price),
+            Engine::Tick(sim) => sim.equity(price),
+            Engine::Dca(sim) => sim.equity(price),
+        }
     }
 
-    pub fn pending(&self) -> usize {
-        dispatch!(self, sim => sim.pending())
+    /// 지금 보유 중인가.
+    pub fn in_position(&self) -> bool {
+        match self {
+            Engine::Grid(sim) => sim.ledger.in_position(),
+            Engine::Trailing(sim) => sim.ledger.in_position(),
+            Engine::Breakout(sim) => sim.ledger.in_position(),
+            Engine::Rsi(sim) => sim.ledger.in_position(),
+            Engine::Bollinger(sim) => sim.ledger.in_position(),
+            Engine::MaCross(sim) => sim.ledger.in_position(),
+            Engine::Martingale(sim) => sim.ledger.in_position(),
+            Engine::Sar(sim) => sim.ledger.in_position(),
+            Engine::Tick(sim) => sim.in_position,
+            Engine::Dca(sim) => sim.qty > 0.0,
+        }
     }
 }
 
@@ -331,6 +402,31 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             risk.stop_loss_pct = None;
             Ok(Engine::Sar(CandleSim::new(ledger, risk, strategy)))
         }
+        "A" | "B" => {
+            let tick_rule =
+                if rule == "A" { TickRule::TakeProfitReentry } else { TickRule::Band };
+            let mut sim =
+                TickSim::new(side_of(macro_), costs_of(macro_), risk, tick_rule, capital);
+            if tick_rule == TickRule::Band {
+                sim.buy_price = p("buy_price")
+                    .ok_or_else(|| BuildError::BadMacro("B: buy_price 가 없어요".into()))?;
+                sim.sell_price = p("sell_price")
+                    .ok_or_else(|| BuildError::BadMacro("B: sell_price 가 없어요".into()))?;
+            } else {
+                sim.take_profit_pct = p("take_profit_pct")
+                    .ok_or_else(|| BuildError::BadMacro("A: take_profit_pct 가 없어요".into()))?;
+            }
+            Ok(Engine::Tick(sim))
+        }
+        "C" => Ok(Engine::Dca(DcaSim::new(
+            costs_of(macro_),
+            risk.stop_loss_pct,
+            risk.daily_max_loss_pct,
+            p("amount_per_buy")
+                .ok_or_else(|| BuildError::BadMacro("C: amount_per_buy 가 없어요".into()))?,
+            p("interval_days").unwrap_or(1.0) as i64,
+            capital,
+        ))),
         other => Err(BuildError::NotPorted(other.to_string())),
     }
 }
