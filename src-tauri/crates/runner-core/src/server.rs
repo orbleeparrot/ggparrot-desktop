@@ -174,6 +174,8 @@ struct Inner {
     state: Mutex<EventState>,
     on_event_warning: Mutex<Option<LogFn>>,
     unsent_acks: Mutex<Vec<Value>>,
+    /// 보내지 못한 로컬 체결(로컬 손절 · 안전 규칙 정리) — ack 와 같이 다음 하트비트에 먼저 다시 실음.
+    unsent_local_fills: Mutex<Vec<Value>>,
     /// 하트비트 연속 실패 수와 다음 시도 시각(백오프).
     heartbeat_failures: Mutex<(u32, Option<Instant>)>,
     echo_stdout: bool,
@@ -212,6 +214,7 @@ impl ServerClient {
                 }),
                 on_event_warning: Mutex::new(None),
                 unsent_acks: Mutex::new(vec![]),
+                unsent_local_fills: Mutex::new(vec![]),
                 heartbeat_failures: Mutex::new((0, None)),
                 // 배포판은 기록마다 표준 출력에 쓰지 않음(창 앱이라 보는 사람이 없고, 실행이 많으면 쓰기만 늘어남).
                 echo_stdout: cfg!(debug_assertions),
@@ -580,21 +583,29 @@ impl ServerClient {
     }
 
     /// 아직 서버에 올리지 못한 명령 결과가 있는지(종료 전에 한 번 더 보낼지).
+    /// 서버에 아직 못 보낸 명령 결과 · 로컬 체결이 있는가.
     pub fn has_unsent_acks(&self) -> bool {
-        !self.inner.unsent_acks.lock().unwrap().is_empty()
+        !self.inner.unsent_acks.lock().unwrap().is_empty() || !self.inner.unsent_local_fills.lock().unwrap().is_empty()
     }
 
     /// 상태와 명령 결과(acks)를 올리고 {action, commands}를 받음.
     /// 네트워크 오류면 action=continue·commands=[]·offline — ack는 다음 heartbeat 앞머리에 다시 실음.
     pub async fn heartbeat(&self, snapshot: &Value, acks: Vec<Value>) -> HeartbeatReply {
+        self.heartbeat_with(snapshot, acks, vec![]).await
+    }
+
+    /// 하트비트 — 명령 결과(acks)와 로컬 체결(local_fills)을 함께 올림. 보내지 못하면 둘 다 그대로 다음에 먼저 다시 보냄
+    /// (한 본문 안에서 ack 는 모두 로컬 체결보다 먼저 일어난 일이다 — 서버가 그 순서로 장부에 넣는다).
+    pub async fn heartbeat_with(&self, snapshot: &Value, acks: Vec<Value>, local_fills: Vec<Value>) -> HeartbeatReply {
         let Some(session_id) = self.session_id() else {
             return HeartbeatReply::idle();
         };
-        // 백오프 중이면 보내지 않고 ack만 다음으로 미룸.
+        // 백오프 중이면 보내지 않고 ack · 로컬 체결만 다음으로 미룸.
         let waiting =
             matches!(*self.inner.heartbeat_failures.lock().unwrap(), (_, Some(next)) if Instant::now() < next);
         if waiting {
             self.inner.unsent_acks.lock().unwrap().extend(acks);
+            self.inner.unsent_local_fills.lock().unwrap().extend(local_fills);
             return HeartbeatReply::offline(false, 0);
         }
         let mut body = snapshot.as_object().cloned().unwrap_or_default();
@@ -603,6 +614,9 @@ impl ServerClient {
         let mut pending: Vec<Value> = std::mem::take(&mut *self.inner.unsent_acks.lock().unwrap());
         pending.extend(acks);
         body.insert("acks".into(), Value::Array(pending.clone()));
+        let mut local_pending: Vec<Value> = std::mem::take(&mut *self.inner.unsent_local_fills.lock().unwrap());
+        local_pending.extend(local_fills);
+        body.insert("local_fills".into(), Value::Array(local_pending.clone()));
         body.insert("events".into(), Value::Array(vec![]));
         let events = outbox::wire_batch(events, &Value::Object(body.clone()));
         body.insert("events".into(), Value::Array(events.clone()));
@@ -640,6 +654,7 @@ impl ServerClient {
             // 서버가 이 세션을 끝냄(410) — 명령 결과는 버리지 않고 종료 보고에 실음.
             Err(410) => {
                 *self.inner.unsent_acks.lock().unwrap() = pending;
+                *self.inner.unsent_local_fills.lock().unwrap() = local_pending;
                 HeartbeatReply {
                     action: "stop_only".into(),
                     reason: "서버가 이 실행 세션을 끝냈어요.".into(),
@@ -648,6 +663,7 @@ impl ServerClient {
             }
             Err(status) => {
                 *self.inner.unsent_acks.lock().unwrap() = pending;
+                *self.inner.unsent_local_fills.lock().unwrap() = local_pending;
                 let mut f = self.inner.heartbeat_failures.lock().unwrap();
                 f.0 = f.0.saturating_add(1);
                 let jitter: f64 = rand::random();

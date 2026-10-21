@@ -312,6 +312,14 @@ pub struct Bot {
     pub capital: f64,
     done_command_ids: VecDeque<Value>,
     pub pending_acks: Vec<Value>,
+    /// 체결 기준 장부(연동 레벨 21): 지금 실행 중인 서버 명령으로 낸 주문의 사실 — 그 명령 ack 의 `orders` 로 감.
+    pub(crate) command_orders: Vec<Value>,
+    /// 서버 명령 없이 낸 주문(로컬 손절 · 안전 규칙 정리 · 종료 정리)의 체결 — 다음 하트비트의 `local_fills` 로 감.
+    pub pending_local_fills: Vec<Value>,
+    /// 지금 내는 로컬 주문의 이유(stop_loss · forced · finish) — 명령 밖 주문의 체결에 실림.
+    pub(crate) local_reason: &'static str,
+    /// 팔 수 없는 잔량(먼지)의 평단 — 다음 진입 체결 때 수량 · 평단에 합친다(서버 장부와 같은 규칙).
+    pub(crate) dust_entry_price: f64,
     /// 손절·강제 청산 주문이 연달아 실패한 수 — 다음 틱에 다시 시도하다 너무 많으면 멈춤.
     close_failures: u32,
     /// 진입 주문이 잔고 부족으로 거절됨(→ [`RunHealth::funds_short`]). 다음 진입 체결에 풀림. 매매 동작은 바꾸지 않음.
@@ -482,6 +490,10 @@ impl Bot {
             capital,
             done_command_ids: VecDeque::with_capacity(200),
             pending_acks: vec![],
+            command_orders: vec![],
+            pending_local_fills: vec![],
+            local_reason: "",
+            dust_entry_price: 0.0,
             close_failures: 0,
             funds_short: false,
             order_error_code: String::new(),

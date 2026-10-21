@@ -5,8 +5,9 @@ use super::*;
 impl Bot {
     pub(super) async fn heartbeat(&mut self, snapshot: &Value) -> crate::server::HeartbeatReply {
         let acks = std::mem::take(&mut self.pending_acks);
+        let local_fills = std::mem::take(&mut self.pending_local_fills);
         match &self.server {
-            Some(s) => s.heartbeat(snapshot, acks).await,
+            Some(s) => s.heartbeat_with(snapshot, acks, local_fills).await,
             None => crate::server::HeartbeatReply::idle(),
         }
     }

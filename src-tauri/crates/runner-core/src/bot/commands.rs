@@ -7,7 +7,9 @@ impl Bot {
     pub async fn execute_command(&mut self, cmd: &Value, price: f64) -> Result<Value, String> {
         let cid = cmd.get("id").cloned().unwrap_or(Value::Null);
         let mut ack = obj(json!({"command_id": cid, "ok": true, "executed_qty": 0.0, "fill_price": 0.0, "error": "",
-                                 "mode": self.mode.as_str(), "outcome": "execution_not_reported"}));
+                                 "mode": self.mode.as_str(), "outcome": "execution_not_reported", "orders": []}));
+        // 이 명령으로 낸 주문의 사실만 ack 의 orders 에 실음(체결 기준 장부 — 서버가 주문 키로 한 번만 넣는다).
+        self.command_orders.clear();
         if self.done_command_ids.contains(&cid) {
             ack.insert("outcome".into(), json!("duplicate_command_no_reexecution"));
             return Ok(Value::Object(ack));
@@ -84,6 +86,7 @@ impl Bot {
                 &d,
             );
             self.logger.set_operation("");
+            ack.insert("orders".into(), Value::Array(std::mem::take(&mut self.command_orders)));
             return Ok(Value::Object(ack));
         }
         if let Err(exc) = outcome {
@@ -154,6 +157,7 @@ impl Bot {
             &d,
         );
         self.logger.set_operation("");
+        ack.insert("orders".into(), Value::Array(std::mem::take(&mut self.command_orders)));
         Ok(Value::Object(ack))
     }
 

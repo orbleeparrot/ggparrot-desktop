@@ -130,7 +130,11 @@ impl Bot {
                 };
                 self.logger.activity("stop_loss", title, detail, raw, "warn");
                 let (entry_price, net_before) = (self.entry_price, self.realized_net);
-                match self.close_position().await {
+                // 서버 명령 없이 파는 주문 — 체결은 다음 하트비트의 local_fills 로 이유와 함께 감.
+                self.local_reason = if forced { "forced" } else { "stop_loss" };
+                let closed = self.close_position().await;
+                self.local_reason = "";
+                match closed {
                     Ok(true) => {
                         self.close_failures = 0;
                         self.close_retry_at = 0;
@@ -245,7 +249,8 @@ impl Bot {
                         let id = cmd.get("id").cloned().unwrap_or(Value::Null);
                         self.pending_acks.push(json!({"command_id": id, "ok": false,
                         "executed_qty": self.last_fill_qty, "fill_price": self.last_fill_price,
-                        "error": e.chars().take(200).collect::<String>(), "outcome": "position_uncertain"}));
+                        "error": e.chars().take(200).collect::<String>(), "outcome": "position_uncertain",
+                        "orders": std::mem::take(&mut self.command_orders)}));
                         return Err(e);
                     }
                 };

@@ -27,7 +27,10 @@ impl Bot {
                 // 분명히 실패하면(요청 한도로 쉬는 중·일시 거절) 잠깐 기다렸다 다시 — 한 번 실패로 포지션을 남기고 끝내지 않게.
                 // 결과를 모르는 주문이 생기면 더 주문하지 않음.
                 for (attempt, wait) in [2u64, 5, 0].into_iter().enumerate() {
-                    match self.close_position().await {
+                    self.local_reason = "finish";
+                    let closed = self.close_position().await;
+                    self.local_reason = "";
+                    match closed {
                         // 모의는 실제 청산이 없음 — 모의 보유분을 지금 가격으로 정리한 것으로 계산했을 뿐임.
                         Ok(true) if self.mode == RunMode::Mock => return Ok("모의 보유분 정리 후 종료".into()),
                         Ok(true) => return Ok("청산 완료 후 종료".into()),
@@ -83,7 +86,7 @@ impl Bot {
             // 마지막 명령 결과(체결 포함)를 종료 보고 전에 올림. 종료 보고는 명령 결과를 받지 않으므로
             // 백오프 중이어도 실제로 보냄(한 번 더 시도).
             for _ in 0..2 {
-                if self.pending_acks.is_empty() && !server.has_unsent_acks() {
+                if self.pending_acks.is_empty() && self.pending_local_fills.is_empty() && !server.has_unsent_acks() {
                     break;
                 }
                 server.reset_backoff();

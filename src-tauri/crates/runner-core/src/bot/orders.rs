@@ -19,6 +19,7 @@ impl Bot {
         let client_id = format!("ggp-{}", &uuid::Uuid::new_v4().simple().to_string()[..28]);
         let by_money = self.domestic() && !closing && notional > 0.0;
         let current_op = self.logger.operation();
+        let in_command = current_op.starts_with("command:");
         let operation_id = if current_op.is_empty() { format!("order:{client_id}") } else { current_op };
         let request_details = obj(json!({
             "action": side.as_str(), "client_order_id": client_id,
@@ -92,6 +93,9 @@ impl Bot {
         );
         let close = self.apply_fill(&order, closing, result_uncertain);
         self.last_close = close;
+        if executed > 0.0 {
+            self.record_order_fact(&order, side, &client_id, in_command);
+        }
         if order.status == "REJECTED" && executed == 0.0 {
             let (text, code, no_funds) = self.rejection_text(&order.raw_status, closing);
             self.order_error_code = code;
@@ -139,6 +143,30 @@ impl Bot {
             self.funds_short = false; // 진입 주문이 체결됨 — 잔고 부족이 풀림
         }
         Ok(true)
+    }
+
+    /// 체결 기준 장부(연동 레벨 21) — 체결이 있는 주문 한 건의 사실을 서버로 보낼 자리에 남김.
+    /// 서버 명령 중이면 그 명령 ack 의 `orders`, 아니면(로컬 손절 · 안전 규칙 · 종료 정리) 하트비트의 `local_fills`.
+    /// 키는 이 주문의 client_order_id — 서버는 같은 키를 한 번만 장부에 넣는다. 수수료를 모르면 어림값을 싣고 fee_known=false.
+    fn record_order_fact(&mut self, order: &Order, side: OrderSide, client_id: &str, in_command: bool) {
+        let notional = order.executed_qty * order.avg_price;
+        let (fee_quote, fee_known) = match &order.fee {
+            Some(fee) if fee.other.is_empty() => (fee.quote, true),
+            other => (other.as_ref().map(|f| f.quote).unwrap_or(0.0).max(notional * self.fee_rate_estimate()), false),
+        };
+        let mut fact = obj(json!({
+            "client_order_id": client_id, "exchange_order_id": order.order_id, "status": order.status,
+            "side": side.as_str().to_lowercase(), "executed_qty": order.executed_qty,
+            "acquired_qty": order.acquired_qty, "fill_price": order.avg_price,
+            "fee_quote": fee_quote, "fee_known": fee_known, "ts_ms": crate::clock::unix_ms(),
+        }));
+        if in_command {
+            self.command_orders.push(Value::Object(fact));
+        } else {
+            let reason = if self.local_reason.is_empty() { "local" } else { self.local_reason };
+            fact.insert("reason".into(), json!(reason));
+            self.pending_local_fills.push(Value::Object(fact));
+        }
     }
 
     /// 거래소가 받지 않은 주문의 (사람이 읽을 문장, 오류 코드, 잔고 부족인지). 코드는 문장에 넣지 않음.
@@ -217,6 +245,13 @@ impl Bot {
                     && self.held_qty < floor
                     && !self.position_uncertain
                 {
+                    // 먼지 평단 — 앞서 남은 먼지가 있으면 수량 가중으로 합친다. 다음 진입 체결 때 수량 · 평단에 넣는다.
+                    let before = self.position_dust_qty;
+                    self.dust_entry_price = if before > 0.0 {
+                        (before * self.dust_entry_price + self.held_qty * self.entry_price) / (before + self.held_qty)
+                    } else {
+                        self.entry_price
+                    };
                     self.position_dust_qty += self.held_qty;
                     self.log(format!(
                         "최소 주문 단위보다 적게 남은 수량: {} {}",
@@ -251,6 +286,15 @@ impl Bot {
                 self.entry_price = (prev_qty * prev_entry + acquired * average) / self.held_qty;
                 self.open_entry_fee += fee_quote;
                 self.open_fee_known = self.open_fee_known && fee_known;
+            } else if self.position_dust_qty > 0.0 && self.dust_entry_price > 0.0 && average != 0.0 {
+                // 팔 수 없던 잔량(먼지)을 새 포지션에 합친다(원가 가중 평균) — 서버 장부와 같은 규칙이라 익절선 · 손절선이 맞는다.
+                let dust = self.position_dust_qty;
+                self.held_qty = dust + acquired;
+                self.entry_price = (dust * self.dust_entry_price + acquired * average) / self.held_qty;
+                self.position_dust_qty = 0.0;
+                self.dust_entry_price = 0.0;
+                self.open_entry_fee = fee_quote;
+                self.open_fee_known = fee_known;
             } else {
                 self.entry_price = average;
                 self.held_qty = acquired;

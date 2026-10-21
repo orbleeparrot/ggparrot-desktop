@@ -553,3 +553,44 @@ fn only_condition_rules_wait_for_entry() {
     assert!(!is_waiting_macro(&json!({"rule_type": "E", "params": {"entry_mode": "immediate"}})));
     assert!(is_waiting_macro(&json!({"rule_type": "E", "params": {"entry_mode": "dip"}})));
 }
+
+#[tokio::test]
+async fn local_fills_ride_with_acks_and_are_resent_until_delivered() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/runner/start"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"session_id": 8})))
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let c = client(&server.uri(), &dir);
+    c.start(&json!({})).await.unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/runner/heartbeat"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    let fill = json!({"client_order_id": "ggp-local-1", "side": "sell", "executed_qty": 1.0, "reason": "stop_loss"});
+    let r = c.heartbeat_with(&json!({}), vec![json!({"command_id": 1, "ok": true})], vec![fill.clone()]).await;
+    assert!(r.offline);
+    assert!(c.has_unsent_acks(), "로컬 체결도 남겨 둔다");
+    c.reset_backoff();
+    server.reset().await;
+    Mock::given(method("POST"))
+        .and(path("/api/runner/heartbeat"))
+        .respond_with(|req: &Request| {
+            let body: Value = serde_json::from_slice(&req.body).unwrap();
+            assert_eq!(body["acks"][0]["command_id"], 1);
+            assert_eq!(body["local_fills"].as_array().unwrap().len(), 2, "앞서 못 보낸 것을 먼저");
+            assert_eq!(body["local_fills"][0]["client_order_id"], "ggp-local-1");
+            assert_eq!(body["local_fills"][1]["client_order_id"], "ggp-local-2");
+            ResponseTemplate::new(200).set_body_json(json!({"action": "continue", "commands": []}))
+        })
+        .mount(&server)
+        .await;
+    let second = json!({"client_order_id": "ggp-local-2", "side": "sell", "executed_qty": 0.5, "reason": "forced"});
+    let r = c.heartbeat_with(&json!({}), vec![], vec![second]).await;
+    assert!(!r.offline);
+    assert!(!c.has_unsent_acks(), "보낸 뒤에는 비운다");
+}

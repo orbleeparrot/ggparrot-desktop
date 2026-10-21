@@ -1206,7 +1206,11 @@ async fn command_branches_at_their_boundaries() {
     let (mut bot, fb, _rx) = holding();
     bot.capital = 100.0;
     fb.push(result("FILLED", 0.5, 50.0, 0.0, true));
-    let ack = bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.25}), 50.0).await.unwrap();
+    let mut ack = bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.25}), 50.0).await.unwrap();
+    // 주문 사실(orders)은 주문 키 · 시각이 매번 달라 따로 본다(체결 기준 장부 — ack_carries_the_order_fact_with_its_fee).
+    let orders = ack.as_object_mut().unwrap().remove("orders").unwrap();
+    assert_eq!(orders.as_array().unwrap().len(), 1);
+    assert_eq!(orders[0]["executed_qty"], 0.5);
     assert_eq!(
         ack,
         json!({"command_id": 1, "ok": true, "executed_qty": 0.5, "fill_price": 50.0, "error": "",
@@ -1632,4 +1636,118 @@ fn martingale_min_order_reason_names_the_small_field_not_the_budget() {
     assert_eq!(super::martingale_min_order_reason(&a, "upbit", "under_min_total_bid"), None);
     assert_eq!(super::martingale_min_order_reason(&h, "upbit", "insufficient_funds_bid"), None);
     assert_eq!(super::martingale_min_order_reason(&h, "binance", "under_min_total"), None);
+}
+
+// --- 체결 기준 장부(연동 레벨 21): 주문 사실 · 로컬 체결 · 먼지 -----------------------------------------
+fn order(status: &str, qty: f64, price: f64, acquired: f64, fee: Option<f64>) -> Order {
+    Order {
+        status: status.into(),
+        executed_qty: qty,
+        avg_price: price,
+        acquired_qty: acquired,
+        fees_known: true,
+        order_id: Some("ex-77".into()),
+        raw_status: status.into(),
+        fee: fee.map(|quote| crate::brokers::FeePaid { quote, other: vec![] }),
+    }
+}
+
+#[tokio::test]
+async fn ack_carries_the_order_fact_with_its_fee() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb.clone(), RunMode::Live);
+    fb.push(order("FILLED", 0.5, 100.2, 0.4995, Some(0.0501)));
+    let ack = bot
+        .execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.05, "reason": "진입"}), 100.0)
+        .await
+        .unwrap();
+    let orders = ack["orders"].as_array().unwrap();
+    assert_eq!(orders.len(), 1);
+    let fact = &orders[0];
+    assert!(fact["client_order_id"].as_str().unwrap().starts_with("ggp-"));
+    assert_eq!(fact["exchange_order_id"], "ex-77");
+    assert_eq!(fact["side"], "buy");
+    assert_eq!(fact["status"], "FILLED");
+    assert_eq!(fact["executed_qty"], 0.5);
+    assert_eq!(fact["acquired_qty"], 0.4995, "기초자산으로 낸 수수료를 뺀 받은 수량");
+    assert_eq!(fact["fill_price"], 100.2);
+    assert_eq!(fact["fee_quote"], 0.0501);
+    assert_eq!(fact["fee_known"], true);
+    assert!(fact["ts_ms"].as_u64().unwrap() > 0);
+    assert!(fact.get("reason").is_none(), "명령으로 낸 주문에는 로컬 이유가 없다");
+    assert!(bot.pending_local_fills.is_empty());
+}
+
+#[tokio::test]
+async fn partly_filled_order_reports_the_filled_part() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb.clone(), RunMode::Live);
+    fb.push(order("CANCELED", 0.3, 100.0, 0.3, Some(0.03)));
+    let ack = bot.execute_command(&json!({"id": 2, "action": "buy", "notional_frac": 0.05}), 100.0).await.unwrap();
+    assert_eq!(ack["ok"], false);
+    assert_eq!(ack["outcome"], "partially_executed");
+    let orders = ack["orders"].as_array().unwrap();
+    assert_eq!(orders.len(), 1);
+    assert_eq!(orders[0]["executed_qty"], 0.3);
+    assert_eq!(orders[0]["status"], "CANCELED");
+}
+
+#[tokio::test]
+async fn acks_without_an_order_carry_no_orders() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) = bot_with(json!({"symbol": "BTCUSDT"}), fb.clone(), RunMode::Live);
+    let flat = bot.execute_command(&json!({"id": 3, "action": "sell"}), 100.0).await.unwrap();
+    assert_eq!(flat["orders"], json!([]));
+    let again = bot.execute_command(&json!({"id": 3, "action": "sell"}), 100.0).await.unwrap();
+    assert_eq!(again["outcome"], "duplicate_command_no_reexecution");
+    assert_eq!(again["orders"], json!([]));
+    fb.push(Order::rejected("insufficient_funds_bid".into()));
+    let refused = bot.execute_command(&json!({"id": 4, "action": "buy", "notional_frac": 0.5}), 100.0).await.unwrap();
+    assert_eq!(refused["ok"], false);
+    assert_eq!(refused["orders"], json!([]), "체결 0 인 거절은 주문 사실로 싣지 않는다");
+}
+
+#[tokio::test]
+async fn local_stop_loss_fill_waits_for_the_next_heartbeat_with_its_reason() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) = bot_with(
+        json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}, "risk": {"stop_loss_pct": 5}}),
+        fb.clone(),
+        RunMode::Live,
+    );
+    bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.05}), 100.0).await.unwrap();
+    let mut guard = bot.risk_guard();
+    fb.st.lock().unwrap().price = 94.0;
+    bot.enforce_safety_net(&mut guard, 94.0).await.unwrap();
+    assert!(!bot.in_position);
+    assert_eq!(bot.pending_local_fills.len(), 1);
+    let fact = &bot.pending_local_fills[0];
+    assert_eq!(fact["reason"], "stop_loss");
+    assert_eq!(fact["side"], "sell");
+    assert_eq!(fact["executed_qty"], 0.5);
+    assert_eq!(fact["fill_price"], 94.0);
+    assert!(bot.command_orders.is_empty() && bot.local_reason.is_empty());
+}
+
+#[tokio::test]
+async fn dust_joins_the_next_entry_at_its_cost() {
+    let fb = FakeBroker::new(100.0, Market::Spot, Side::Long);
+    let (mut bot, _rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 10000}}), fb.clone(), RunMode::Live);
+    bot.step = 0.001;
+    fb.push(order("FILLED", 1.0005, 100.0, 1.0005, Some(0.1)));
+    bot.execute_command(&json!({"id": 1, "action": "buy", "notional_frac": 0.01}), 100.0).await.unwrap();
+    fb.push(order("FILLED", 1.0, 110.0, 1.0, Some(0.11)));
+    bot.execute_command(&json!({"id": 2, "action": "sell"}), 110.0).await.unwrap();
+    assert!(!bot.in_position, "단위 미만 0.0005 는 먼지 — 무포지션");
+    assert!((bot.position_dust_qty - 0.0005).abs() < 1e-12);
+    assert_eq!(bot.snapshot()["position_qty"], bot.position_dust_qty);
+    fb.push(order("FILLED", 1.0, 120.0, 1.0, Some(0.12)));
+    bot.execute_command(&json!({"id": 3, "action": "buy", "notional_frac": 0.012}), 120.0).await.unwrap();
+    assert!(bot.in_position);
+    assert!((bot.held_qty - 1.0005).abs() < 1e-12, "먼지를 새 포지션에 합친다");
+    assert!((bot.entry_price - (0.0005 * 100.0 + 1.0 * 120.0) / 1.0005).abs() < 1e-9);
+    assert_eq!(bot.position_dust_qty, 0.0);
 }
