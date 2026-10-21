@@ -43,7 +43,7 @@ mod parse;
 mod rehearsal;
 
 use parse::{asset_row, futures_available, num_of, settled, spot_free};
-pub use parse::{fold_status, parse_filters, spot_fills_fee};
+pub use parse::{fold_status, parse_filters, parse_tick, spot_fills_fee};
 
 // --- 어댑터 ------------------------------------------------------------------
 
@@ -69,6 +69,8 @@ pub struct BinanceBroker {
     testnet: bool,
     /// 마지막으로 읽은 잔고 목록(현물 balances·선물 잔고). 시작 전 잔고 확인과 잔고 한 줄에 씀.
     balances: Mutex<Option<Value>>,
+    /// 심볼 호가 단위(PRICE_FILTER.tickSize) — 지정가 IOC 가격을 맞춤. 0 이면 모름.
+    tick: Mutex<f64>,
 }
 
 /// 키 권한 조회(실거래 전용) — IP 제한·주문 권한을 읽음.
@@ -168,6 +170,7 @@ impl BinanceBroker {
             time_offset: AtomicI64::new(0),
             testnet,
             balances: Mutex::new(None),
+            tick: Mutex::new(0.0),
         }
     }
 
@@ -387,7 +390,12 @@ impl Broker for BinanceBroker {
         };
         let (step, min_notional) = parse_filters(&info);
         *self.rules.lock().unwrap() = OrderRules { step, min_notional };
+        *self.tick.lock().unwrap() = parse_tick(&info);
         Ok(true)
+    }
+
+    async fn price_tick(&self, _price: f64) -> f64 {
+        *self.tick.lock().unwrap()
     }
 
     async fn order_rules(&self) -> Result<OrderRules, BrokerError> {
@@ -488,8 +496,14 @@ impl Broker for BinanceBroker {
         let closing = req.closing.unwrap_or(req.reduce_only || req.side.as_str() != opening_word);
         let futures = self.futures();
         // 바이낸스는 수량으로 주문함. notional은 국내 시장가 매수용 — 여기서는 안 씀.
+        let kind = if req.limit.is_some() { "LIMIT" } else { "MARKET" };
         let mut params: Vec<(&str, String)> =
-            vec![("symbol", self.symbol.clone()), ("side", req.side.as_str().into()), ("type", "MARKET".into())];
+            vec![("symbol", self.symbol.clone()), ("side", req.side.as_str().into()), ("type", kind.into())];
+        if let Some(price) = req.limit {
+            // 지정가 IOC — 그 가격보다 불리하게는 체결하지 않고, 바로 안 된 수량은 취소(EXPIRED)됨.
+            params.push(("timeInForce", "IOC".into()));
+            params.push(("price", super::ticks::price_plain(price)));
+        }
         if let Some(qty) = req.base_qty {
             params.push(("quantity", plain_number(qty)));
         }

@@ -9,6 +9,7 @@ use crate::types::{Market, Side};
 pub mod binance;
 pub mod domestic;
 pub mod mock;
+pub mod ticks;
 
 pub use binance::{binance_rejection_parts, is_binance_no_funds, BinanceBroker, BinanceUrls};
 pub use domestic::{domestic_error_code, explain_domestic_error, is_no_funds_error, jwt_token, DomesticBroker};
@@ -154,6 +155,9 @@ pub struct SubmitRequest {
     /// 보유를 줄이는 주문인지 여부. None이면 어댑터가 방향으로 판단함.
     pub closing: Option<bool>,
     pub client_id: String,
+    /// 지정가 IOC 가격(호가 단위로 맞춘 값) — 그 가격보다 불리하게는 체결하지 않고 바로 안 된 수량은 취소함.
+    /// None 이면 시장가. 지정가는 수량(base_qty)으로 냄.
+    pub limit: Option<f64>,
 }
 
 #[derive(Clone, Debug)]
@@ -233,6 +237,10 @@ pub trait Broker: Send + Sync {
     async fn rehearse(&self, notional: f64, spend: Option<f64>) -> (bool, String);
     async fn price(&self) -> Result<f64, BrokerError>;
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError>;
+    /// 이 가격의 호가 단위(지정가를 맞출 단위). 모르면 0 — 지정가 주문을 내지 않음.
+    async fn price_tick(&self, _price: f64) -> f64 {
+        0.0
+    }
 
     /// 마지막 확인에서 읽은 잔고 한 줄("사용 가능 잔고 1,234.5 USDT · 보유 BTC 0.01"). 읽지 않았으면 "".
     fn balance_note(&self) -> String {

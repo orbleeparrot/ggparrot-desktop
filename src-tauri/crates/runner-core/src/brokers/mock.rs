@@ -151,6 +151,22 @@ impl Broker for MockBroker {
         if executed == 0.0 {
             return Err(BrokerError::Other("모의 주문에 쓸 금액이나 수량이 없어요".into()));
         }
+        if let Some(limit) = req.limit {
+            // 모의 지정가 IOC — 지금 가격이 지정가보다 유리할 때만 지금 가격에 다 체결, 아니면 체결 없이 취소.
+            let crosses = if buying { price <= limit } else { price >= limit };
+            if !crosses {
+                return Ok(Order {
+                    status: "CANCELED".into(),
+                    executed_qty: 0.0,
+                    avg_price: 0.0,
+                    acquired_qty: 0.0,
+                    fees_known: true,
+                    order_id: Some(format!("mock-{}", req.client_id)),
+                    raw_status: "MOCK_IOC_CANCELED".into(),
+                    fee: Some(FeePaid::default()),
+                });
+            }
+        }
         // 어댑터마다 수수료를 떼는 곳이 다름 — 연습이 실전과 같은 보유 수량을 보여 주려면 그 규칙을 따름.
         let closing = req.closing.unwrap_or(req.reduce_only || !buying);
         let mut acquired = executed;
@@ -170,6 +186,10 @@ impl Broker for MockBroker {
             raw_status: "MOCK_FILLED".into(),
             fee,
         })
+    }
+
+    async fn price_tick(&self, price: f64) -> f64 {
+        self.inner.price_tick(price).await
     }
 
     fn balance_note(&self) -> String {

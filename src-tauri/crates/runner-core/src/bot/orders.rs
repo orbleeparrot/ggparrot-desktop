@@ -8,6 +8,19 @@ impl Bot {
     /// - 거래소 오류 코드는 문장에 넣지 않고 `order_error_code`에 따로 남김(자세히 보기·원문 로그용).
     /// - 진입 주문이 잔고 부족으로 거절되면 `funds_short`를 켜고, 진입 주문이 체결되면 끔. 매매 동작은 그대로임.
     pub async fn place(&mut self, side: OrderSide, qty: f64, reduce_only: bool, notional: f64) -> Result<bool, String> {
+        self.place_order(side, qty, reduce_only, notional, None).await
+    }
+
+    /// [`place`]와 같되 `limit` 이 있으면 지정가 IOC(호가 단위로 맞춘 가격) — 수량으로 내고, 바로 체결된 만큼만(0 일 수도)
+    /// 보유에 반영한 뒤 정상으로 끝냄(설계 §6: IOC 무체결은 정상 결과 — 재시도 · 시장가 전환 없음).
+    pub async fn place_order(
+        &mut self,
+        side: OrderSide,
+        qty: f64,
+        reduce_only: bool,
+        notional: f64,
+        limit: Option<f64>,
+    ) -> Result<bool, String> {
         self.order_error_code.clear();
         self.order_no_funds = false;
         let broker = self.broker()?;
@@ -17,7 +30,7 @@ impl Bot {
         let step_or = if self.step != 0.0 { self.step } else { 1e-12 };
         let partial_close = closing && sellable > 0.0 && (sellable - qty) >= step_or;
         let client_id = format!("ggp-{}", &uuid::Uuid::new_v4().simple().to_string()[..28]);
-        let by_money = self.domestic() && !closing && notional > 0.0;
+        let by_money = self.domestic() && !closing && notional > 0.0 && limit.is_none();
         let current_op = self.logger.operation();
         let in_command = current_op.starts_with("command:");
         let operation_id = if current_op.is_empty() { format!("order:{client_id}") } else { current_op };
@@ -27,6 +40,7 @@ impl Bot {
             "requested_qty": if by_money { Value::Null } else { json!(qty) },
             "quote_currency": self.quote, "reduce_only": reduce_only, "closing": closing,
             "mode": self.mode.as_str(), "exchange": self.exchange_name, "symbol": self.symbol,
+            "order_type": if limit.is_some() { "limit_ioc" } else { "market" }, "limit_price": limit,
         }));
         let mode_label = self.mode_label();
         let target = if self.mode == RunMode::Mock { "시뮬레이터" } else { "거래소 어댑터" };
@@ -46,6 +60,7 @@ impl Bot {
                 reduce_only,
                 closing: Some(closing),
                 client_id: client_id.clone(),
+                limit,
             })
             .await
         {
@@ -104,6 +119,24 @@ impl Bot {
                 self.funds_short = true;
             }
             return Err(text);
+        }
+        if let Some(px) = limit {
+            if !self.position_uncertain && crate::brokers::is_terminal(&order.status) {
+                self.ioc_activity(
+                    side,
+                    closing,
+                    executed,
+                    average,
+                    px,
+                    close.as_ref(),
+                    order.fee.as_ref(),
+                    &order.raw_status,
+                );
+                if !closing && executed > 0.0 {
+                    self.funds_short = false; // 진입 주문이 체결됨 — 잔고 부족이 풀림
+                }
+                return Ok(true);
+            }
         }
         let incomplete = order.status != "FILLED" || (closing && self.in_position && !partial_close);
         if incomplete && !self.position_uncertain && executed > 0.0 {
@@ -167,6 +200,49 @@ impl Bot {
             fact.insert("reason".into(), json!(reason));
             self.pending_local_fills.push(Value::Object(fact));
         }
+    }
+
+    /// 지정가 IOC 결과 한 줄 — 체결이 있으면 보통 체결 줄, 없으면 '조건에 맞는 상대가 없어 이번엔 안 했어요'(위험 · 오류가 아님).
+    #[allow(clippy::too_many_arguments)]
+    fn ioc_activity(
+        &mut self,
+        side: OrderSide,
+        closing: bool,
+        executed: f64,
+        average: f64,
+        limit: f64,
+        close: Option<&ClosePnl>,
+        fee: Option<&crate::brokers::FeePaid>,
+        raw_status: &str,
+    ) {
+        let selling = side == OrderSide::Sell;
+        let bound = if selling { "이상" } else { "이하" };
+        if executed > 0.0 {
+            let raw = format!(
+                "  ✓ {} 지정가 IOC 체결: 수량={} @ {} (지정가 {} {bound}) · 거래소 상태 {raw_status}",
+                side.as_str(),
+                py_num(executed),
+                py_num(average),
+                py_num(limit)
+            );
+            self.logger.ui(&raw);
+            self.fill_activity(side, closing, executed, average, close, fee, raw);
+            return;
+        }
+        let verb = if selling { "팔지" } else { "사지" };
+        let raw = format!(
+            "  · {} 지정가 IOC {} {bound} — 체결 없이 끝남(거래소 상태 {raw_status})",
+            side.as_str(),
+            py_num(limit)
+        );
+        self.log(&raw);
+        self.logger.activity(
+            "info",
+            format!("지정가에 맞는 상대가 없어 이번엔 {verb} 않았어요"),
+            format!("지정가 {} {bound} · 다음 봉에서 다시 판단해요", price_text(limit, self.quote)),
+            raw,
+            "muted",
+        );
     }
 
     /// 거래소가 받지 않은 주문의 (사람이 읽을 문장, 오류 코드, 잔고 부족인지). 코드는 문장에 넣지 않음.

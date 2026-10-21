@@ -40,6 +40,19 @@ pub fn parse_filters(info: &Value) -> (f64, f64) {
     (step, min_notional)
 }
 
+/// 심볼 필터에서 호가 단위(PRICE_FILTER.tickSize). 없으면 0 — 지정가 주문을 내지 않음.
+pub fn parse_tick(info: &Value) -> f64 {
+    info.get("filters")
+        .and_then(Value::as_array)
+        .and_then(|filters| {
+            filters.iter().find(|f| f.get("filterType").and_then(Value::as_str) == Some("PRICE_FILTER"))
+        })
+        .and_then(|f| f.get("tickSize"))
+        .and_then(num_of)
+        .filter(|t| t.is_finite() && *t > 0.0)
+        .unwrap_or(0.0)
+}
+
 /// 거래소 상태를 봇이 아는 네 가지로 접음.
 pub fn fold_status(raw: Option<&Value>) -> &'static str {
     let status = match raw {

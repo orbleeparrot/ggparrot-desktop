@@ -20,7 +20,8 @@ impl Bot {
         self.logger.set_operation(&operation_id);
         let context = obj(json!({"command_id": cid, "action": action, "command_seq": cmd.get("seq"),
             "signal_price": cmd.get("signal_price"), "notional_frac": cmd.get("notional_frac"),
-            "qty_frac": cmd.get("qty_frac"), "reason": reason, "mode": self.mode.as_str()}));
+            "qty_frac": cmd.get("qty_frac"), "reason": reason, "mode": self.mode.as_str(),
+            "order_type": cmd.get("order_type"), "limit_price": cmd.get("limit_price")}));
         self.logger.telemetry(
             "info",
             "서버 주문 명령을 앱이 받았어요.",
@@ -170,6 +171,9 @@ impl Bot {
         price: f64,
         ack: &mut Map<String, Value>,
     ) -> Result<(), String> {
+        if let Some(limit) = limit_of(cmd)? {
+            return self.run_limit_entry(cmd, action, reason, limit, ack).await;
+        }
         // 1을 넘는 비율은 투자 금액 전부로 자름(서버 값이 이상해도 상한·투자 금액 안에서).
         let frac = num(cmd.get("notional_frac")).clamp(0.0, 1.0);
         let mut notional = (self.capital * frac).min(order_cap(self.quote));
@@ -190,6 +194,15 @@ impl Bot {
         if !self.place(word, qty, false, extra).await? {
             return Err("주문이 체결되지 않았어요.".into());
         }
+        self.settle_added_entry(prev_qty, prev_entry);
+        ack.insert("executed_qty".into(), json!(self.last_fill_qty));
+        ack.insert("fill_price".into(), json!(self.last_fill_price));
+        ack.insert("outcome".into(), json!("execution_reported"));
+        Ok(())
+    }
+
+    /// 보유 중 추가 진입이 체결됐는데 보유가 늘지 않은 체결(받은 수량 0) — 체결 수량으로 보유 · 진입가를 채움.
+    fn settle_added_entry(&mut self, prev_qty: f64, prev_entry: f64) {
         let (filled_qty, filled_px) = (self.last_fill_qty, self.last_fill_price);
         if prev_qty > 0.0 && filled_qty > 0.0 {
             let mut added = self.held_qty - prev_qty;
@@ -200,10 +213,129 @@ impl Bot {
             self.entry_price = (prev_qty * prev_entry + added * filled_px) / self.held_qty;
             self.in_position = true;
         }
-        ack.insert("executed_qty".into(), json!(filled_qty));
-        ack.insert("fill_price".into(), json!(filled_px));
-        ack.insert("outcome".into(), json!("execution_reported"));
-        Ok(())
+    }
+
+    /// 지정가 IOC 진입(체결 기준 장부 세션의 물타기) — 그 가격선 이하에서만 산다. 가격은 호가 단위로 내림.
+    /// 가격 단위가 맞지 않다고 거절되면(주문은 생기지 않았다) 한 단계 큰 단위로 한 번만 다시 낸다.
+    async fn run_limit_entry(
+        &mut self,
+        cmd: &Value,
+        action: &str,
+        reason: &str,
+        limit: f64,
+        ack: &mut Map<String, Value>,
+    ) -> Result<(), String> {
+        let frac = num(cmd.get("notional_frac")).clamp(0.0, 1.0);
+        let mut notional = (self.capital * frac).min(order_cap(self.quote));
+        if self.domestic() {
+            notional = fee_inclusive(notional, bid_fee_rate(self.broker.as_ref()));
+        }
+        let word = if action == "buy" { OrderSide::Buy } else { OrderSide::Sell };
+        let mut tick = self.broker()?.price_tick(limit).await;
+        if tick <= 0.0 {
+            return Err("호가 단위를 몰라 지정가 주문을 내지 못했어요.".into());
+        }
+        let (prev_qty, prev_entry) = if self.in_position { (self.held_qty, self.entry_price) } else { (0.0, 0.0) };
+        for attempt in 0..2 {
+            let Some(px) = crate::brokers::ticks::round_to_tick(limit, tick, word == OrderSide::Sell) else {
+                return Err("지정가가 호가 단위보다 작아요.".into());
+            };
+            let (qty, _) = order_qty(px, self.step, notional, self.leverage, self.market, self.quote);
+            if qty <= 0.0 {
+                return Err("주문 수량이 최소 단위보다 작아요.".into());
+            }
+            if attempt == 0 {
+                let bound = if word == OrderSide::Buy { "이하" } else { "이상" };
+                let raw = format!(
+                    "[신호] {reason} → 지정가 IOC {} {} {} @ {} {bound}",
+                    word.as_str(),
+                    py_num(qty),
+                    self.symbol,
+                    py_num(px)
+                );
+                self.log(&raw);
+                let detail = format!("{reason} · {} {bound}에서만 사요", price_text(px, self.quote));
+                self.logger.activity("signal", "매수 신호 · 지정가", detail, raw, "muted");
+            }
+            match self.place_order(word, qty, false, 0.0, Some(px)).await {
+                Ok(_) => {
+                    self.settle_added_entry(prev_qty, prev_entry);
+                    self.ioc_ack(ack, qty);
+                    return Ok(());
+                }
+                Err(_) if attempt == 0 && self.price_unit_rejected() => tick = crate::brokers::ticks::coarser(tick),
+                Err(e) => return Err(e),
+            }
+        }
+        Err("지정가 주문을 내지 못했어요.".into())
+    }
+
+    /// 지정가 IOC 정리(체결 기준 장부 세션의 익절) — 그 가격 이상에서만 판다. 가격은 호가 단위로 올림.
+    async fn run_limit_exit(
+        &mut self,
+        cmd: &Value,
+        reason: &str,
+        limit: f64,
+        ack: &mut Map<String, Value>,
+    ) -> Result<(), String> {
+        let frac = match num(cmd.get("qty_frac")) {
+            f if f != 0.0 => f,
+            _ => 1.0,
+        };
+        let held = round_step(self.held_qty, self.step);
+        let qty = if frac >= 0.999 { held } else { round_step(self.held_qty * frac, self.step) };
+        if qty <= 0.0 {
+            return Err("정리 수량이 최소 단위보다 작아요.".into());
+        }
+        let word = if self.side == Side::Long { OrderSide::Sell } else { OrderSide::Buy };
+        let reduce = self.market == Market::Futures;
+        let mut tick = self.broker()?.price_tick(limit).await;
+        if tick <= 0.0 {
+            return Err("호가 단위를 몰라 지정가 주문을 내지 못했어요.".into());
+        }
+        for attempt in 0..2 {
+            let Some(px) = crate::brokers::ticks::round_to_tick(limit, tick, word == OrderSide::Sell) else {
+                return Err("지정가가 호가 단위보다 작아요.".into());
+            };
+            if attempt == 0 {
+                let bound = if word == OrderSide::Sell { "이상" } else { "이하" };
+                let raw = format!("[신호] {reason} → 지정가 IOC {} 정리 @ {} {bound}", py_num(qty), py_num(px));
+                self.log(&raw);
+                let detail = format!("{reason} · {} {bound}에서만 팔아요", price_text(px, self.quote));
+                self.logger.activity("signal", "정리 신호 · 지정가", detail, raw, "muted");
+            }
+            match self.place_order(word, qty, reduce, 0.0, Some(px)).await {
+                Ok(_) => {
+                    self.ioc_ack(ack, qty);
+                    return Ok(());
+                }
+                Err(_) if attempt == 0 && self.price_unit_rejected() => tick = crate::brokers::ticks::coarser(tick),
+                Err(e) => return Err(e),
+            }
+        }
+        Err("지정가 주문을 내지 못했어요.".into())
+    }
+
+    /// 지정가 IOC 결과를 ack 에 — 다 참 · 일부(`ioc_partial`) · 0(`ioc_unfilled`). 모두 ok(정상 결과).
+    fn ioc_ack(&self, ack: &mut Map<String, Value>, requested: f64) {
+        let filled = self.last_fill_qty;
+        let half_step = if self.step > 0.0 { self.step * 0.5 } else { 1e-12 };
+        let outcome = if filled <= 0.0 {
+            "ioc_unfilled"
+        } else if filled + half_step < requested {
+            "ioc_partial"
+        } else {
+            "execution_reported"
+        };
+        ack.insert("executed_qty".into(), json!(filled));
+        ack.insert("fill_price".into(), json!(self.last_fill_price));
+        ack.insert("outcome".into(), json!(outcome));
+    }
+
+    /// 거절 이유가 가격 단위일 수 있는가 — 업비트 · 빗썸은 가격 단위 오류를 따로 이름 붙이지 않아(create_*_error ·
+    /// invalid_parameter) 주문 내용 오류 전반을 보고, 바이낸스는 -1013(필터 위반).
+    fn price_unit_rejected(&self) -> bool {
+        PRICE_RETRY_CODES.contains(&self.order_error_code.as_str())
     }
 
     /// 정리 명령(sell·cover) — 비율만큼(0.999 이상은 전량) 정리하고 체결을 ack에 실음.
@@ -217,6 +349,9 @@ impl Bot {
     ) -> Result<(), String> {
         if !self.in_position || self.held_qty <= 0.0 {
             return Ok(()); // 보유 없음 — 부르는 쪽에서 처리
+        }
+        if let Some(limit) = limit_of(cmd)? {
+            return self.run_limit_exit(cmd, reason, limit, ack).await;
         }
         let frac = match num(cmd.get("qty_frac")) {
             f if f != 0.0 => f,
@@ -253,5 +388,34 @@ impl Bot {
             self.done_command_ids.pop_front();
         }
         self.done_command_ids.push_back(cid);
+    }
+}
+
+/// 가격 단위 오류일 수 있는 거절 이름 — 한 단계 큰 호가 단위로 한 번 다시 냄(거절된 주문은 생기지 않았다).
+const PRICE_RETRY_CODES: [&str; 8] = [
+    "create_bid_error",
+    "create_ask_error",
+    "invalid_parameter",
+    "validation_error",
+    "invalid_price_bid",
+    "invalid_price_ask",
+    "invalid_price",
+    "-1013",
+];
+
+/// 명령의 주문 방식 — 빈 값 · market 이면 None(시장가), limit_ioc 면 그 지정가. 모르는 방식이거나 가격이 이상하면
+/// 오류 — 지정가로 낸 뜻을 시장가로 바꿔 실행하지 않는다(설계 §6).
+fn limit_of(cmd: &Value) -> Result<Option<f64>, String> {
+    match value_text(cmd.get("order_type")).as_str() {
+        "" | "market" => Ok(None),
+        "limit_ioc" => {
+            let price = num(cmd.get("limit_price"));
+            if price.is_finite() && price > 0.0 {
+                Ok(Some(price))
+            } else {
+                Err("지정가 명령의 가격이 올바르지 않아요.".into())
+            }
+        }
+        other => Err(format!("이 앱이 모르는 주문 방식이에요: {other}. 앱을 업데이트하세요.")),
     }
 }

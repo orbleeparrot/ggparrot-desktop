@@ -15,7 +15,9 @@ impl Bot {
             return Some("진입 신호의 유효 시간이 지났어요".into());
         }
         let signal = num(cmd.get("signal_price"));
-        if signal > 0.0 && price > 0.0 {
+        // 지정가 IOC 진입은 그 가격선보다 비싸게 사지 않으니 신호가와 지금 가격의 차이로 막지 않는다(차이가 크면 그냥 안 산다).
+        let limit = value_text(cmd.get("order_type")) == "limit_ioc";
+        if signal > 0.0 && price > 0.0 && !limit {
             let gap = (price - signal).abs() / signal;
             if gap > MAX_SIGNAL_DEVIATION {
                 return Some(format!(

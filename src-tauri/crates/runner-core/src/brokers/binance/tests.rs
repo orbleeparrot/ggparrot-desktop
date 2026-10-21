@@ -77,7 +77,15 @@ fn futures_info() -> Value {
 }
 
 fn order(side: OrderSide, qty: f64, id: &str) -> SubmitRequest {
-    SubmitRequest { side, base_qty: Some(qty), notional: None, reduce_only: false, closing: None, client_id: id.into() }
+    SubmitRequest {
+        side,
+        base_qty: Some(qty),
+        notional: None,
+        reduce_only: false,
+        closing: None,
+        client_id: id.into(),
+        limit: None,
+    }
 }
 
 // --- 순수 함수 -----------------------------------------------------------
@@ -948,4 +956,36 @@ async fn spot_fee_before_ready_uses_the_symbol_split_for_any_known_quote() {
     let o = b.normalize(&fill("BTC"), false).await;
     assert!(!o.fees_known);
     assert_eq!(o.acquired_qty, 2.0);
+}
+
+// --- 지정가 IOC(체결 기준 장부 2단계) -------------------------------------------------------------
+#[tokio::test]
+async fn limit_ioc_order_params_and_price_filter_tick() {
+    let server = MockServer::start().await;
+    let info = json!({"symbols": [{"symbol": "BTCUSDT", "baseAsset": "BTC", "filters": [
+        {"filterType": "PRICE_FILTER", "tickSize": "0.01000000"},
+        {"filterType": "LOT_SIZE", "stepSize": "0.001"}, {"filterType": "NOTIONAL", "minNotional": "5"}]}]});
+    mount(&server, "GET", "/api/v3/exchangeInfo", ok(info)).await;
+    mount(
+        &server,
+        "POST",
+        "/api/v3/order",
+        ok(json!({"orderId": 9, "status": "EXPIRED", "executedQty": "0.3",
+                  "fills": [{"price": "101", "qty": "0.3", "commission": "0.0303", "commissionAsset": "USDT"}]})),
+    )
+    .await;
+    let (b, _) = make(&server, Market::Spot, 1);
+    assert_eq!(b.price_tick(100.0).await, 0.0, "심볼 규격을 읽기 전에는 모른다");
+    assert!(b.load_market().await.unwrap());
+    assert_eq!(b.price_tick(100.0).await, 0.01);
+    let mut req = order(OrderSide::Buy, 0.5, "ggp-ioc");
+    req.limit = Some(101.0);
+    let o = b.submit(req).await.unwrap();
+    assert_eq!((o.status.as_str(), o.executed_qty), ("CANCELED", 0.3), "IOC 남은 수량은 EXPIRED — 체결분만");
+    let post = &requests(&server, "POST", "/api/v3/order").await[0];
+    assert_eq!(param(post, "type").as_deref(), Some("LIMIT"));
+    assert_eq!(param(post, "timeInForce").as_deref(), Some("IOC"));
+    assert_eq!(param(post, "price").as_deref(), Some("101"));
+    assert_eq!(param(post, "quantity").as_deref(), Some("0.5"));
+    assert_eq!(parse_tick(&json!({"filters": []})), 0.0);
 }

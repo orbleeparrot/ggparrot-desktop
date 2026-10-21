@@ -334,6 +334,8 @@ pub struct DomesticBroker {
     holdings: Mutex<Option<Holdings>>,
     /// 마지막 시세의 전일 대비 등락률(signed_change_rate).
     change: Mutex<Option<f64>>,
+    /// 업비트 호가 정책 조회(`/v1/orderbook/instruments`)의 지금 가격대 호가 단위와 읽은 시각(ms).
+    live_tick: Mutex<Option<(f64, u64)>>,
 }
 
 impl DomesticBroker {
@@ -371,7 +373,64 @@ impl DomesticBroker {
             last_error_code: Mutex::new(String::new()),
             holdings: Mutex::new(None),
             change: Mutex::new(None),
+            live_tick: Mutex::new(None),
         })
+    }
+
+    /// 지정가 IOC 주문 본문(보낸 순서 그대로) — 가격은 이미 호가 단위로 맞춘 값, 수량은 8자리 아래로 내림.
+    /// 업비트 ord_type · 빗썸 order_type 이 limit, time_in_force 는 ioc(빗썸은 원화 마켓만 지원 — 이 앱은 원화 마켓만 씀).
+    pub fn limit_order_body(
+        &self,
+        side: OrderSide,
+        qty: Option<f64>,
+        price: f64,
+        client_id: &str,
+    ) -> Result<Vec<(String, String)>, BrokerError> {
+        let spec = self.spec;
+        let len = client_id.chars().count();
+        if len == 0 || len > spec.id_max {
+            return Err(BrokerError::Other(format!("주문 식별자는 1~{}자여야 해요", spec.id_max)));
+        }
+        if !(price.is_finite() && price > 0.0) {
+            return Err(BrokerError::Other("지정가 주문에는 0보다 큰 가격이 필요해요".into()));
+        }
+        let Some(volume) = floor_plain(qty.map(positive_f64).unwrap_or(0.0), 8) else {
+            return Err(BrokerError::Other("지정가 주문에는 0보다 큰 수량이 필요해요".into()));
+        };
+        let word = if side == OrderSide::Buy { "bid" } else { "ask" };
+        Ok(vec![
+            ("market".to_string(), self.symbol.clone()),
+            ("side".into(), word.into()),
+            (spec.type_key.into(), "limit".into()),
+            ("price".into(), super::ticks::price_plain(price)),
+            ("volume".into(), volume),
+            ("time_in_force".into(), "ioc".into()),
+            (spec.id_key.into(), client_id.to_string()),
+        ])
+    }
+
+    /// 업비트가 알려 주는 지금 가격대의 호가 단위(10분마다 다시 읽음). 못 읽으면 0.
+    async fn upbit_live_tick(&self) -> f64 {
+        let now = crate::clock::unix_ms();
+        if let Some((tick, at)) = *self.live_tick.lock().unwrap() {
+            if now.saturating_sub(at) < 600_000 {
+                return tick;
+            }
+        }
+        let tick = match self.get("/v1/orderbook/instruments", &[("markets".into(), self.symbol.clone())], false).await
+        {
+            Ok(Value::Array(rows)) => rows
+                .iter()
+                .filter_map(Value::as_object)
+                .find(|r| r.get("market").and_then(Value::as_str) == Some(self.symbol.as_str()))
+                .map(|r| get_pos(r, "tick_size"))
+                .unwrap_or(0.0),
+            _ => 0.0,
+        };
+        if tick > 0.0 {
+            *self.live_tick.lock().unwrap() = Some((tick, now));
+        }
+        tick
     }
 
     fn log(&self, msg: String) {
@@ -733,6 +792,18 @@ impl Broker for DomesticBroker {
         }
     }
 
+    /// 업비트: 정책표(2025-07-31)와 호가 정책 조회의 지금 가격대 단위 중 큰 쪽 — 지정가가 다른 가격대로 넘어가도,
+    /// 정책이 또 바뀌어도 큰 단위의 배수는 거래소가 받음. 빗썸: 조회 API 가 없어 확인한 표.
+    async fn price_tick(&self, price: f64) -> f64 {
+        match self.exchange {
+            Exchange::Upbit => {
+                super::ticks::table_tick(&super::ticks::UPBIT_KRW, price).max(self.upbit_live_tick().await)
+            }
+            Exchange::Bithumb => super::ticks::table_tick(&super::ticks::BITHUMB_KRW, price),
+            Exchange::Binance => 0.0,
+        }
+    }
+
     async fn price(&self) -> Result<f64, BrokerError> {
         let rows = self.get("/v1/ticker", &[("markets".into(), self.symbol.clone())], false).await?;
         let row = rows.as_array().and_then(|r| r.first());
@@ -750,7 +821,10 @@ impl Broker for DomesticBroker {
 
     /// 시장가 주문 하나를 넣고 끝난 상태까지 확인해서 돌려줌. POST 뒤에는 어떤 일이 있어도 오류를 내지 않음.
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError> {
-        let body = self.order_body(req.side, req.base_qty, req.notional, req.reduce_only, &req.client_id)?;
+        let body = match req.limit {
+            Some(price) => self.limit_order_body(req.side, req.base_qty, price, &req.client_id)?,
+            None => self.order_body(req.side, req.base_qty, req.notional, req.reduce_only, &req.client_id)?,
+        };
 
         let mut rejection = String::new();
         if let Ok((status, text)) = self.post(self.spec.order_path, &body).await {

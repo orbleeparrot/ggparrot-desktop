@@ -78,6 +78,7 @@ fn buy(notional: f64, id: &str) -> SubmitRequest {
         reduce_only: false,
         closing: None,
         client_id: id.into(),
+        limit: None,
     }
 }
 
@@ -89,6 +90,7 @@ fn sell(qty: f64, id: &str) -> SubmitRequest {
         reduce_only: false,
         closing: None,
         client_id: id.into(),
+        limit: None,
     }
 }
 
@@ -1092,4 +1094,102 @@ async fn the_ticker_change_rate_rides_along_with_the_price() {
     b.price().await.unwrap();
     assert_eq!(b.day_change(), Some(-0.0123));
     assert_eq!(requests(&server, "GET", "/v1/ticker").await.len(), 1);
+}
+
+// --- 지정가 IOC(체결 기준 장부 2단계) -------------------------------------------------------------
+#[test]
+fn limit_ioc_body_for_upbit_and_bithumb() {
+    let (up, _) = make(Exchange::Upbit, "http://127.0.0.1:9");
+    assert_eq!(
+        up.limit_order_body(OrderSide::Sell, Some(0.123456789), 436.0, "ggp-tp").unwrap(),
+        q(&[
+            ("market", "KRW-BTC"),
+            ("side", "ask"),
+            ("ord_type", "limit"),
+            ("price", "436"),
+            ("volume", "0.12345678"),
+            ("time_in_force", "ioc"),
+            ("identifier", "ggp-tp")
+        ])
+    );
+    let (bt, _) = make(Exchange::Bithumb, "http://127.0.0.1:9");
+    assert_eq!(
+        bt.limit_order_body(OrderSide::Buy, Some(10.0), 77.31, "ggp-so").unwrap(),
+        q(&[
+            ("market", "KRW-BTC"),
+            ("side", "bid"),
+            ("order_type", "limit"),
+            ("price", "77.31"),
+            ("volume", "10"),
+            ("time_in_force", "ioc"),
+            ("client_order_id", "ggp-so")
+        ])
+    );
+    assert!(up.limit_order_body(OrderSide::Sell, Some(0.0), 436.0, "x").is_err());
+    assert!(up.limit_order_body(OrderSide::Sell, Some(1.0), 0.0, "x").is_err());
+    assert!(bt.limit_order_body(OrderSide::Buy, Some(1.0), 1.0, &"x".repeat(37)).is_err());
+}
+
+#[tokio::test]
+async fn upbit_tick_is_the_larger_of_the_policy_table_and_the_live_tick() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "GET",
+        "/v1/orderbook/instruments",
+        ResponseTemplate::new(200)
+            .set_body_json(json!([{"market": "KRW-BTC", "quote_currency": "KRW", "tick_size": "5000"}])),
+    )
+    .await;
+    let (up, _) = make(Exchange::Upbit, &server.uri());
+    assert_eq!(up.price_tick(111_000_000.0).await, 5000.0, "정책이 더 커졌으면 거래소 값");
+    assert_eq!(up.price_tick(111_000_000.0).await, 5000.0);
+    assert_eq!(requests(&server, "GET", "/v1/orderbook/instruments").await.len(), 1, "10분 동안 다시 묻지 않는다");
+    let down = MockServer::start().await;
+    mount(&down, "GET", "/v1/orderbook/instruments", ResponseTemplate::new(500)).await;
+    let (up2, _) = make(Exchange::Upbit, &down.uri());
+    assert_eq!(up2.price_tick(111_000_000.0).await, 1000.0, "못 읽으면 정책표");
+    let (bt, _) = make(Exchange::Bithumb, &down.uri());
+    assert_eq!(bt.price_tick(77.31).await, 0.01);
+    assert!(requests(&down, "GET", "/v1/orderbook/instruments").await.len() <= 1, "빗썸은 묻지 않는다");
+}
+
+#[tokio::test]
+async fn limit_ioc_submit_posts_the_limit_body_and_reads_a_cancel_as_no_fill() {
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "POST",
+        "/v1/orders",
+        ResponseTemplate::new(201).set_body_json(json!({"uuid": "u-1", "state": "wait"})),
+    )
+    .await;
+    mount(
+        &server,
+        "GET",
+        "/v1/order",
+        ResponseTemplate::new(200)
+            .set_body_json(json!({"uuid": "u-1", "state": "cancel", "executed_volume": "0", "trades": []})),
+    )
+    .await;
+    let (up, _) = make(Exchange::Upbit, &server.uri());
+    let o = up
+        .submit(SubmitRequest {
+            side: OrderSide::Sell,
+            base_qty: Some(0.5),
+            notional: None,
+            reduce_only: false,
+            closing: Some(true),
+            client_id: "ggp-ioc".into(),
+            limit: Some(436.0),
+        })
+        .await
+        .unwrap();
+    assert_eq!((o.status.as_str(), o.executed_qty), ("CANCELED", 0.0));
+    let post = &requests(&server, "POST", "/v1/orders").await[0];
+    let body: Value = serde_json::from_slice(&post.body).unwrap();
+    assert_eq!(
+        (body["ord_type"].as_str(), body["time_in_force"].as_str(), body["price"].as_str(), body["volume"].as_str()),
+        (Some("limit"), Some("ioc"), Some("436"), Some("0.5"))
+    );
 }

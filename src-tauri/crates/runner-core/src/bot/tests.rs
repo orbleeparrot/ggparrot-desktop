@@ -16,6 +16,8 @@ struct FakeState {
     step: f64,
     /// 현재가 요청이 실패함(거래소에 닿지 않음).
     price_down: bool,
+    /// 호가 단위(0 이면 모름 — 지정가를 내지 않음).
+    tick: f64,
 }
 
 struct FakeBroker {
@@ -98,6 +100,9 @@ impl Broker for FakeBroker {
             return Err(BrokerError::Network("ticker timed out".into()));
         }
         Ok(st.price)
+    }
+    async fn price_tick(&self, _price: f64) -> f64 {
+        self.st.lock().unwrap().tick
     }
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError> {
         let mut st = self.st.lock().unwrap();
@@ -1750,4 +1755,154 @@ async fn dust_joins_the_next_entry_at_its_cost() {
     assert!((bot.held_qty - 1.0005).abs() < 1e-12, "먼지를 새 포지션에 합친다");
     assert!((bot.entry_price - (0.0005 * 100.0 + 1.0 * 120.0) / 1.0005).abs() < 1e-9);
     assert_eq!(bot.position_dust_qty, 0.0);
+}
+
+// --- 2단계: 지정가 IOC(익절 · 물타기) -----------------------------------------------------------
+fn limit_bot(tick: f64) -> (Bot, Arc<FakeBroker>, mpsc::UnboundedReceiver<BotEvent>) {
+    let fb = FakeBroker::new(500.0, Market::Spot, Side::Long);
+    fb.st.lock().unwrap().tick = tick;
+    let (mut bot, rx) =
+        bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb.clone(), RunMode::Live);
+    bot.step = 0.001;
+    (bot, fb, rx)
+}
+
+#[tokio::test]
+async fn limit_buy_rounds_down_to_the_tick_and_reports_a_full_fill() {
+    let (mut bot, fb, _rx) = limit_bot(1.0);
+    let cmd = json!({"id": 1, "action": "buy", "notional_frac": 0.1, "order_type": "limit_ioc", "limit_price": 495.6});
+    fb.push(order("FILLED", 0.202, 495.0, 0.202, Some(0.1)));
+    let ack = bot.execute_command(&cmd, 500.0).await.unwrap();
+    let req = &fb.submits()[0];
+    assert_eq!(req.limit, Some(495.0), "매수 지정가는 내림 — 가격선보다 비싸게 사지 않는다");
+    assert_eq!(req.base_qty, Some(0.202), "수량 = 금액 ÷ 지정가(수량 단위로 내림)");
+    assert_eq!(req.notional, None, "지정가는 수량으로 낸다");
+    assert_eq!(ack["ok"], true);
+    assert_eq!(ack["outcome"], "execution_reported");
+    assert!(bot.in_position);
+}
+
+#[tokio::test]
+async fn limit_sell_rounds_up_and_no_fill_is_a_normal_result() {
+    let (mut bot, fb, mut rx) = limit_bot(1.0);
+    (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 500.0);
+    fb.push(order("CANCELED", 0.0, 0.0, 0.0, Some(0.0)));
+    let cmd = json!({"id": 2, "action": "sell", "qty_frac": 1.0, "order_type": "limit_ioc", "limit_price": 509.2});
+    let ack = bot.execute_command(&cmd, 498.0).await.unwrap();
+    assert_eq!(fb.submits()[0].limit, Some(510.0), "매도 지정가는 올림 — 익절선보다 싸게 팔지 않는다");
+    assert_eq!(fb.submits()[0].base_qty, Some(1.0));
+    assert_eq!(ack["ok"], true, "IOC 무체결은 실패가 아니다");
+    assert_eq!(ack["outcome"], "ioc_unfilled");
+    assert_eq!(ack["executed_qty"], 0.0);
+    assert!(bot.in_position && bot.held_qty == 1.0, "보유 그대로");
+    let acts = activities(&mut rx);
+    let quiet = acts.iter().find(|a| a.title.contains("지정가에 맞는 상대가 없어")).expect("한 줄 남김");
+    assert_eq!(quiet.tone, "muted", "오류 · 위험으로 띄우지 않는다");
+}
+
+#[tokio::test]
+async fn limit_partial_fill_reports_what_filled() {
+    let (mut bot, fb, _rx) = limit_bot(1.0);
+    (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 500.0);
+    fb.push(order("FILLED", 0.4, 510.0, 0.4, Some(0.1)));
+    let cmd = json!({"id": 3, "action": "sell", "order_type": "limit_ioc", "limit_price": 510.0});
+    let ack = bot.execute_command(&cmd, 510.0).await.unwrap();
+    assert_eq!(ack["ok"], true);
+    assert_eq!(ack["outcome"], "ioc_partial");
+    assert_eq!(ack["executed_qty"], 0.4);
+    assert!(bot.in_position && (bot.held_qty - 0.6).abs() < 1e-12);
+}
+
+#[tokio::test]
+async fn price_unit_rejection_is_retried_once_with_a_coarser_tick() {
+    let (mut bot, fb, _rx) = limit_bot(1.0);
+    (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 500.0);
+    fb.push(Order::rejected("-1013 Filter failure: PRICE_FILTER".into()));
+    fb.push(order("FILLED", 1.0, 520.0, 1.0, Some(0.26)));
+    let cmd = json!({"id": 4, "action": "sell", "order_type": "limit_ioc", "limit_price": 511.0});
+    let ack = bot.execute_command(&cmd, 520.0).await.unwrap();
+    let prices: Vec<Option<f64>> = fb.submits().iter().map(|r| r.limit).collect();
+    assert_eq!(prices, vec![Some(511.0), Some(520.0)], "거절되면 한 단계 큰 단위(10)로 올림해 한 번만");
+    assert_eq!(ack["outcome"], "execution_reported");
+    // 두 번 다 거절이면 오류.
+    let (mut bot, fb, _rx) = limit_bot(1.0);
+    (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 500.0);
+    fb.push(Order::rejected("-1013 Filter failure: PRICE_FILTER".into()));
+    fb.push(Order::rejected("-1013 Filter failure: PRICE_FILTER".into()));
+    let ack = bot
+        .execute_command(&json!({"id": 5, "action": "sell", "order_type": "limit_ioc", "limit_price": 511.0}), 520.0)
+        .await
+        .unwrap();
+    assert_eq!(ack["ok"], false);
+    assert_eq!(fb.submits().len(), 2);
+    // 업비트 · 빗썸은 가격 단위 오류를 따로 이름 붙이지 않는다(create_ask_error) — 같은 규칙으로 한 번 다시.
+    let fb = FakeBroker::new(500.0, Market::Spot, Side::Long);
+    fb.st.lock().unwrap().tick = 1.0;
+    let (mut bot, _rx) = bot_with(
+        json!({"symbol": "KRW-BTC", "exchange": "upbit", "params": {"initial_capital": 100000}}),
+        fb.clone(),
+        RunMode::Live,
+    );
+    (bot.in_position, bot.held_qty, bot.entry_price, bot.step) = (true, 1.0, 500.0, 0.0);
+    fb.push(Order::rejected("create_ask_error".into()));
+    fb.push(order("FILLED", 1.0, 520.0, 1.0, Some(0.26)));
+    let ack = bot
+        .execute_command(&json!({"id": 9, "action": "sell", "order_type": "limit_ioc", "limit_price": 511.0}), 520.0)
+        .await
+        .unwrap();
+    assert_eq!(fb.submits().iter().map(|r| r.limit).collect::<Vec<_>>(), vec![Some(511.0), Some(520.0)]);
+    assert_eq!(ack["outcome"], "execution_reported");
+    // 잔고 부족 같은 다른 거절은 다시 내지 않는다.
+    let (mut bot, fb, _rx) = limit_bot(1.0);
+    (bot.in_position, bot.held_qty, bot.entry_price) = (true, 1.0, 500.0);
+    fb.push(Order::rejected("-2010 Account has insufficient balance".into()));
+    let ack = bot
+        .execute_command(&json!({"id": 10, "action": "sell", "order_type": "limit_ioc", "limit_price": 511.0}), 520.0)
+        .await
+        .unwrap();
+    assert_eq!((ack["ok"].as_bool(), fb.submits().len()), (Some(false), 1));
+}
+
+#[tokio::test]
+async fn unknown_tick_or_order_type_never_becomes_a_market_order() {
+    let (mut bot, fb, _rx) = limit_bot(0.0);
+    let ack = bot
+        .execute_command(
+            &json!({"id": 6, "action": "buy", "notional_frac": 0.1, "order_type": "limit_ioc", "limit_price": 495.0}),
+            500.0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(ack["ok"], false);
+    assert_eq!(ack["error"], "호가 단위를 몰라 지정가 주문을 내지 못했어요.");
+    let (mut bot2, fb2, _rx2) = limit_bot(1.0);
+    let ack = bot2
+        .execute_command(
+            &json!({"id": 7, "action": "buy", "notional_frac": 0.1, "order_type": "limit_gtc", "limit_price": 495.0}),
+            500.0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(ack["ok"], false);
+    assert!(ack["error"].as_str().unwrap().starts_with("이 앱이 모르는 주문 방식이에요"));
+    let ack = bot2
+        .execute_command(
+            &json!({"id": 8, "action": "buy", "notional_frac": 0.1, "order_type": "limit_ioc", "limit_price": -1}),
+            500.0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(ack["error"], "지정가 명령의 가격이 올바르지 않아요.");
+    assert!(fb.submits().is_empty() && fb2.submits().is_empty(), "시장가로 바꿔 내지 않는다");
+}
+
+#[test]
+fn limit_entry_is_not_refused_for_a_gap_from_its_signal_price() {
+    let fb = FakeBroker::new(500.0, Market::Spot, Side::Long);
+    let (bot, _rx) = bot_with(json!({"symbol": "BTCUSDT", "params": {"initial_capital": 1000}}), fb, RunMode::Live);
+    let market = json!({"id": 1, "action": "buy", "notional_frac": 0.1, "signal_price": 400.0});
+    assert!(bot.entry_refusal(&market, 500.0).is_some(), "시장가 진입은 지금처럼 신호가 차이로 막는다");
+    let limit = json!({"id": 1, "action": "buy", "notional_frac": 0.1, "signal_price": 400.0,
+                       "order_type": "limit_ioc", "limit_price": 400.0});
+    assert!(bot.entry_refusal(&limit, 500.0).is_none(), "지정가는 그 가격보다 비싸게 사지 않는다 — 안 사질 뿐");
 }

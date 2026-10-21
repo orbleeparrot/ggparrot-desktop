@@ -104,7 +104,7 @@ fn wrap(fake: Fake) -> (MockBroker, Arc<Fake>, Logs) {
 }
 
 fn req(side: OrderSide, base_qty: Option<f64>, notional: Option<f64>, id: &str) -> SubmitRequest {
-    SubmitRequest { side, base_qty, notional, reduce_only: false, closing: None, client_id: id.into() }
+    SubmitRequest { side, base_qty, notional, reduce_only: false, closing: None, client_id: id.into(), limit: None }
 }
 
 #[tokio::test]
@@ -342,4 +342,21 @@ async fn wrapped_binance_futures_never_changes_margin_or_leverage_or_orders() {
     assert!((fee.quote - 0.15).abs() < 1e-9 && fee.other.is_empty(), "{fee:?}");
     let posted = server.received_requests().await.unwrap().into_iter().filter(|r| r.method.as_str() == "POST").count();
     assert_eq!(posted, 0, "모의는 레버리지 · 마진 · 주문 어느 것도 쓰지 않는다");
+}
+
+#[tokio::test]
+async fn mock_limit_ioc_fills_only_when_the_price_is_good_enough() {
+    let (m, fake, _) = wrap(Fake::new()); // 현재가 100
+    let mut sell = req(OrderSide::Sell, Some(1.0), None, "ggp-s");
+    sell.limit = Some(101.0);
+    let o = m.submit(sell).await.unwrap();
+    assert_eq!((o.status.as_str(), o.executed_qty), ("CANCELED", 0.0), "101 이상에 살 사람이 없다");
+    let mut sell = req(OrderSide::Sell, Some(1.0), None, "ggp-s2");
+    sell.limit = Some(99.0);
+    let o = m.submit(sell).await.unwrap();
+    assert_eq!((o.status.as_str(), o.executed_qty, o.avg_price), ("FILLED", 1.0, 100.0));
+    let mut buy = req(OrderSide::Buy, Some(1.0), None, "ggp-b");
+    buy.limit = Some(99.0);
+    assert_eq!(m.submit(buy).await.unwrap().executed_qty, 0.0, "99 이하에 팔 사람이 없다");
+    assert_eq!(fake.called("submit"), 0);
 }
