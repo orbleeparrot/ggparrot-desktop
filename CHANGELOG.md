@@ -42,6 +42,10 @@
   체결은 하트비트의 `local_fills` 로 보고하고 **보낸 뒤에만** 비움.
 - 시작 payload 에 `decides: "local"` 과 `engine_version` 을 실음. 서버가
   `RUNNER_LOCAL_DECISIONS` 로 켤지 정하고 응답의 `decides` 로 알려 줌.
+- 보안 권고 둘을 따라 잠금 파일을 올림 — `rustls-webpki` 0.103.15 → 0.103.16
+  (RUSTSEC-2026-0382, 신뢰 해제된 중간 인증서를 받아들일 수 있음),
+  `webpki-root-certs` 1.0.9 → 1.0.10(RUSTSEC-2026-0383). 둘 다 이 PR 과 무관하게
+  10/19~20 에 새로 나온 권고라 `main` 도 같은 버전이었다.
 
 ## [0.20.15]
 
