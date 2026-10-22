@@ -10,6 +10,7 @@
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::ledger::Side;
 use crate::engine::levels::{price, Levels};
+use crate::engine::series::{Oscillator, Series};
 
 /// 다음 봉에 할 일.
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +41,16 @@ pub trait Signal {
     /// 화면에 그릴 지표선(밴드 · 이동평균). 아직 값이 없으면 `pending`.
     fn levels(&self) -> Levels {
         Levels::pending()
+    }
+
+    /// 차트에 봉과 겹쳐 그릴 지표선. 지표를 쓰지 않는 규칙은 빈 목록.
+    fn series(&self, _bars: &[Bar]) -> Vec<Series> {
+        Vec::new()
+    }
+
+    /// 가격이 아니라 아래 보조창에 그리는 값(RSI). 없으면 `None`.
+    fn oscillator(&self, _bars: &[Bar]) -> Option<Oscillator> {
+        None
     }
 }
 

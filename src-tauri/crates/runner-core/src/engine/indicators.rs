@@ -57,6 +57,16 @@ impl Rsi {
         Self { period: period.max(1), prev: None, avg_gain: 0.0, avg_loss: 0.0, count: 0 }
     }
 
+    /// 같은 설정의 **빈** 지표. 차트용으로 봉을 처음부터 다시 먹일 때 쓴다 —
+    /// 돌고 있는 것을 복제하면 웜업 상태가 섞여 값이 달라진다.
+    pub fn fresh(&self) -> Self {
+        Self::new(self.period)
+    }
+
+    pub fn period(&self) -> usize {
+        self.period
+    }
+
     pub fn update(&mut self, close: f64) -> Option<f64> {
         let prev = match self.prev {
             // 첫 종가는 '변화' 가 없다 — 기준만 잡는다.
@@ -108,6 +118,15 @@ impl Bollinger {
         Self { num_std, window: Window::new(period) }
     }
 
+    /// 같은 설정의 **빈** 밴드 — 돌고 있는 것을 복제하면 웜업 상태가 섞인다.
+    pub fn fresh(&self) -> Self {
+        Self::new(self.window.period, self.num_std)
+    }
+
+    pub fn period(&self) -> usize {
+        self.window.period
+    }
+
     pub fn update(&mut self, close: f64) -> Option<Bands> {
         self.window.push(close);
         if !self.window.full() {
@@ -142,6 +161,15 @@ impl Ma {
     pub fn new(kind: MaType, period: usize) -> Self {
         let period = period.max(1);
         Self { kind, window: Window::new(period), ema: None, k: 2.0 / (period as f64 + 1.0) }
+    }
+
+    /// 같은 설정의 **빈** 이동평균 — 돌고 있는 것을 복제하면 웜업 상태가 섞인다.
+    pub fn fresh(&self) -> Self {
+        Self::new(self.kind, self.window.period)
+    }
+
+    pub fn period(&self) -> usize {
+        self.window.period
     }
 
     pub fn update(&mut self, close: f64) -> Option<f64> {

@@ -16,6 +16,7 @@ pub mod ledger;
 pub mod levels;
 pub mod rules;
 pub mod runner;
+pub mod series;
 pub mod tick_sim;
 
 /// 이 실행기에 묶여 있는 판단 코드의 세대. 서버(`engine/version.py` 의 `ENGINE_VERSION`)와

@@ -87,6 +87,16 @@ impl Breakout {
         self.ma_value
     }
 
+    /// 차트에 겹쳐 그릴 이동평균 필터선. 필터가 없으면 그릴 것도 없다.
+    pub fn ma_series(&self, bars: &[crate::engine::candle_sim::Bar]) -> Vec<crate::engine::series::Series> {
+        match &self.ma {
+            None => Vec::new(),
+            Some(ma) => {
+                vec![crate::engine::series::ma_series(ma, bars, "ma_filter", format!("이동평균 {}", ma.period()))]
+            }
+        }
+    }
+
     pub fn trail_stop(&self) -> Option<f64> {
         if self.exit_mode == ExitMode::Trailing && self.peak > 0.0 {
             Some(self.peak * (1.0 - self.trail_percent / 100.0))

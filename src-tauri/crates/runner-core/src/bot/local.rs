@@ -69,14 +69,19 @@ impl LocalEngine {
     /// 봉은 거래소에서 받은 **그대로**이고, 선은 엔진이 낸 **그대로**다. 화면은 둘을
     /// 겹쳐 그리기만 한다 — 화면이 다시 계산하면 규칙 산수가 두 벌이 된다.
     pub fn chart(&self, macro_: &serde_json::Value) -> Value {
+        // 지표선도 **엔진이 쓰는 그 지표**로 만든다(engine::series). 화면이 따로 계산하면
+        // 산수가 두 벌이 되고, 그중 하나는 엔진이 보는 것과 다르다.
+        let bars: Vec<Bar> = self.recent.iter().copied().collect();
+        let (series, oscillator) = self.engine.chart_series(&bars);
         json!({
             "interval": crate::macro_info::candle_interval(macro_),
-            "bars": self
-                .recent
+            "bars": bars
                 .iter()
                 .map(|b| json!([b.t, b.o, b.h, b.l, b.c]))
                 .collect::<Vec<_>>(),
             "levels": self.levels(),
+            "series": series,
+            "oscillator": oscillator,
         })
     }
 

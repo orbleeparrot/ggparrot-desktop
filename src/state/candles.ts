@@ -34,10 +34,31 @@ export interface ChartLevels {
   pending: boolean;
 }
 
+/**
+ * 봉과 길이가 같은 지표선(이동평균 · 볼린저). 값은 **엔진이 판단에 쓰는 그 지표**가 낸
+ * 것이다 — 화면이 다시 계산하면 산수가 두 벌이 된다. 아직 값이 없는 앞쪽은 null.
+ */
+export interface ChartSeries {
+  id: string;
+  label: string;
+  values: (number | null)[];
+}
+
+/** 가격이 아닌 값(RSI) — 가격축에 섞으면 축이 망가져 아래 칸에 따로 그린다. */
+export interface ChartOscillator {
+  label: string;
+  values: (number | null)[];
+  entry: number | null;
+  exit: number | null;
+}
+
 export interface ChartData {
   interval: string;
   bars: Candle[];
   levels: ChartLevels;
+  /** 예전 실행기(0.21.x)는 보내지 않는다. */
+  series?: ChartSeries[];
+  oscillator?: ChartOscillator | null;
 }
 
 /** 선 하나 — 화면에 그릴 가격과 이름. */
@@ -139,36 +160,4 @@ export function candleRange(bars: Candle[], lines: PriceLine[] = [], entry = 0):
     max += pad;
   }
   return { min, max };
-}
-
-/**
- * 값 → 세로 위치(위에서부터 0~height). 위아래 pad 만큼은 비움.
- *
- * 범위 밖의 값은 가장자리에 붙인다 — {@link candleRange} 가 먼 가격선을 담지 않으므로
- * 묶지 않으면 그 선이 차트 밖에 그려진다.
- */
-export function candleY(value: number, range: CandleRange, height: number, pad = 6): number {
-  const span = range.max - range.min || 1;
-  const y = pad + (1 - (value - range.min) / span) * (height - pad * 2);
-  return Math.min(Math.max(y, pad), height - pad);
-}
-
-/** 봉 `i` 의 가로 중심(0~width). 봉 사이 간격은 고르게. */
-export function candleX(index: number, count: number, width: number, pad = 2): number {
-  if (count <= 1) return width / 2;
-  const step = (width - pad * 2) / count;
-  return pad + step * (index + 0.5);
-}
-
-/** 봉 하나의 너비(px). 너무 좁아지면 선처럼 보이게 1px 로. */
-export function candleWidth(count: number, width: number, pad = 2): number {
-  if (count <= 0) return 1;
-  const step = (width - pad * 2) / count;
-  return Math.max(1, step * 0.66);
-}
-
-/** 차트가 덮는 시간 — "1시간 봉 300개 · 12일" 처럼 보여 줄 때 쓰는 ms. */
-export function chartSpanMs(bars: Candle[]): number {
-  if (bars.length < 2) return 0;
-  return bars[bars.length - 1][0] - bars[0][0];
 }
