@@ -94,18 +94,44 @@ export interface CandleRange {
   max: number;
 }
 
-/** 봉과 가격선을 모두 담는 값 범위. 선이 차트 밖으로 나가면 "어디서 사는지"를 볼 수 없음. */
+/**
+ * 봉과 가격선을 담는 값 범위.
+ *
+ * 선이 차트 밖으로 나가면 "어디서 사는지" 를 볼 수 없지만, 선을 담으려고 축을 무한정
+ * 늘리면 이번엔 **봉이 납작해져** 아무것도 안 보인다 — BTC 에서 익절 +5% · 손절 -3% 가
+ * 5시간치 봉 범위(약 0.7%)보다 훨씬 넓어 봉 300개가 한 줄이 됐다.
+ *
+ * 그래서 선은 봉 범위의 {@link LINE_ROOM} 배까지만 축을 늘린다. 더 먼 선은 가장자리에
+ * 붙어 "그쪽에 있다" 만 말한다(값은 꼬리표에 그대로 적힌다).
+ */
+export const LINE_ROOM = 1.5;
+
 export function candleRange(bars: Candle[], lines: PriceLine[] = [], entry = 0): CandleRange {
   const values: number[] = [];
   for (const [, , high, low] of bars) {
     if (Number.isFinite(high)) values.push(high);
     if (Number.isFinite(low)) values.push(low);
   }
-  for (const line of lines) values.push(line.value);
-  if (usable(entry)) values.push(entry);
-  if (values.length === 0) return { min: 0, max: 1 };
+  if (values.length === 0) {
+    // 봉이 없으면 늘릴 기준도 없다 — 선만이라도 담는다.
+    for (const line of lines) values.push(line.value);
+    if (usable(entry)) values.push(entry);
+    if (values.length === 0) return { min: 0, max: 1 };
+  }
   let min = Math.min(...values);
   let max = Math.max(...values);
+  if (bars.length > 0) {
+    const span = max - min || Math.abs(max) * 0.01 || 1;
+    const floor = min - span * LINE_ROOM;
+    const ceiling = max + span * LINE_ROOM;
+    const include = (value: number) => {
+      if (!Number.isFinite(value)) return;
+      min = Math.min(min, Math.max(value, floor));
+      max = Math.max(max, Math.min(value, ceiling));
+    };
+    for (const line of lines) include(line.value);
+    if (usable(entry)) include(entry);
+  }
   if (max - min < 1e-9) {
     // 값이 모두 같음 — 위아래로 조금 벌려 평평한 선이 가장자리에 붙지 않게.
     const pad = Math.abs(max) * 0.01 || 1;
@@ -115,10 +141,16 @@ export function candleRange(bars: Candle[], lines: PriceLine[] = [], entry = 0):
   return { min, max };
 }
 
-/** 값 → 세로 위치(위에서부터 0~height). 위아래 pad 만큼은 비움. */
+/**
+ * 값 → 세로 위치(위에서부터 0~height). 위아래 pad 만큼은 비움.
+ *
+ * 범위 밖의 값은 가장자리에 붙인다 — {@link candleRange} 가 먼 가격선을 담지 않으므로
+ * 묶지 않으면 그 선이 차트 밖에 그려진다.
+ */
 export function candleY(value: number, range: CandleRange, height: number, pad = 6): number {
   const span = range.max - range.min || 1;
-  return pad + (1 - (value - range.min) / span) * (height - pad * 2);
+  const y = pad + (1 - (value - range.min) / span) * (height - pad * 2);
+  return Math.min(Math.max(y, pad), height - pad);
 }
 
 /** 봉 `i` 의 가로 중심(0~width). 봉 사이 간격은 고르게. */

@@ -1,6 +1,7 @@
 // 봉 차트 눈금 — 선이 차트 밖으로 나가거나, 없는 선을 그리거나 하지 않는지.
 import { describe, expect, it } from "vitest";
 import {
+  LINE_ROOM,
   candleRange,
   candleWidth,
   candleX,
@@ -87,6 +88,25 @@ describe("눈금", () => {
       expect(y).toBeGreaterThanOrEqual(0);
       expect(y).toBeLessThanOrEqual(120);
     }
+  });
+
+  it("먼 가격선이 봉을 납작하게 만들지 않는다", () => {
+    // BTC 에서 익절 +5% · 손절 -3% 가 5시간치 봉 범위보다 훨씬 넓어 봉 300개가 한 줄이 됐다.
+    const rows = bars(20, 100); // 고가 102~121 · 저가 99~118 → 범위 22
+    const lines = priceLines({ ...EMPTY, stop_loss: 10, exit_target: 1000 }, 110);
+    const range = candleRange(rows, lines);
+    const candleSpan = 121 - 99;
+    expect(range.max - range.min).toBeLessThanOrEqual(candleSpan * (1 + LINE_ROOM * 2));
+    // 봉이 세로의 상당 부분을 차지한다.
+    expect(candleSpan / (range.max - range.min)).toBeGreaterThan(0.2);
+  });
+
+  it("가까운 가격선은 그대로 담는다", () => {
+    const rows = bars(20, 100);
+    const lines = priceLines({ ...EMPTY, entry_target: 95, exit_target: 125 }, 110);
+    const range = candleRange(rows, lines);
+    expect(range.min).toBeLessThanOrEqual(95);
+    expect(range.max).toBeGreaterThanOrEqual(125);
   });
 
   it("평평한 봉에서도 범위가 0 이 되지 않는다", () => {

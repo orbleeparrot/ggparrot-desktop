@@ -156,6 +156,9 @@ impl Bot {
                 "engine_version": crate::engine::ENGINE_VERSION,
             })),
         );
+        // 웜업 봉이 이미 차트 몫만큼 쌓여 있다 — 여기서 한 번 보내지 않으면 **첫 봉이
+        // 마감될 때까지** 화면에 차트가 없다. 일봉 매크로면 하루를 기다린다.
+        let _ = self.tx.send(BotEvent::Chart(local.chart(&self.macro_)));
         Ok(local)
     }
 
