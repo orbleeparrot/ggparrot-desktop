@@ -95,6 +95,9 @@ pub enum BotEvent {
     /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None 이면 대기 아님(샀거나 해당 없음).
     /// 서버와 끊긴 틱에는 보내지 않아 마지막 값이 남음.
     EntryWait(Option<Value>),
+    /// 실행기가 직접 판단하는 세션의 **차트 재료** — 받은 마감봉과 지금 그릴 가격선.
+    /// 봉이 새로 마감됐을 때만 보냄(매 틱 보내면 300개 배열이 5초마다 화면으로 간다).
+    Chart(Value),
     Finished {
         status: String,
         note: String,
@@ -145,6 +148,11 @@ pub struct ClosePnl {
     pub fees: f64,
     /// `fees`를 모두 거래소 값으로 알았는지 여부.
     pub fees_known: bool,
+}
+
+/// 지금 유닉스 ms. 봉 마감 판정 · 쿨다운 · 적립식 달력이 이 값을 본다.
+fn now_ms() -> i64 {
+    crate::clock::unix_ms() as i64
 }
 
 fn obj(v: Value) -> Map<String, Value> {
@@ -689,6 +697,7 @@ impl Bot {
 mod commands;
 mod entry_guard;
 mod finish;
+mod local;
 mod logger;
 mod orders;
 mod price;
@@ -698,3 +707,6 @@ mod setup;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod local_tests;

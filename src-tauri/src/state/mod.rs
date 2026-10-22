@@ -179,6 +179,9 @@ pub struct RunData {
     pub macro_origin: String,
     /// 진입 대기(서버 하트비트의 entry_wait) — 조건을 기다리는 매크로가 아직 안 샀을 때만 Some.
     pub entry_wait: Option<Value>,
+    /// 실행기가 직접 판단하는 세션의 차트(봉 + 가격선). 서버가 판단하면 None —
+    /// 그때는 앱이 봉을 받지 않으므로 그릴 재료가 없다.
+    pub chart: Option<Value>,
 }
 
 /// 지난 실행이 앱이 꺼지며 끝맺지 못했을 때 남기는 종료 이유.

@@ -102,6 +102,14 @@ pub fn risk_items(m: &Value) -> Vec<(String, String)> {
     out
 }
 
+/// 봉 간격 그대로("1h" · "1d" 등). 없으면 서버 기본값과 같은 "1d".
+pub fn candle_interval(m: &Value) -> String {
+    match m.get("candle_interval").and_then(Value::as_str).map(str::trim) {
+        Some(s) if !s.is_empty() => s.to_string(),
+        _ => "1d".to_string(),
+    }
+}
+
 /// 봉 간격(`candle_interval`)의 이름 — "4h" → "4시간"(서버 entry_wait.py INTERVAL_LABEL과 같음).
 /// 매크로에 없거나 모르는 값이면 "" — 봉을 쓰지 않는 매크로에 간격을 지어 보이지 않음.
 pub fn candle_interval_label(m: &Value) -> &'static str {

@@ -21,6 +21,7 @@ import { STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus } from "../../types";
 import { CloseChip, EntryWaitDetail, EntryWaitHead } from "./EntryWait";
 import { ExitBar } from "./ExitBar";
+import { CandleChart } from "./CandleChart";
 import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
 
@@ -139,14 +140,26 @@ export function StatusCard({
           )}
         </div>
         <div className="pnl-chart">
-          <PriceChart
-            points={prices}
-            times={priceTimes}
-            entry={run.inPosition ? run.entryPrice : undefined}
-            buy={waiting ? run.entryWait?.buy_line?.price : undefined}
-            quote={q}
-            span={trailSpanLabel(run.startedAt, priceTimes[0] ?? 0, run.updatedAt)}
-          />
+          {/* 앱이 직접 판단하면 봉과 조건선을 그린다 — 그때만 앱이 봉을 들고 있다.
+              서버가 판단하면 지금까지처럼 현재가 흐름만 보인다. */}
+          {run.chart ? (
+            <CandleChart
+              chart={run.chart}
+              price={run.price}
+              entry={run.inPosition ? run.entryPrice : 0}
+              quote={q}
+              intervalLabel={macro.interval || run.chart.interval}
+            />
+          ) : (
+            <PriceChart
+              points={prices}
+              times={priceTimes}
+              entry={run.inPosition ? run.entryPrice : undefined}
+              buy={waiting ? run.entryWait?.buy_line?.price : undefined}
+              quote={q}
+              span={trailSpanLabel(run.startedAt, priceTimes[0] ?? 0, run.updatedAt)}
+            />
+          )}
         </div>
       </div>
 

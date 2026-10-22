@@ -65,6 +65,8 @@ export interface ExitRules {
   summary: string;
 }
 
+import type { ChartData } from "./state/candles";
+
 export interface RunStatus {
   /** epoch ms */
   startedAt: number;
@@ -110,6 +112,11 @@ export interface RunStatus {
   macroOrigin: string;
   /** 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보낸 값. 대기가 아니면 null. */
   entryWait: EntryWait | null;
+  /**
+   * 매크로 조건 차트 — 앱이 **직접 판단할 때만** 있음(그때만 앱이 봉을 받음).
+   * 봉은 거래소에서 받은 그대로, 선은 엔진이 낸 그대로. 화면은 겹쳐 그리기만 함.
+   */
+  chart: ChartData | null;
   note: string;
   /** 끝났으면 종료 결과. 실행 중이면 null. */
   finished: null | { status: "stopped" | "error"; note: string; at: number };

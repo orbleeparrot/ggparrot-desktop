@@ -50,6 +50,15 @@ impl Shared {
                             me.emit_soon();
                         }
                     }
+                    BotEvent::Chart(chart) => {
+                        let changed = me.lock().run_mut(&id).and_then(|r| r.data.as_mut()).is_some_and(|d| {
+                            d.chart = Some(chart);
+                            true
+                        });
+                        if changed {
+                            me.emit_soon();
+                        }
+                    }
                     BotEvent::Health(h) => {
                         // 매 틱 오지만 대개 같음 — 바뀌었을 때만 화면을 다시 그림.
                         let changed = me.lock().run_mut(&id).and_then(|r| r.data.as_mut()).is_some_and(|d| {
