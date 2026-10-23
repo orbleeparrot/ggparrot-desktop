@@ -182,9 +182,20 @@ export function CandlePlot({ chart, price, entry = 0, quote, intervalLabel }: Pr
       }
       osc.timeScale().fitContent();
       // 두 차트의 가로축을 묶는다 — 따로 놀면 같은 시각을 다른 자리에서 본다.
+      //
+      // 되먹임을 막는 빗장이 **반드시** 있어야 한다. 양쪽을 그냥 묶으면 A 가 바뀌며 B 를
+      // 설정하고, 그 설정이 B 의 콜백을 때려 다시 A 를 설정한다 — 값이 딱 같아지지 않으면
+      // 둘이 영원히 주고받으며 CPU 를 먹는다(CI e2e 가 20분 한도에 걸려 잘렸다).
+      let syncing = false;
       const sync = (source: IChartApi, target: IChartApi) =>
         source.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-          if (range) target.timeScale().setVisibleLogicalRange(range);
+          if (!range || syncing) return;
+          syncing = true;
+          try {
+            target.timeScale().setVisibleLogicalRange(range);
+          } finally {
+            syncing = false;
+          }
         });
       sync(api, osc);
       sync(osc, api);
