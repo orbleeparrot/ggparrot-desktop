@@ -6,8 +6,10 @@
 //! 숏 매크로에서는 조건이 **거울처럼 뒤집힌다** — F 는 과매수에서 들어가고 과매도에서
 //! 나오며, J 는 데드크로스에서 들어간다.
 
+use crate::engine::candle_sim::Bar;
 use crate::engine::indicators::{Bollinger, Ma, MaType, Rsi};
 use crate::engine::ledger::Side;
+use crate::engine::series::{bollinger_series, ma_series, rsi_oscillator, Oscillator, Series};
 use crate::money::{py_g, py_gp};
 
 use super::indicator::{Intent, Pending, Signal};
@@ -108,6 +110,11 @@ impl Signal for RsiSignal {
             },
             None => Levels::pending(),
         }
+    }
+
+    fn oscillator(&self, bars: &[Bar]) -> Option<Oscillator> {
+        // RSI 는 0~100 이라 가격축에 섞으면 축이 망가진다 — 아래 칸에 따로 그린다.
+        Some(rsi_oscillator(&self.rsi, bars, Some(self.entry_threshold), Some(self.exit_threshold)))
     }
 }
 
@@ -230,6 +237,10 @@ impl Signal for BollingerSignal {
             None => Levels::pending(),
         }
     }
+
+    fn series(&self, bars: &[Bar]) -> Vec<Series> {
+        bollinger_series(&self.bands, bars)
+    }
 }
 
 // --- J: 이동평균 교차 -------------------------------------------------------
@@ -297,5 +308,12 @@ impl Signal for MaCrossSignal {
             Some((fast, slow)) => Levels { reference: price(fast), band_upper: price(slow), ..Default::default() },
             None => Levels::pending(),
         }
+    }
+
+    fn series(&self, bars: &[Bar]) -> Vec<Series> {
+        vec![
+            ma_series(&self.fast, bars, "ma_fast", format!("단기 {}", self.fast.period())),
+            ma_series(&self.slow, bars, "ma_slow", format!("장기 {}", self.slow.period())),
+        ]
     }
 }

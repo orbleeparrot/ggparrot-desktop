@@ -2310,94 +2310,81 @@
   white-space: nowrap;
 }
 
-/* 매크로 조건 차트 — 받은 마감봉 위에 엔진이 낸 가격선을 겹침(CandleChart).
-   선은 색으로만 뜻을 주지 않고 꼬리표에 이름을 함께 둠(사는 선 · 손절선 …) —
-   색만으로 가르면 색을 못 가리는 사람에게는 아무 뜻이 없다. */
-.candle-chart {
-  display: grid;
-  row-gap: 4px;
+/* 매크로 조건 차트(CandlePlot) — lightweight-charts 가 봉 · 축 · 지표선을 그리고,
+   범례는 HTML 로 얹는다. 선은 색으로만 뜻을 주지 않고 범례에 이름을 함께 둔다 —
+   색만으로 가르면 색을 못 가리는 사람에게는 아무 뜻이 없다.
+   조건을 보는 게 이 화면의 목적이라 카드 폭 전체를 쓴다. */
+.pnl-row.has-candles {
+  grid-template-columns: minmax(0, 1fr);
 }
 .candle-plot {
-  position: relative;
+  display: grid;
+  row-gap: 6px;
+  min-width: 0;
+  margin-top: 12px;
+}
+.candle-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 15px;
+}
+.candle-price {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-bold);
+}
+/* 창이 낮으면 차트도 낮아진다 — 고정 높이로 두면 720px 창에서 활동 기록이 통째로
+   화면 밖으로 밀린다(e2e layout.spec.ts 의 높이 예산). */
+.candle-canvas {
+  height: clamp(150px, 30vh, 280px);
   min-width: 0;
 }
-.candle-svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+.candle-osc {
+  height: clamp(64px, 11vh, 96px);
+  min-width: 0;
+  border-top: 1px solid var(--line);
 }
-.candle-chart.is-empty .candle-plot {
+.candle-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 15px;
+}
+.candle-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.candle-legend-item i {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+.candle-legend-item.tone-buy i {
+  background: var(--ok);
+}
+.candle-legend-item.tone-sell i {
+  background: var(--danger);
+}
+.candle-plot.is-empty {
+  min-height: 120px;
+  place-items: center;
   border-radius: 6px;
   background: color-mix(in srgb, var(--muted) 8%, transparent);
 }
-.candle.is-up line,
-.candle.is-up rect {
-  stroke: var(--ok);
-  fill: var(--ok);
-}
-.candle.is-down line,
-.candle.is-down rect {
-  stroke: var(--danger);
-  fill: var(--danger);
-}
-.candle line {
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-/* 가격선 — 가로로 늘어나는 SVG 에서도 굵기가 일정하게(non-scaling-stroke). */
-.candle-line {
-  stroke-width: 1;
-  stroke-dasharray: 4 3;
-  vector-effect: non-scaling-stroke;
-}
-.candle-line.is-buy {
-  stroke: var(--ok);
-}
-.candle-line.is-sell {
-  stroke: var(--danger);
-}
-.candle-line.is-info {
-  stroke: color-mix(in srgb, var(--muted) 70%, transparent);
-}
-.candle-line.is-entry {
-  stroke: var(--muted);
-  stroke-dasharray: 2 2;
-}
-/* 꼬리표는 그래프 오른쪽 위에 겹쳐 둠 — 봉을 가리지 않게 반투명 배경. */
-.candle-tags {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.candle-tag {
-  position: absolute;
-  right: 0;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--card) 86%, transparent);
-  font-size: 10.5px;
-  font-weight: var(--fw-bold);
-  line-height: 16px;
-  white-space: nowrap;
-}
-.candle-tag.is-now {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-.candle-tag.is-buy {
-  color: var(--ok);
-}
-.candle-tag.is-sell {
-  color: var(--danger);
-}
-.candle-tag.is-info {
-  color: var(--muted);
-}
-.candle-note {
+.candle-empty-note {
   margin: 0;
   color: var(--muted);
-  font-size: 10.5px;
-  line-height: 14px;
-  font-weight: var(--fw-bold);
+  font-size: 11px;
 }

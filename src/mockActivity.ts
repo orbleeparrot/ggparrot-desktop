@@ -183,6 +183,56 @@ export function mockEntryWait(at: number, tick: number): EntryWait {
   };
 }
 
+/**
+ * 디자인 검토용 봉 차트 한 벌. 실제로는 실행기가 거래소에서 받은 봉과 엔진이 낸 선이지만,
+ * 브라우저 미리보기에는 둘 다 없으므로 모양만 같은 값을 만든다 — 화면이 값을 다시 계산하지
+ * 않는지 보려면 `src/components/run/CandlePlot.test.tsx` 쪽을 본다.
+ */
+function mockChart(price: number, interval: string, withRsi: boolean): Run["chart"] {
+  const step = 15 * 60_000;
+  const start = Date.now() - 120 * step;
+  const bars: [number, number, number, number, number][] = [];
+  let close = price * 0.97;
+  for (let i = 0; i < 120; i += 1) {
+    const drift = Math.sin(i / 9) * price * 0.004 + (price * 0.03 * i) / 120;
+    const open = close;
+    close = price * 0.97 + drift;
+    bars.push([start + i * step, open, Math.max(open, close) * 1.002, Math.min(open, close) * 0.998, close]);
+  }
+  // 이동평균선 — 앞쪽은 값이 없어 비운다(0 으로 채우면 그 0 이 지표값처럼 그려진다).
+  const period = 20;
+  const ma = bars.map((_, i) =>
+    i + 1 < period ? null : bars.slice(i + 1 - period, i + 1).reduce((sum, b) => sum + b[4], 0) / period,
+  );
+  return {
+    interval,
+    bars,
+    levels: {
+      entry_target: price * 1.006,
+      exit_target: price * 1.03,
+      stop_loss: price * 0.98,
+      trail_stop: null,
+      trail_activation: null,
+      armed: false,
+      reference: null,
+      band_upper: null,
+      band_lower: null,
+      next_buy_ms: null,
+      indicator: null,
+      pending: false,
+    },
+    series: [{ id: "ma_filter", label: `이동평균 ${period}`, values: ma }],
+    oscillator: withRsi
+      ? {
+          label: "RSI 14",
+          values: bars.map((_, i) => (i < 14 ? null : 42 + Math.sin(i / 7) * 22)),
+          entry: 30,
+          exit: 70,
+        }
+      : null,
+  };
+}
+
 export function beginRun(emit: Emit, r: MockRun, at: number) {
   const m = r.macro;
   const price = START_PRICE[m.symbol] ?? (m.quote === "USDT" ? 100 : 10_000);
@@ -193,8 +243,11 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     online: true,
     authFailed: false,
     rejected: 0,
-    // 모의는 서버가 판단하던 때와 같은 화면 — 봉 차트는 앱이 직접 판단할 때만 나온다.
-    chart: null,
+    // 0.21.0 부터 판단이 이 PC 에서 돌아 앱이 봉을 들고 있다 — 조건 차트가 기본이다.
+    // 레버리지 견본은 **서버가 판단하는 세션**으로 남긴다(옛 실행기 · 스위치를 켜기 전에
+    // 시작한 세션이 그렇다). 두 화면이 다 살아 있어야 e2e 가 현재가 그래프와 봉 차트를
+    // 둘 다 잰다 — 활동이 가장 많은 견본이라 '활동 기록 세 줄' 예산도 거기서 잰다.
+    chart: m.leverage > 1 ? null : mockChart(price, m.interval || "15m", /RSI/i.test(m.strategy)),
     offlineSince: 0,
     priceStaleSince: 0,
     closeFailures: 0,

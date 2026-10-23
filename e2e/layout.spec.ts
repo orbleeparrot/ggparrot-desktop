@@ -595,8 +595,13 @@ for (const vp of VIEWPORTS) {
         if (!wide && i > 0) await page.locator(".detail-back").click();
         await page.locator(".run-card.is-live .run-card-select").nth(i).click();
         await page.locator(".status-card").waitFor();
-        // 그래프는 시세 점이 둘 이상 쌓여야 꼬리표가 생김.
-        await page.locator(".price-chart:not(.is-empty)").waitFor({ timeout: 10_000 });
+        // 그래프는 시세 점이 둘 이상 쌓여야 꼬리표가 생김. 앱이 직접 판단하는 세션은
+        // 현재가 그래프 대신 봉 차트가 뜨므로 둘 중 먼저 오는 것을 기다린다 —
+        // 아래 꼬리표 검사는 `.price-chart` 가 있을 때만 돈다.
+        await page
+          .locator(".price-chart:not(.is-empty), .candle-plot:not(.is-empty)")
+          .first()
+          .waitFor({ timeout: 10_000 });
         const where = (await page.locator(".detail-title").innerText()).replace(/\s+/g, " ");
         problems.push(
           ...(await page.evaluate((where) => {
@@ -941,9 +946,11 @@ test.describe("1040x720 — 상태 카드 높이", () => {
       const fold = await page.evaluate(() => {
         const g = window.__geo;
         const acts = document.querySelectorAll(".feed .act");
+        const chart = document.querySelector(".status-card .candle-plot");
         return {
           cardH: g.box(document.querySelector(".status-card")!).h,
           thirdBottom: acts.length >= 3 ? g.box(acts[2]).b : null,
+          chartBottom: chart ? g.box(chart).b : null,
         };
       });
       // 보유 수량 값은 표를 펼쳐서 보고, 다음 실행을 위해 다시 접는다.
@@ -961,10 +968,18 @@ test.describe("1040x720 — 상태 카드 높이", () => {
         };
       });
       await page.getByRole("button", { name: "자세히 접기" }).click();
-      // 예전 높이(약 400px)의 70% 남짓.
-      if (fold.cardH > 292) problems.push(`${where}: 상태 카드 높이 ${fold.cardH}px > 292px`);
-      // 견본 중 활동이 세 줄 이상인 실행(선물 3배 — 증거금 줄까지 있어 가장 높은 카드)으로 잼.
-      if (fold.thirdBottom !== null) {
+      // 예전 높이(약 400px)의 70% 남짓. 앱이 직접 판단하는 세션은 조건 차트가 손익 아래
+      // 붙어 그 높이만큼 더 쓴다 — 조건을 보는 게 이 화면의 목적이라 자리를 준 것이고,
+      // 대신 차트 높이가 창 높이를 따라간다(run.css 의 clamp).
+      const budget = fold.chartBottom === null ? 292 : 600;
+      if (fold.cardH > budget) problems.push(`${where}: 상태 카드 높이 ${fold.cardH}px > ${budget}px`);
+      if (fold.chartBottom !== null) {
+        // 차트가 있으면 활동 기록은 그만큼 아래로 밀린다. 대신 **차트가** 창 안에 다
+        // 들어오는지를 본다 — 차트가 잘리면 자리를 준 뜻이 없다.
+        if (fold.chartBottom > r.bottom)
+          problems.push(`${where}: 조건 차트 아래 ${fold.chartBottom}px가 창 아래 ${r.bottom}px 밖`);
+      } else if (fold.thirdBottom !== null) {
+        // 견본 중 활동이 세 줄 이상인 실행(선물 3배 — 증거금 줄까지 있어 가장 높은 카드)으로 잼.
         measured++;
         if (fold.thirdBottom > r.bottom)
           problems.push(`${where}: 활동 기록 셋째 줄 아래 ${fold.thirdBottom}px가 창 아래 ${r.bottom}px 밖`);

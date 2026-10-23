@@ -14,11 +14,12 @@ use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
 use super::levels::{price, Levels};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
-use super::rules::indicator::IndicatorRule;
+use super::rules::indicator::{IndicatorRule, Signal};
 use super::rules::martingale::Martingale;
 use super::rules::sar::Sar;
 use super::rules::signals::{BandExitTarget, BandStrategy, BollingerSignal, MaCrossSignal, RsiSignal};
 use super::rules::trailing::{EntryMode, Trailing};
+use super::series::{Oscillator, Series};
 use super::tick_sim::{DcaSim, TickRule, TickSim};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,6 +205,20 @@ impl Engine {
             Engine::Sar(sim) => sim.ledger.equity(price),
             Engine::Tick(sim) => sim.equity(price),
             Engine::Dca(sim) => sim.equity(price),
+        }
+    }
+
+    /// 차트에 봉과 겹쳐 그릴 지표선과, 아래 보조창에 그릴 값(RSI).
+    ///
+    /// 엔진이 판단에 쓰는 그 지표로 만든다 — 화면이 따로 계산하면 산수가 두 벌이 되고,
+    /// 그중 하나는 엔진이 보는 것과 다르다. 지표를 쓰지 않는 규칙은 빈 목록이다.
+    pub fn chart_series(&self, bars: &[Bar]) -> (Vec<Series>, Option<Oscillator>) {
+        match self {
+            Engine::Rsi(sim) => (Vec::new(), sim.strategy().signal.oscillator(bars)),
+            Engine::Bollinger(sim) => (sim.strategy().signal.series(bars), None),
+            Engine::MaCross(sim) => (sim.strategy().signal.series(bars), None),
+            Engine::Breakout(sim) => (sim.strategy().ma_series(bars), None),
+            _ => (Vec::new(), None),
         }
     }
 

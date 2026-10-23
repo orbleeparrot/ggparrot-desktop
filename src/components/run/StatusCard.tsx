@@ -21,7 +21,7 @@ import { STALE_MS, statusAlert } from "../../state/runStatus";
 import type { MacroInfo, RunMode, RunSlot, RunStatus } from "../../types";
 import { CloseChip, EntryWaitDetail, EntryWaitHead } from "./EntryWait";
 import { ExitBar } from "./ExitBar";
-import { CandleChart } from "./CandleChart";
+import { CandlePlot } from "./CandlePlot";
 import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
 
@@ -96,7 +96,7 @@ export function StatusCard({
         </div>
       )}
 
-      <div className="pnl-row">
+      <div className={`pnl-row${run.chart ? " has-candles" : ""}`}>
         <div className="pnl" aria-live="polite">
           <span className="pnl-head">
             <span className="eyebrow">
@@ -139,18 +139,10 @@ export function StatusCard({
             </div>
           )}
         </div>
-        <div className="pnl-chart">
-          {/* 앱이 직접 판단하면 봉과 조건선을 그린다 — 그때만 앱이 봉을 들고 있다.
-              서버가 판단하면 지금까지처럼 현재가 흐름만 보인다. */}
-          {run.chart ? (
-            <CandleChart
-              chart={run.chart}
-              price={run.price}
-              entry={run.inPosition ? run.entryPrice : 0}
-              quote={q}
-              intervalLabel={macro.interval || run.chart.interval}
-            />
-          ) : (
+        {/* 서버가 판단하면 앱은 봉을 들고 있지 않다 — 지금까지처럼 현재가 흐름만 작게.
+            앱이 직접 판단하면 봉이 있으므로 아래에 **크게** 따로 그린다. */}
+        {!run.chart && (
+          <div className="pnl-chart">
             <PriceChart
               points={prices}
               times={priceTimes}
@@ -159,9 +151,20 @@ export function StatusCard({
               quote={q}
               span={trailSpanLabel(run.startedAt, priceTimes[0] ?? 0, run.updatedAt)}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* 조건을 보는 게 이 화면의 목적이라 차트가 손익 바로 아래, 카드 폭 전체를 쓴다. */}
+      {run.chart && (
+        <CandlePlot
+          chart={run.chart}
+          price={run.price}
+          entry={run.inPosition ? run.entryPrice : 0}
+          quote={q}
+          intervalLabel={macro.interval || run.chart.interval}
+        />
+      )}
 
       {waiting && run.entryWait && <EntryWaitDetail wait={run.entryWait} />}
 

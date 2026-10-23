@@ -34,10 +34,31 @@ export interface ChartLevels {
   pending: boolean;
 }
 
+/**
+ * 봉과 길이가 같은 지표선(이동평균 · 볼린저). 값은 **엔진이 판단에 쓰는 그 지표**가 낸
+ * 것이다 — 화면이 다시 계산하면 산수가 두 벌이 된다. 아직 값이 없는 앞쪽은 null.
+ */
+export interface ChartSeries {
+  id: string;
+  label: string;
+  values: (number | null)[];
+}
+
+/** 가격이 아닌 값(RSI) — 가격축에 섞으면 축이 망가져 아래 칸에 따로 그린다. */
+export interface ChartOscillator {
+  label: string;
+  values: (number | null)[];
+  entry: number | null;
+  exit: number | null;
+}
+
 export interface ChartData {
   interval: string;
   bars: Candle[];
   levels: ChartLevels;
+  /** 예전 실행기(0.21.x)는 보내지 않는다. */
+  series?: ChartSeries[];
+  oscillator?: ChartOscillator | null;
 }
 
 /** 선 하나 — 화면에 그릴 가격과 이름. */
@@ -94,18 +115,44 @@ export interface CandleRange {
   max: number;
 }
 
-/** 봉과 가격선을 모두 담는 값 범위. 선이 차트 밖으로 나가면 "어디서 사는지"를 볼 수 없음. */
+/**
+ * 봉과 가격선을 담는 값 범위.
+ *
+ * 선이 차트 밖으로 나가면 "어디서 사는지" 를 볼 수 없지만, 선을 담으려고 축을 무한정
+ * 늘리면 이번엔 **봉이 납작해져** 아무것도 안 보인다 — BTC 에서 익절 +5% · 손절 -3% 가
+ * 5시간치 봉 범위(약 0.7%)보다 훨씬 넓어 봉 300개가 한 줄이 됐다.
+ *
+ * 그래서 선은 봉 범위의 {@link LINE_ROOM} 배까지만 축을 늘린다. 더 먼 선은 가장자리에
+ * 붙어 "그쪽에 있다" 만 말한다(값은 꼬리표에 그대로 적힌다).
+ */
+export const LINE_ROOM = 1.5;
+
 export function candleRange(bars: Candle[], lines: PriceLine[] = [], entry = 0): CandleRange {
   const values: number[] = [];
   for (const [, , high, low] of bars) {
     if (Number.isFinite(high)) values.push(high);
     if (Number.isFinite(low)) values.push(low);
   }
-  for (const line of lines) values.push(line.value);
-  if (usable(entry)) values.push(entry);
-  if (values.length === 0) return { min: 0, max: 1 };
+  if (values.length === 0) {
+    // 봉이 없으면 늘릴 기준도 없다 — 선만이라도 담는다.
+    for (const line of lines) values.push(line.value);
+    if (usable(entry)) values.push(entry);
+    if (values.length === 0) return { min: 0, max: 1 };
+  }
   let min = Math.min(...values);
   let max = Math.max(...values);
+  if (bars.length > 0) {
+    const span = max - min || Math.abs(max) * 0.01 || 1;
+    const floor = min - span * LINE_ROOM;
+    const ceiling = max + span * LINE_ROOM;
+    const include = (value: number) => {
+      if (!Number.isFinite(value)) return;
+      min = Math.min(min, Math.max(value, floor));
+      max = Math.max(max, Math.min(value, ceiling));
+    };
+    for (const line of lines) include(line.value);
+    if (usable(entry)) include(entry);
+  }
   if (max - min < 1e-9) {
     // 값이 모두 같음 — 위아래로 조금 벌려 평평한 선이 가장자리에 붙지 않게.
     const pad = Math.abs(max) * 0.01 || 1;
@@ -113,30 +160,4 @@ export function candleRange(bars: Candle[], lines: PriceLine[] = [], entry = 0):
     max += pad;
   }
   return { min, max };
-}
-
-/** 값 → 세로 위치(위에서부터 0~height). 위아래 pad 만큼은 비움. */
-export function candleY(value: number, range: CandleRange, height: number, pad = 6): number {
-  const span = range.max - range.min || 1;
-  return pad + (1 - (value - range.min) / span) * (height - pad * 2);
-}
-
-/** 봉 `i` 의 가로 중심(0~width). 봉 사이 간격은 고르게. */
-export function candleX(index: number, count: number, width: number, pad = 2): number {
-  if (count <= 1) return width / 2;
-  const step = (width - pad * 2) / count;
-  return pad + step * (index + 0.5);
-}
-
-/** 봉 하나의 너비(px). 너무 좁아지면 선처럼 보이게 1px 로. */
-export function candleWidth(count: number, width: number, pad = 2): number {
-  if (count <= 0) return 1;
-  const step = (width - pad * 2) / count;
-  return Math.max(1, step * 0.66);
-}
-
-/** 차트가 덮는 시간 — "1시간 봉 300개 · 12일" 처럼 보여 줄 때 쓰는 ms. */
-export function chartSpanMs(bars: Candle[]): number {
-  if (bars.length < 2) return 0;
-  return bars[bars.length - 1][0] - bars[0][0];
 }

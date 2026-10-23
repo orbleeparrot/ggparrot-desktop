@@ -51,9 +51,13 @@ jobs:
 
   # 화면 배치 검사(Playwright) — webkit(macOS WKWebView)·chromium(Windows WebView2) 엔진으로 겹침·넘침을 잼.
   # 실패하면 보고서·스크린샷을 산출물로 올림.
+  #
+  # 0.21.1 부터 상태 카드가 조건 차트(lightweight-charts)를 **실제로 그린다** — 캔버스를
+  # 100번 넘게 세우므로 코어가 적은 러너에서 예전(5분)보다 오래 걸린다. 20분으로는 모자라
+  # 한 번 잘렸다.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
