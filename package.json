@@ -26,7 +26,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.12.3",
     "lightweight-charts": "5.2.1",
-    "lucide-react": "^1.57.0",
+    "lucide-react": "^1.60.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
