@@ -244,7 +244,10 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     authFailed: false,
     rejected: 0,
     // 0.21.0 부터 판단이 이 PC 에서 돌아 앱이 봉을 들고 있다 — 조건 차트가 기본이다.
-    chart: mockChart(price, m.interval || "15m", /RSI/i.test(m.strategy)),
+    // 레버리지 견본은 **서버가 판단하는 세션**으로 남긴다(옛 실행기 · 스위치를 켜기 전에
+    // 시작한 세션이 그렇다). 두 화면이 다 살아 있어야 e2e 가 현재가 그래프와 봉 차트를
+    // 둘 다 잰다 — 활동이 가장 많은 견본이라 '활동 기록 세 줄' 예산도 거기서 잰다.
+    chart: m.leverage > 1 ? null : mockChart(price, m.interval || "15m", /RSI/i.test(m.strategy)),
     offlineSince: 0,
     priceStaleSince: 0,
     closeFailures: 0,

@@ -2337,12 +2337,14 @@
   font-variant-numeric: tabular-nums;
   font-weight: var(--fw-bold);
 }
+/* 창이 낮으면 차트도 낮아진다 — 고정 높이로 두면 720px 창에서 활동 기록이 통째로
+   화면 밖으로 밀린다(e2e layout.spec.ts 의 높이 예산). */
 .candle-canvas {
-  height: 280px;
+  height: clamp(150px, 30vh, 280px);
   min-width: 0;
 }
 .candle-osc {
-  height: 96px;
+  height: clamp(64px, 11vh, 96px);
   min-width: 0;
   border-top: 1px solid var(--line);
 }
@@ -2385,13 +2387,4 @@
   margin: 0;
   color: var(--muted);
   font-size: 11px;
-}
-
-@media (max-width: 720px) {
-  .candle-canvas {
-    height: 200px;
-  }
-  .candle-osc {
-    height: 72px;
-  }
 }
