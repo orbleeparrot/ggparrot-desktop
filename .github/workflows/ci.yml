@@ -52,9 +52,13 @@ jobs:
   # 화면 배치 검사(Playwright) — webkit(macOS WKWebView)·chromium(Windows WebView2) 엔진으로 겹침·넘침을 잼.
   # 실패하면 보고서·스크린샷을 산출물로 올림.
   #
-  # 0.21.1 부터 상태 카드가 조건 차트(lightweight-charts)를 **실제로 그린다** — 캔버스를
-  # 100번 넘게 세우므로 코어가 적은 러너에서 예전(5분)보다 오래 걸린다. 20분으로는 모자라
-  # 한 번 잘렸다.
+  # 느린 것은 시험이 아니라 **내려받기**다. 같은 코드가 7분에 끝난 적도 35분에 잘린 적도
+  # 있고, 잘릴 때는 늘 `npm run test:e2e` 를 시작하기도 전에 브라우저·글꼴을 받다가
+  # 멈췄다(2026-10-23 에 세 번). 그래서 받는 양을 줄인다 — 크로미움은 headless shell 만
+  # 받으면 된다(`--only-shell`). 전체 Chrome 186MB 는 받아도 쓰지 않는다.
+  #
+  # 잡 이름(`e2e`)은 그대로 둔다 — main 브랜치 보호의 필수 검사 이름이라, 매트릭스로
+  # 나누면 `e2e (webkit)` 처럼 바뀌어 그 검사가 영영 오지 않는다.
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -66,9 +70,13 @@ jobs:
           cache: npm
       - run: npm ci
       # 한글 글꼴이 없으면 글자가 네모로 그려져 폭이 실제와 달라짐 — Noto CJK를 함께 깖.
+      # `--only-shell` 은 크로미움에만 뜻이 있어 webkit 과 따로 받는다. 시스템 의존성은
+      # 한 번만 깔면 되므로 `install-deps` 로 떼어 둔다(`--with-deps` 를 두 번 쓰면 apt 가 두 번 돈다).
       - name: 브라우저·한글 글꼴 설치
         run: |
-          npx playwright install --with-deps webkit chromium
+          npx playwright install-deps webkit chromium
+          npx playwright install --only-shell chromium
+          npx playwright install webkit
           sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - name: 화면 배치 검사
         run: npm run test:e2e
