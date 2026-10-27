@@ -65,7 +65,7 @@ export interface ExitRules {
   summary: string;
 }
 
-import type { ChartData } from "./state/candles";
+import type { ChartData, ChartLive } from "./state/candles";
 
 export interface RunStatus {
   /** epoch ms */
@@ -117,6 +117,8 @@ export interface RunStatus {
    * 봉은 거래소에서 받은 그대로, 선은 엔진이 낸 그대로. 화면은 겹쳐 그리기만 함.
    */
   chart: ChartData | null;
+  /** 봉 마감 사이에 움직이는 부분(만들어지는 중인 봉 · 지금 가격선). 매 바퀴 바뀐다. */
+  chartLive: ChartLive | null;
   note: string;
   /** 끝났으면 종료 결과. 실행 중이면 null. */
   finished: null | { status: "stopped" | "error"; note: string; at: number };

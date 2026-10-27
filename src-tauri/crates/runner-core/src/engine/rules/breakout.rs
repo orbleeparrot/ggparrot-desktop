@@ -87,14 +87,25 @@ impl Breakout {
         self.ma_value
     }
 
-    /// 차트에 겹쳐 그릴 이동평균 필터선. 필터가 없으면 그릴 것도 없다.
-    pub fn ma_series(&self, bars: &[crate::engine::candle_sim::Bar]) -> Vec<crate::engine::series::Series> {
-        match &self.ma {
-            None => Vec::new(),
-            Some(ma) => {
-                vec![crate::engine::series::ma_series(ma, bars, "ma_filter", format!("이동평균 {}", ma.period()))]
-            }
+    /// 차트에 겹쳐 그릴 선 — 봉마다의 돌파선과, 필터가 있으면 이동평균선.
+    ///
+    /// 돌파선은 봉마다 다르다(`그 봉 시가 + k x 직전 봉 변동폭`). 지금 봉의 선 하나만
+    /// 가로로 그으면 "이 값이 늘 기준이었다" 로 읽힌다 — 실제로는 봉마다 새로 잡힌다.
+    /// 첫 봉은 직전 봉이 없어 비운다.
+    pub fn chart_series(&self, bars: &[crate::engine::candle_sim::Bar]) -> Vec<crate::engine::series::Series> {
+        use crate::engine::series::Series;
+        let mut targets = Vec::with_capacity(bars.len());
+        for (i, bar) in bars.iter().enumerate() {
+            targets.push(i.checked_sub(1).map(|j| bar.o + self.k * (bars[j].h - bars[j].l)));
         }
+        let mut out =
+            vec![Series {
+                id: "breakout", label: format!("돌파선 k={}", crate::money::py_g(self.k)), values: targets
+            }];
+        if let Some(ma) = &self.ma {
+            out.push(crate::engine::series::ma_series(ma, bars, "ma_filter", format!("이동평균 {}", ma.period())));
+        }
+        out
     }
 
     pub fn trail_stop(&self) -> Option<f64> {

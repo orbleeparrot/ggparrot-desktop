@@ -52,6 +52,16 @@ export interface ChartOscillator {
   exit: number | null;
 }
 
+/**
+ * 봉 마감 **사이**에 움직이는 부분. 무거운 {@link ChartData} 와 나눠 두어야 화면이
+ * 봉 배열을 매 바퀴 다시 받지 않는다.
+ */
+export interface ChartLive {
+  /** 만들어지는 중인 봉. 거래소가 준 마감봉이 아니라 틱 가격으로 쌓은 것이다. */
+  live: Candle | null;
+  levels: ChartLevels;
+}
+
 export interface ChartData {
   interval: string;
   bars: Candle[];

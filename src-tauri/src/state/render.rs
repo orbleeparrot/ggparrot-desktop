@@ -539,6 +539,7 @@ pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {
         entry_wait: if in_position || d.finished.is_some() { None } else { d.entry_wait.clone() },
         // 차트는 보유 중에도 보인다 — 손절선 · 익절선이 거기 그려진다.
         chart: if d.finished.is_some() { None } else { d.chart.clone() },
+        chart_live: if d.finished.is_some() { None } else { d.chart_live.clone() },
         note: s.get("note").and_then(Value::as_str).unwrap_or("").to_string(),
         finished: d.finished.as_ref().map(|(st, n, at)| FinishedDto { status: st.clone(), note: n.clone(), at: *at }),
     }
@@ -713,6 +714,7 @@ pub(crate) struct RunStatusDto {
     entry_wait: Option<Value>,
     /// 차트 — `{interval, bars: [[t,o,h,l,c], …], levels}`. 앱이 직접 판단할 때만 있다.
     chart: Option<Value>,
+    chart_live: Option<Value>,
     note: String,
     finished: Option<FinishedDto>,
 }

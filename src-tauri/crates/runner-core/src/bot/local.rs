@@ -51,6 +51,9 @@ pub struct LocalEngine {
     last_bar: Option<Bar>,
     /// 화면이 그릴 최근 봉들(차트용). 오래된 것부터.
     recent: std::collections::VecDeque<Bar>,
+    /// 지금 **만들어지는 중인** 봉. 거래소에서 받은 것이 아니라 틱 가격으로 쌓는다 —
+    /// 화면이 봉 마감 사이에 멈춰 보이지 않게 하는 용도이고, 판단에는 쓰지 않는다.
+    forming: Option<Bar>,
 }
 
 impl LocalEngine {
@@ -82,6 +85,37 @@ impl LocalEngine {
             "levels": self.levels(),
             "series": series,
             "oscillator": oscillator,
+        })
+    }
+
+    /// 틱 가격 하나를 만들어지는 중인 봉에 반영한다. `open_ms` 가 바뀌면 새 봉을 연다.
+    pub(super) fn feed_live(&mut self, price: f64, open_ms: i64) {
+        if price <= 0.0 || !price.is_finite() {
+            return;
+        }
+        match self.forming {
+            Some(ref mut bar) if bar.t == open_ms => {
+                bar.h = bar.h.max(price);
+                bar.l = bar.l.min(price);
+                bar.c = price;
+            }
+            // 봉이 바뀌었거나 처음 — 이 가격을 시가로 연다.
+            _ => self.forming = Some(Bar { t: open_ms, o: price, h: price, l: price, c: price, v: None }),
+        }
+    }
+
+    /// 만들어지는 중인 봉. 마감봉과 시각이 겹치면(거래소가 이미 준 봉) 내보내지 않는다.
+    pub(super) fn live_bar(&self) -> Option<Bar> {
+        let last_closed = self.recent.back().map(|b| b.t);
+        self.forming.filter(|bar| Some(bar.t) != last_closed)
+    }
+
+    /// 매 바퀴 보내는 **움직이는 부분**. 봉 배열과 지표선은 빼고, 만들어지는 중인 봉과
+    /// 지금 가격선만 담는다 — 작아서 자주 보내도 된다.
+    pub(super) fn live_chart(&self) -> Value {
+        json!({
+            "live": self.live_bar().map(|b| json!([b.t, b.o, b.h, b.l, b.c])),
+            "levels": self.levels(),
         })
     }
 
@@ -134,6 +168,7 @@ impl Bot {
             fetch_failures: 0,
             last_bar: None,
             recent: Default::default(),
+            forming: None,
         };
         for candle in &history {
             let bar = Bar::from(*candle);
@@ -179,6 +214,13 @@ impl Bot {
         // 틱 기반 규칙(A · B · C)은 봉이 아니라 시계를 본다.
         local.engine.set_clock(now_ms());
 
+        // 만들어지는 중인 봉을 틱 가격으로 쌓는다. 판단에는 쓰지 않는다 — 화면이 봉
+        // 마감 사이에 멈춰 보이지 않게 하는 용도다.
+        let interval = crate::macro_info::candle_interval(&self.macro_);
+        if let Some(open_ms) = crate::intervals::bar_open_ms(&interval, now_ms(), &self.exchange_name) {
+            local.feed_live(price, open_ms);
+        }
+
         match local.stream.poll(POLL_LOOKBACK, now_ms()).await {
             Ok(fresh) => {
                 if local.fetch_failures > 0 {
@@ -192,8 +234,8 @@ impl Bot {
                     local.remember(bar);
                 }
                 if arrived {
-                    // 봉이 새로 마감됐을 때만 보낸다 — 매 틱 보내면 300개 배열이
-                    // 5초마다 화면으로 간다.
+                    // 봉 전체(300개)와 지표선은 **마감됐을 때만** 보낸다 — 매 바퀴 보내면
+                    // 큰 배열이 5초마다 화면으로 간다.
                     let _ = self.tx.send(BotEvent::Chart(local.chart(&self.macro_)));
                 }
             }
@@ -203,6 +245,10 @@ impl Bot {
                 self.note_candle_failure(local, &e);
             }
         }
+
+        // 움직이는 부분만 매 바퀴 보낸다 — 만들어지는 중인 봉과 지금 가격선.
+        // 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춘다.
+        let _ = self.tx.send(BotEvent::ChartLive(local.live_chart()));
 
         for _ in 0..MAX_FILLS_PER_TICK {
             let Some(fill) = local.engine.tick(price) else { break };
