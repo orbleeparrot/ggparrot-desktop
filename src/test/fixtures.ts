@@ -90,6 +90,7 @@ const LABELS: Record<KeySlot, string> = {
 export function makeRun(over: Partial<RunStatus> = {}): RunStatus {
   return {
     chart: null,
+    chartLive: null,
     startedAt: Date.now() - 60_000,
     sessionId: 1,
     online: true,

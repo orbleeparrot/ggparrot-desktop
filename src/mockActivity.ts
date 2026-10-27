@@ -248,6 +248,7 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     // 시작한 세션이 그렇다). 두 화면이 다 살아 있어야 e2e 가 현재가 그래프와 봉 차트를
     // 둘 다 잰다 — 활동이 가장 많은 견본이라 '활동 기록 세 줄' 예산도 거기서 잰다.
     chart: m.leverage > 1 ? null : mockChart(price, m.interval || "15m", /RSI/i.test(m.strategy)),
+    chartLive: null,
     offlineSince: 0,
     priceStaleSince: 0,
     closeFailures: 0,
@@ -300,6 +301,22 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
   );
 }
 
+/**
+ * 만들어지는 중인 봉을 현재가로 쌓는다 — 실행기에서는 `local.feed_live` 가 하는 일이다.
+ * 이게 없으면 미리보기 차트가 봉 마감 사이에 멈춰 있어 움직임을 볼 수 없다.
+ */
+function feedLiveBar(run: Run) {
+  if (!run.chart) return;
+  const step = run.chart.bars.length >= 2 ? run.chart.bars[1][0] - run.chart.bars[0][0] : 900_000;
+  const openMs = Math.floor(Date.now() / step) * step;
+  const held = run.chartLive?.live;
+  const live: [number, number, number, number, number] =
+    held && held[0] === openMs
+      ? [openMs, held[1], Math.max(held[2], run.price), Math.min(held[3], run.price), run.price]
+      : [openMs, run.price, run.price, run.price, run.price];
+  run.chartLive = { live, levels: run.chart.levels };
+}
+
 export function tickRun(emit: Emit, r: MockRun, at: number) {
   const run = r.run;
   if (!run || r.phase !== "running") return;
@@ -312,6 +329,7 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
   const before = run.price;
   run.price = round(run.price * (1 + (Math.random() - 0.48) * 0.0024), q);
   if (r.holdPrice) run.price = round(r.holdPrice * (1 + (Math.random() - 0.5) * 0.0006), q);
+  feedLiveBar(run);
   if (run.dayChangePct !== null) run.dayChangePct += ((run.price - before) / before) * 100;
   if (r.holdPrice) {
     run.updatedAt = at;

@@ -162,6 +162,7 @@ export function StatusCard({
           price={run.price}
           entry={run.inPosition ? run.entryPrice : 0}
           quote={q}
+          live={run.chartLive}
           intervalLabel={macro.interval || run.chart.interval}
         />
       )}

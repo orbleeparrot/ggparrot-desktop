@@ -74,3 +74,26 @@ fn rsi_는_문턱과_함께_간다() {
         assert!((0.0..=100.0).contains(value), "RSI 는 0~100 이다: {value}");
     }
 }
+
+#[test]
+fn 돌파선은_봉마다_그_봉_시가에서_새로_잡힌다() {
+    // 지금 봉의 선 하나만 가로로 그으면 "이 값이 늘 기준이었다" 로 읽힌다 — 실제로는
+    // 봉마다 `그 봉 시가 + k x 직전 봉 변동폭` 으로 새로 잡힌다.
+    use crate::engine::rules::breakout::{Breakout, ExitMode};
+    let rows = vec![
+        Bar { t: 0, o: 100.0, h: 110.0, l: 90.0, c: 105.0, v: None },
+        Bar { t: 60_000, o: 106.0, h: 112.0, l: 104.0, c: 108.0, v: None },
+        Bar { t: 120_000, o: 109.0, h: 115.0, l: 107.0, c: 114.0, v: None },
+    ];
+    // k=0.5, 이동평균 필터 없음.
+    let rule = Breakout::new(0.5, ExitMode::NextOpen, 0.0, None, None, 1.0);
+    let lines = rule.chart_series(&rows);
+    assert_eq!(lines.len(), 1, "필터가 없으면 돌파선 하나뿐");
+    assert_eq!(lines[0].id, "breakout");
+    // 첫 봉은 직전 봉이 없어 비운다.
+    assert_eq!(lines[0].values[0], None);
+    // 2번째: 시가 106 + 0.5 x (110-90) = 116
+    assert_eq!(lines[0].values[1], Some(116.0));
+    // 3번째: 시가 109 + 0.5 x (112-104) = 113
+    assert_eq!(lines[0].values[2], Some(113.0));
+}

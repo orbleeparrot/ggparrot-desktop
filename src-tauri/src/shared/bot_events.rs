@@ -50,6 +50,15 @@ impl Shared {
                             me.emit_soon();
                         }
                     }
+                    BotEvent::ChartLive(live) => {
+                        let changed = me.lock().run_mut(&id).and_then(|r| r.data.as_mut()).is_some_and(|d| {
+                            d.chart_live = Some(live);
+                            true
+                        });
+                        if changed {
+                            me.emit_soon();
+                        }
+                    }
                     BotEvent::Chart(chart) => {
                         let changed = me.lock().run_mut(&id).and_then(|r| r.data.as_mut()).is_some_and(|d| {
                             d.chart = Some(chart);

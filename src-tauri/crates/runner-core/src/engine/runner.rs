@@ -217,7 +217,7 @@ impl Engine {
             Engine::Rsi(sim) => (Vec::new(), sim.strategy().signal.oscillator(bars)),
             Engine::Bollinger(sim) => (sim.strategy().signal.series(bars), None),
             Engine::MaCross(sim) => (sim.strategy().signal.series(bars), None),
-            Engine::Breakout(sim) => (sim.strategy().ma_series(bars), None),
+            Engine::Breakout(sim) => (sim.strategy().chart_series(bars), None),
             _ => (Vec::new(), None),
         }
     }
