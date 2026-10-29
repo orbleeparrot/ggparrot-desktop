@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest";
 // - 테스트는 jsdom에서 돌아 import.meta.url이 file: 주소가 아님 — 저장소 루트(npm test 위치) 기준으로 읽음.
 // - 앱 tsconfig에는 Node 타입이 없어 scripts/에 둠.
 
+/** 이름 순 비교 — sort()의 기본 비교(UTF-16 코드 단위)에 기대지 않게. */
+const byName = (a, b) => a.localeCompare(b);
+
 /** lib.rs의 `generate_handler![ commands::x, … ]`에 적힌 명령 이름들. */
 function rustCommands(src) {
   const body = src.match(/generate_handler!\s*\[([\s\S]*?)\]/)?.[1];
@@ -35,6 +38,6 @@ describe("명령 목록", () => {
   });
 
   it("Rust generate_handler!와 ipc.ts CommandMap의 이름이 같음", () => {
-    expect([...ts].sort()).toEqual([...rust].sort());
+    expect([...ts].sort(byName)).toEqual([...rust].sort(byName));
   });
 });

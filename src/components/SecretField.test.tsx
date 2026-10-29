@@ -18,7 +18,9 @@ describe("SecretField", () => {
     fireEvent.change(input, { target: { value: "ab" } });
     fireEvent.change(input, { target: { value: "abc" } });
     expect(onCommit).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(SECRET_DEBOUNCE_MS));
+    act(() => {
+      vi.advanceTimersByTime(SECRET_DEBOUNCE_MS);
+    });
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit).toHaveBeenCalledWith("abc");
   });

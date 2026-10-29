@@ -175,7 +175,7 @@ export function createWizard(m: Model, { later, info, checkNow }: Deps) {
       const w = m.wizard;
       if (!w) return;
       const k = m.keys[w.slot];
-      k[field as KeyField] = String(value ?? "").trim();
+      k[field as KeyField] = (typeof value === "string" ? value : "").trim();
       k.status = k.access && k.secret ? "unchecked" : "empty";
     },
     wizard_set_remember: ({ remember }) => {

@@ -5,9 +5,11 @@
 
 ## 1. 공통
 
-- **포맷:** Prettier(TS·CSS·JSON·YAML, 마크다운 제외)·rustfmt, 줄 폭 120. `npm run format`으로 맞추고 CI가 `format:check`로 확인. 편집기 설정은 `.editorconfig`.
+- **포맷:** oxfmt(TS·CSS·JSON·YAML, 마크다운 제외, 설정 `.oxfmtrc.json`)·rustfmt, 줄 폭 120. `npm run format`으로 맞추고 CI가 `format:check`로 확인. 편집기 설정은 `.editorconfig`.
+  - oxfmt는 Prettier와 결과가 거의 같은 oxc 포맷터(Rust) — 0.x라 버전을 정확히 고정함(올릴 때 `npm run format` 결과를 함께 커밋).
 - **린트:** TS·React는 oxlint(`npm run lint`, 설정 `.oxlintrc.json`, 경고도 실패), Rust는 clippy(`npm run lint:rust`, `-D warnings`). CI가 둘 다 확인.
   - oxlint를 쓰는 까닭: 앱은 TypeScript 7(네이티브)이라 typescript-eslint가 쓰는 TypeScript JS API가 없음. oxlint는 자체 해석기라 TypeScript 버전과 무관하고 ESLint와 규칙 이름이 같음.
+  - 타입 정보 검사(`options.typeAware`, `oxlint-tsgolint` — TypeScript 7 기반): 흘려보낸 Promise(`void`로 표시), Promise 아닌 값의 `await`, 객체를 글자로 바꿈, 비교 함수 없는 `sort`. `unbound-method`는 끔 — 훅이 돌려준 함수 묶음을 구조 분해하는 곳마다 걸려 소음뿐임.
   - 잡는 규칙: 정확성(correctness) 전체 + `any` 금지, 버튼 `type` 빠짐, 훅 규칙·의존성 배열, React 컴파일러 규칙(렌더 중 ref 읽기·시계 읽기·effect 안 동기 setState 등), 안 쓰는 변수(`_`로 시작하면 예외), 잡은 오류를 다시 던질 때 `cause`.
   - 렌더 중에 바꿔야 하는 값은 ref가 아니라 상태로 두고 조건부로 갱신함(`if (prev !== x) setPrev(x)`). 최신 콜백을 담는 ref는 effect에서 갱신함.
 - **인코딩·줄 끝:** UTF-8, LF(Windows 스크립트만 CRLF). `.gitattributes`가 강제.

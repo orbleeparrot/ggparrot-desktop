@@ -483,7 +483,7 @@ export function createMockBackend(
     },
     set_slot_key: ({ slot, field, value }) => {
       const s = slot as KeySlot;
-      m.keys[s][field as KeyField] = String(value ?? "").trim();
+      m.keys[s][field as KeyField] = (typeof value === "string" ? value : "").trim();
       scheduleCheck(s);
     },
     reveal_slot_key: ({ slot, field }) => m.keys[slot as KeySlot][field as KeyField],
@@ -502,7 +502,7 @@ export function createMockBackend(
       window.open(site[slot as KeySlot], "_blank", "noopener");
     },
     set_member_key: ({ value }) => {
-      m.member = String(value ?? "").trim();
+      m.member = (typeof value === "string" ? value : "").trim();
     },
     reveal_member_key: () => m.member,
     resolve_member_key: ({ accept }) => {

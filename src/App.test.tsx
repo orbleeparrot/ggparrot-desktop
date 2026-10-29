@@ -98,7 +98,7 @@ describe("매크로 추가", () => {
       expect(calledWith("add_run_from_library")).toEqual([["add_run_from_library", { fileName: "업비트.ggm.json" }]]),
     );
     await ready();
-    await pushState(
+    pushState(
       makeState({ runs: [makeSlot(), makeSlot({ id: "run-2", macro: upbitMacro, modeChoices: ["mock", "live"] })] }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -289,7 +289,7 @@ describe("활동 기록 · 개발자 로그", () => {
     fireEvent.click(screen.getByRole("button", { name: "설정" }));
     fireEvent.click(await screen.findByRole("switch", { name: "개발자 로그 보기" }));
     await waitFor(() => expect(calledWith("set_show_dev_log")).toEqual([["set_show_dev_log", { show: true }]]));
-    await pushState(makeState({ settings: makeSettings({ showDevLog: true }) }));
+    pushState(makeState({ settings: makeSettings({ showDevLog: true }) }));
     expect((screen.getByRole("switch", { name: "개발자 로그 보기" }) as HTMLElement).getAttribute("aria-checked")).toBe(
       "true",
     );

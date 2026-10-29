@@ -1,9 +1,0 @@
-dist/
-coverage/
-node_modules/
-src-tauri/
-package-lock.json
-docs/
-*.md
-.claude/
-scripts/*.swift

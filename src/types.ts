@@ -366,7 +366,16 @@ export interface AppState {
 }
 
 export type ActivityKind =
-  "start" | "signal" | "buy" | "sell" | "stop_loss" | "blocked" | "connection" | "error" | "stop" | "info";
+  | "start"
+  | "signal"
+  | "buy"
+  | "sell"
+  | "stop_loss"
+  | "blocked"
+  | "connection"
+  | "error"
+  | "stop"
+  | "info";
 
 export interface Activity {
   id: number;

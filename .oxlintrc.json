@@ -4,6 +4,10 @@
   "categories": {
     "correctness": "error"
   },
+  "options": {
+    "typeAware": true,
+    "maxWarnings": 0
+  },
   "env": {
     "browser": true,
     "es2022": true
@@ -13,13 +17,23 @@
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
     "react/button-has-type": "error",
-    "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
-    "preserve-caught-error": "error"
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "preserve-caught-error": "error",
+    "typescript/unbound-method": "off"
   },
   "overrides": [
     {
       "files": ["scripts/**", "*.config.*"],
-      "env": { "node": true, "browser": false }
+      "env": {
+        "node": true,
+        "browser": false
+      }
     }
   ],
   "ignorePatterns": ["dist/**", "coverage/**", "src-tauri/**", "docs/**", "tools/**"]

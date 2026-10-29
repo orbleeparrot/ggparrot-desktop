@@ -140,14 +140,14 @@ cd src-tauri && cargo test --workspace
 npm run test:e2e
 ```
 
-- 포맷은 Prettier(TS·CSS·JSON, 폭 120)와 rustfmt(폭 120)로 맞춤.
+- 포맷은 oxfmt(TS·CSS·JSON·YAML, 폭 120)와 rustfmt(폭 120)로 맞춤.
 - CI가 `format:check`로 확인함.
 
 ```bash
 npm run format
 ```
 
-- 린트는 oxlint(TS·React)와 clippy(Rust). 경고도 실패로 봄.
+- 린트는 oxlint(TS·React, 타입 정보 검사 포함)와 clippy(Rust). 경고도 실패로 봄.
 
 ```bash
 npm run lint

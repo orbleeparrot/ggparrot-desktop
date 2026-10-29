@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "dist/",
+    "coverage/",
+    "node_modules/",
+    "src-tauri/",
+    "package-lock.json",
+    "docs/",
+    "*.md",
+    ".claude/",
+    "scripts/*.swift"
+  ]
+}
