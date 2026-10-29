@@ -9,6 +9,19 @@
 - `main`에 머지하면 CI 뒤 그 버전의 릴리스 초안이 자동으로 만들어짐. 초안을 [Publish release]하면 배포되고 태그가 생김.
 - 서버 연동 레벨(`runner_version`으로 보냄)은 앱 버전의 가운데 숫자임(지금 21) — 서버가 기능별 최소 레벨과 비교하는 정수. 앱 버전은 `0.<서버 연동 레벨>.<패치>`.
 
+## [0.21.3]
+
+### 변경
+
+- 앱이 쓰는 구성 요소(창·업데이트·알림 처리, 화면 라이브러리, 저장소)를 최신 버전으로 올렸어요. 쓰는 방법은 그대로예요.
+
+### 개발
+
+- 열려 있던 Dependabot PR 9개(#18·#19·#22·#23·#28·#29·#30·#31·#32)를 한 PR로 합쳐 올림 — 따로 머지하면 잠금 파일끼리 충돌해 하나씩 다시 맞춰야 함.
+  - npm: `@tauri-apps/api`·`@tauri-apps/cli` 2.12.4, `react`·`react-dom` 19.3.1, `lucide-react` 1.64.0, `jsdom` 30.1.3, `vite` 8.3.5, `vitest` 5.0.5.
+  - Cargo: Tauri 플러그인 6개(`updater` 2.14.1·`clipboard-manager` 2.5.0 등), `tokio` 1.54.1, `uuid` 1.29.0, `rusqlite` 0.41(번들 SQLite `libsqlite3-sys` 0.39), Windows 클립보드 `clipboard-win` 5.4.3(5.4.1은 회수된 버전 — `cargo audit` 경고).
+- 동작 변경 없음 — 검사 전체(형식·린트·타입·vitest·Rust 테스트·clippy·e2e) 통과.
+
 ## [0.21.2]
 
 ### 추가
