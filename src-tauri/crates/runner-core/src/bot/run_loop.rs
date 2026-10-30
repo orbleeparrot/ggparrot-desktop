@@ -96,6 +96,13 @@ impl Bot {
                     // 서버가 받았다 — 보낸 만큼만 비운다(그 사이 새로 난 체결은 남긴다).
                     self.clear_sent_fills(engine, sent_fills);
                 }
+                // 구동 중 설정이 바뀌었으면 안전망을 새 값으로 다시 만듦. 이 자리인 이유:
+                // 아래에서 안전망을 보고 주문을 내기 **전**이라야 이번 틱부터 새 값이 걸림.
+                if let Some(settings) = reply.settings.as_ref() {
+                    if self.apply_settings(settings) {
+                        guard = self.risk_guard();
+                    }
+                }
             }
             // 하트비트를 기다리는 동안(최대 10초) 시세가 움직였을 수 있음 — 명령이 있으면 새 시세로 안전망을 다시 보고
             // 그 값으로 주문 크기를 정함.

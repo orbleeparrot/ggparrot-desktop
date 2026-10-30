@@ -11,6 +11,7 @@ import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
 import { DetailHeader } from "./DetailHeader";
 import { FinishedCard } from "./FinishedCard";
+import { LiveSettings } from "./LiveSettings";
 import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
 import { PreStartChecks } from "./PreStartChecks";
@@ -143,6 +144,8 @@ export function RunDetail({
         )}
 
         <MacroNotes slot={slot} blockerShown={blockerShown} />
+        {/* 돌고 있는 그대로 금액·조건 바꾸기 — 실행 중에만 보인다(끝난 실행은 서버가 칸을 주지 않는다). */}
+        <LiveSettings slot={slot} />
         {/* 실행 중에는 설명을 두지 않음(청산 막대가 기준을 그림으로 보임). 끝난 뒤에는 한 줄로 줄여 결과 카드를 밀어내지 않게. */}
         {m.summary && idle && (
           <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>

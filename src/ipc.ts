@@ -24,6 +24,21 @@ type RunArg = { runId: string };
  * - 실패하면 한국어 오류 문자열로 reject함.
  * - 이름 목록은 `scripts/commands.test.mjs`가 Rust 쪽과 같은지 확인함.
  */
+/** 구동 중 설정 변경 요청 — 바꾼 칸만 담는다(부분 수정). 값이 null 이면 그 규칙을 끈다. */
+export interface ChangeSettingsArgs extends RunArg {
+  changes: Record<string, Record<string, number | null>>;
+  applyMode: "immediate" | "next_entry";
+}
+
+/** 서버 응답. `applied`가 false면 "이 포지션 정리된 뒤부터"로 예약된 것이다. */
+export interface ChangeSettingsReply {
+  ok: boolean;
+  applied: boolean;
+  apply_mode: string;
+  summary: string;
+  note: string;
+}
+
 export interface CommandMap {
   // 실행
   get_state: { args: NoArgs; ret: AppState };
@@ -40,6 +55,10 @@ export interface CommandMap {
   start_run: { args: RunArg; ret: StartReply };
   start_run_confirmed: { args: RunArg; ret: StartReply };
   entry_preview: { args: RunArg; ret: EntryPreview };
+  /** 구동 중 설정 변경 — 서버가 받아 전략을 다시 세우고 기록을 남긴다. 실패하면 이유가 담긴 Error.
+   *  한 줄로 적는다 — scripts/commands.test.mjs 가 줄머리의 `이름:` 으로 명령을 세어, 여러 줄로
+   *  쓰면 args·ret 까지 명령으로 읽힌다. */
+  change_run_settings: { args: ChangeSettingsArgs; ret: ChangeSettingsReply };
   stop_run: { args: RunArg & { mode: StopMode }; ret: void };
   copy_activity: { args: RunArg; ret: void };
   open_market_page: { args: RunArg; ret: void };
