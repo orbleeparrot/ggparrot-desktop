@@ -13,7 +13,7 @@
   - 잡는 규칙: 정확성(correctness) 전체 + `any` 금지, 버튼 `type` 빠짐, 훅 규칙·의존성 배열, React 컴파일러 규칙(렌더 중 ref 읽기·시계 읽기·effect 안 동기 setState 등), 안 쓰는 변수(`_`로 시작하면 예외), 잡은 오류를 다시 던질 때 `cause`.
   - 렌더 중에 바꿔야 하는 값은 ref가 아니라 상태로 두고 조건부로 갱신함(`if (prev !== x) setPrev(x)`). 최신 콜백을 담는 ref는 effect에서 갱신함.
 - **인코딩·줄 끝:** UTF-8, LF(Windows 스크립트만 CRLF). `.gitattributes`가 강제.
-- **이름:** 화면 이름은 `껄무새`/`GGParrot`(띄어쓰기 없음, Windows 화면은 '껄무새'). 설치 폴더·레지스트리 영문 이름은 `GGParrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`는 바꾸지 않음. 서버 연동 레벨(server link level, `SERVER_LINK_LEVEL`, 서버 필드 `runner_version`, 앱 버전 가운데 숫자 — 지금 "20")은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림(서버가 기능별 최소 레벨로 기능을 열고 닫음). '버전'·'계약'·'프로토콜'이라 부르지 않음.
+- **이름:** 화면 이름은 `껄무새`/`GGParrot`(띄어쓰기 없음, Windows 화면은 '껄무새'). 설치 폴더·레지스트리 영문 이름은 `GGParrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`는 바꾸지 않음. 서버 연동 레벨(server link level, `SERVER_LINK_LEVEL`, 서버 필드 `runner_version`, 앱 버전 가운데 숫자 — 지금 "21")은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림(서버가 기능별 최소 레벨로 기능을 열고 닫음). '버전'·'계약'·'프로토콜'이라 부르지 않음.
 - **버전:** `src-tauri/Cargo.toml`의 `[workspace.package] version` 한 곳에만 적음. 두 크레이트는 물려받고, `tauri.conf.json`·`package.json`에는 적지 않음(`npm run check:versions`가 확인). 태그는 `v{버전}`.
 - **버전 올리기:** 앱 버전은 `0.<서버 연동 레벨>.<패치>`(지금 `0.20.x`). PR 하나에 패치를 하나 올림(`0.20.0` → `0.20.1`) — 브랜치에서 작업하는 동안은 올리지 않고 PR 마지막 커밋에서 올림. 서버 연동 레벨을 올리면 마이너를 그 숫자로 바꾸고 패치는 0부터(`0.20.5` → `0.21.0`). 서버 연동 레벨은 따로 적지 않고 빌드 때 마이너를 그대로 씀(`env!("CARGO_PKG_VERSION_MINOR")`) — 버전 한 곳만 바꾸면 됨. `CHANGELOG.md`에 그 버전 칸(`## [0.20.2]`)을 만들어 그 PR의 변경을 적음.
 - **변경 기록(`CHANGELOG.md`):** 버전 칸에서 릴리스 본문과 앱의 '바뀐 점'을 만듦. 지난 배포 뒤의 칸은 분류별로 합쳐지고, `### 개발`은 빠짐.
