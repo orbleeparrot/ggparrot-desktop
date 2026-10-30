@@ -220,6 +220,7 @@ pub fn run() {
             commands::set_run_mode,
             commands::start_run,
             commands::start_run_confirmed,
+            commands::change_run_settings,
             commands::stop_run,
             commands::copy_activity,
             commands::open_market_page,

@@ -23,7 +23,16 @@ impl Bot {
         let reply = self.heartbeat(&snap).await;
         self.apply_connection(&reply);
         self.apply_entry_wait(&reply);
+        self.send_settings(&reply);
         reply
+    }
+
+    /// 바꿀 수 있는 설정을 화면에 보냄. 끊긴 틱에는 보내지 않아 마지막 값이 남음.
+    pub(super) fn send_settings(&mut self, reply: &crate::server::HeartbeatReply) {
+        if reply.offline {
+            return;
+        }
+        let _ = self.tx.send(BotEvent::Settings(reply.settings.clone()));
     }
 
     /// 진입 대기를 화면에 보내고, 서버의 확인 시각이 바뀌면 활동 기록에 '조건 확인' 한 줄을 남김.

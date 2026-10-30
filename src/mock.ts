@@ -442,6 +442,19 @@ export function createMockBackend(
       const w = mockEntryWait(Date.now(), 0);
       return { waiting: true, sentence: w.sentence, typical: w.typical, interval_label: w.interval_label };
     },
+    // 모의 모드에서는 서버가 없다 — 요청을 받아 '바꾼 것처럼' 답만 한다(실제 반영은 서버 몫).
+    change_run_settings: ({ runId, applyMode }) => {
+      const run = findRun(runId).run;
+      const applied = applyMode === "immediate" || !run?.inPosition;
+      if (run?.liveSettings) run.liveSettings.changed_count += 1;
+      return {
+        ok: true,
+        applied,
+        apply_mode: applied ? "immediate" : "next_entry",
+        summary: "설정을 바꿨어요",
+        note: applied ? "실행기가 곧 반영해요" : "지금 포지션이 정리되면 적용해요",
+      };
+    },
     stop_run: ({ runId, mode }) => stop(findRun(runId), mode as StopMode),
     copy_activity: ({ runId }) => {
       const text = activityText(activity.get(String(runId)) ?? [], formatClock);

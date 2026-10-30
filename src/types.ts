@@ -112,6 +112,8 @@ export interface RunStatus {
   macroOrigin: string;
   /** 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보낸 값. 대기가 아니면 null. */
   entryWait: EntryWait | null;
+  /** 구동 중 바꿀 수 있는 설정 — 칸 목록은 **서버가 정한다**. 끝난 실행·옛 서버면 null. */
+  liveSettings: LiveSettings | null;
   /**
    * 매크로 조건 차트 — 앱이 **직접 판단할 때만** 있음(그때만 앱이 봉을 받음).
    * 봉은 거래소에서 받은 그대로, 선은 엔진이 낸 그대로. 화면은 겹쳐 그리기만 함.
@@ -122,6 +124,33 @@ export interface RunStatus {
   note: string;
   /** 끝났으면 종료 결과. 실행 중이면 null. */
   finished: null | { status: "stopped" | "error"; note: string; at: number };
+}
+
+/**
+ * 구동 중 바꿀 수 있는 설정 — 서버 하트비트의 settings 그대로(키는 서버 모양 snake_case).
+ *
+ * 칸 목록(`fields`)을 서버가 주는 이유: 무엇을 바꿀 수 있는지는 서버가 정한다. 앱이 따로
+ * 목록을 들면 두 벌이 되어, 화면에는 보이는데 서버가 거절하는 칸이 생긴다.
+ */
+export interface LiveSettings {
+  /** 지금 설정의 지문. 서버가 "실행기가 반영했다"를 이걸로 확인한다. */
+  digest: string;
+  /** 구동 중 설정을 바꾼 횟수. */
+  changed_count: number;
+  fields: LiveSettingField[];
+}
+
+export interface LiveSettingField {
+  /** "params.initial_capital" 꼴. 서버에 보낼 때 그대로 쓴다. */
+  path: string;
+  section: "params" | "risk";
+  key: string;
+  label: string;
+  value: number | null;
+  /** money | pct | ratio | hours | minutes | days | "" */
+  unit: string;
+  /** 비울 수 있는 칸인가(손절 끄기 등). */
+  clearable: boolean;
 }
 
 /**
