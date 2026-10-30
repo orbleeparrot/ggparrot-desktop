@@ -222,6 +222,7 @@ pub fn run() {
             commands::start_run_confirmed,
             commands::change_run_settings,
             commands::stop_run,
+            commands::stop_bundle,
             commands::copy_activity,
             commands::open_market_page,
             commands::open_slot_site,

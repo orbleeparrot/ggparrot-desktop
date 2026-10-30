@@ -152,6 +152,25 @@ impl Shared {
         self.copy_text(&text, FAILED)
     }
 
+    /// 묶음 전체를 멈춤 — 레그가 반만 남는 것이 가장 나쁨.
+    ///
+    /// 레그마다 평범한 종료를 걺(`stop_run`). 하나가 실패해도 나머지는 계속 걺 —
+    /// 되돌리려고 멈춘 것을 다시 띄우는 쪽이 더 위험함.
+    pub fn stop_bundle(self: &S, key: &str, mode: StopMode) -> usize {
+        let key = key.trim();
+        if key.is_empty() {
+            return 0;
+        }
+        let ids: Vec<String> = {
+            let c = self.lock();
+            c.runs.iter().filter(|r| r.bundle.as_ref().is_some_and(|b| b.key == key)).map(|r| r.id.clone()).collect()
+        };
+        for id in &ids {
+            self.stop_run(id, mode);
+        }
+        ids.len()
+    }
+
     pub fn stop_run(self: &S, id: &str, mode: StopMode) {
         {
             let mut c = self.lock();

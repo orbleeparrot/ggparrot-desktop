@@ -11,6 +11,7 @@ import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
 import { DetailHeader } from "./DetailHeader";
 import { FinishedCard } from "./FinishedCard";
+import { BundleBar } from "./BundleBar";
 import { LiveSettings } from "./LiveSettings";
 import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
@@ -143,6 +144,8 @@ export function RunDetail({
           />
         )}
 
+        {/* 묶음의 한 레그라는 안내 + 묶음 전체 종료 — 반만 남는 것이 가장 나쁨. */}
+        <BundleBar slot={slot} />
         <MacroNotes slot={slot} blockerShown={blockerShown} />
         {/* 돌고 있는 그대로 금액·조건 바꾸기 — 실행 중에만 보임(끝난 실행은 서버가 칸을 주지 않음). */}
         <LiveSettings slot={slot} />

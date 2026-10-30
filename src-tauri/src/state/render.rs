@@ -153,6 +153,7 @@ impl Core {
             status: StatusDto { text: status.0, tone: status.1.into() },
             attention: r.needs_attention(),
             waits: runner_core::server::is_waiting_macro(m),
+            bundle: r.bundle.clone(),
         }
     }
 
@@ -650,6 +651,9 @@ pub(crate) struct RunDto {
     attention: bool,
     /// 조건을 기다리는 매크로인지(`is_waiting_macro`) — 시작 전 화면의 '바로 사지 않아요'.
     waits: bool,
+    /// 묶음에서 갈라져 나온 줄이면 그 자리표 — 화면이 같은 묶음끼리 붙여 보이고,
+    /// 종료를 묶음 단위로 걸 때 씀. 단일 종목 실행은 None.
+    bundle: Option<RunBundle>,
 }
 
 #[derive(Serialize)]

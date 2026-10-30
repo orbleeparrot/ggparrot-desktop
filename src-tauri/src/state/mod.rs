@@ -289,16 +289,16 @@ pub struct Run {
     pub activity: Vec<ActivityDto>,
     pub reporter: Option<Arc<SetupProgressReporter>>,
     /// 묶음(포트폴리오)의 한 레그로 시작된 줄이면 어느 묶음의 몇 번째인지 (2026-10-30).
-    /// 묶음은 레그마다 **세션 하나 · 봇 하나 · 줄 하나**로 돈다 — 레그 하나는 지금까지
-    /// 돌려 온 단일 종목 실행과 똑같다. 이 값은 목록에서 같은 묶음끼리 붙여 보이고,
-    /// 종료를 묶음 단위로 걸 때만 쓴다.
+    /// 묶음은 레그마다 **세션 하나·봇 하나·줄 하나**로 돎 — 레그 하나는 지금까지
+    /// 돌려 온 단일 종목 실행과 똑같음. 이 값은 목록에서 같은 묶음끼리 붙여 보이고,
+    /// 종료를 묶음 단위로 걸 때만 씀.
     pub bundle: Option<RunBundle>,
 }
 
 /// 한 묶음에서 갈라져 나온 줄의 자리표.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct RunBundle {
-    /// 한 번의 시작 묶음에 같은 값. 실행기가 만들어 서버에 보낸다.
+    /// 한 번의 시작 묶음에 같은 값. 실행기가 만들어 서버에 보냄.
     pub key: String,
     pub index: usize,
     pub size: usize,

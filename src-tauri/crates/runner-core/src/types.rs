@@ -410,9 +410,9 @@ pub fn macro_symbol(m: &Value) -> String {
 
 /// 묶음(포트폴리오) 매크로의 레그 종목들. 묶음이 아니면 빈 목록.
 ///
-/// **여기서 자금을 쪼개지 않는다.** 비중 셈은 서버가 하고 실행기는 시작 응답의
-/// `leg_macro` 를 그대로 쓴다 — 양쪽이 따로 반올림하면 레그 금액의 합이 묶음 금액과
-/// 어긋난다. 이 함수는 "몇 개로 나뉘고 각 줄의 이름이 무엇인가" 만 읽는다.
+/// **여기서 자금을 쪼개지 않음.** 비중 셈은 서버가 하고 실행기는 시작 응답의
+/// `leg_macro`를 그대로 씀 — 양쪽이 따로 반올림하면 레그 금액의 합이 묶음 금액과
+/// 어긋남. 이 함수는 "몇 개로 나뉘고 각 줄의 이름이 무엇인가"만 읽음.
 pub fn macro_leg_symbols(m: &Value) -> Vec<String> {
     if let Some(legs) = m.get("legs").and_then(Value::as_array) {
         let out: Vec<String> = legs
@@ -430,17 +430,13 @@ pub fn macro_leg_symbols(m: &Value) -> Vec<String> {
         .get("symbols")
         .and_then(Value::as_array)
         .map(|rows| {
-            rows.iter()
-                .filter_map(Value::as_str)
-                .map(|s| s.trim().to_uppercase())
-                .filter(|s| !s.is_empty())
-                .collect()
+            rows.iter().filter_map(Value::as_str).map(|s| s.trim().to_uppercase()).filter(|s| !s.is_empty()).collect()
         })
         .unwrap_or_default();
     if out.len() > 1 { out } else { vec![] }
 }
 
-/// 묶음 한도가 걸렸는가 — 레그를 갈라 돌릴 수 없는 묶음이다(서버도 같은 이유로 거절함).
+/// 묶음 한도가 걸렸는가 — 레그를 갈라 돌릴 수 없는 묶음임(서버도 같은 이유로 거절함).
 pub fn macro_has_bundle_risk(m: &Value) -> bool {
     m.get("bundle_risk").is_some_and(|v| v.is_object())
 }
@@ -563,11 +559,10 @@ mod bundle_tests {
     #[test]
     fn a_single_symbol_macro_has_no_legs() {
         assert!(macro_leg_symbols(&json!({"symbol": "BTCUSDT"})).is_empty());
-        // 한 종목짜리 symbols·legs 는 묶음이 아니다 — 지금까지대로 한 줄로 돈다.
+        // 한 종목짜리 symbols·legs는 묶음이 아님 — 지금까지대로 한 줄로 돎.
         assert!(macro_leg_symbols(&json!({"symbol": "BTCUSDT", "symbols": ["BTCUSDT"]})).is_empty());
         assert!(
-            macro_leg_symbols(&json!({"symbol": "BTCUSDT", "legs": [{"symbol": "BTCUSDT", "weight": 100}]}))
-                .is_empty()
+            macro_leg_symbols(&json!({"symbol": "BTCUSDT", "legs": [{"symbol": "BTCUSDT", "weight": 100}]})).is_empty()
         );
     }
 

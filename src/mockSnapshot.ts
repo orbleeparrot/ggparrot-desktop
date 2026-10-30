@@ -257,6 +257,7 @@ export function snapshot(m: Model): AppState {
       status: statusOf(m, r),
       attention: attentionOf(r),
       waits: WAITING_STRATEGIES.includes(r.macro.strategy),
+      bundle: null,
     })),
     settings: {
       slots: SLOT_ORDER.map((s) => slotCard(m, s)),

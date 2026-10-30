@@ -127,6 +127,13 @@ pub fn stop_run(s: State<'_, S>, run_id: String, mode: String) -> R<()> {
     Ok(())
 }
 
+/// 묶음 전체 종료 — 레그가 반만 남는 것이 가장 나쁨. 멈춘 줄 수를 돌려줌.
+#[tauri::command]
+pub fn stop_bundle(s: State<'_, S>, bundle_key: String, mode: String) -> R<usize> {
+    let mode = StopMode::parse(&mode).ok_or("알 수 없는 종료 방식이에요.")?;
+    Ok(s.inner().stop_bundle(&bundle_key, mode))
+}
+
 #[tauri::command]
 pub fn copy_activity(s: State<'_, S>, run_id: String) -> R<()> {
     s.copy_activity(&run_id)

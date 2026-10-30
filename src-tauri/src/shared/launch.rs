@@ -23,7 +23,18 @@ pub(crate) struct LaunchJob {
     pub leg: Option<RunBundle>,
 }
 
-/// 묶음 한도가 걸린 묶음 — 서버도 같은 이유로 거절한다(app/runner_legs.py).
+/// 레그 하나의 시작 요청 본문. **매크로는 원본 그대로 둠** — 쪼개서 보내면 서명이
+/// 깨져 모든 묶음이 "고쳐서 돌린 파일"로 기록됨. 서버가 `leg_index`를 보고 나눔.
+pub(crate) fn leg_payload(base: &Value, symbol: &str, bundle: &RunBundle) -> Value {
+    let mut payload = base.clone();
+    payload["leg_index"] = json!(bundle.index);
+    payload["bundle_key"] = json!(bundle.key);
+    // 요청의 종목도 레그로 — 서버가 요청과 매크로가 어긋나면 막음.
+    payload["symbol"] = json!(symbol);
+    payload
+}
+
+/// 묶음 한도가 걸린 묶음 — 서버도 같은 이유로 거절함(app/runner_legs.py).
 pub(crate) const BUNDLE_RISK_HEAD: &str = "이 묶음은 아직 돌릴 수 없어요";
 pub(crate) const BUNDLE_RISK_BODY: &str =
     "묶음 한도(한 번에 n종목 · 총 노출)를 건 묶음은 종목마다 갈라 돌릴 수 없어요. 한도를 빼고 다시 시작해 주세요.";
@@ -170,13 +181,13 @@ impl Shared {
         StartReply::Started
     }
 
-    /// 묶음 — 레그마다 **줄 하나 · 세션 하나 · 봇 하나**. 레그 하나는 지금까지 돌려 온
-    /// 단일 종목 실행과 똑같다.
+    /// 묶음 — 레그마다 **줄 하나·세션 하나·봇 하나**. 레그 하나는 지금까지 돌려 온
+    /// 단일 종목 실행과 똑같음.
     ///
-    /// 서버에는 **원본 매크로를 그대로** 보내고 몇 번째 레그인지만 덧붙인다. 여기서
-    /// 쪼개 보내면 서명이 깨져 모든 묶음이 "고쳐서 돌린 파일" 로 기록된다. 봇을 세울
-    /// 레그 매크로는 시작 응답이 준다 — 자금 비중 셈을 양쪽에서 하면 레그 금액의 합이
-    /// 묶음 금액과 어긋난다.
+    /// 서버에는 **원본 매크로를 그대로** 보내고 몇 번째 레그인지만 덧붙임. 여기서
+    /// 쪼개 보내면 서명이 깨져 모든 묶음이 "고쳐서 돌린 파일"로 기록됨. 봇을 세울
+    /// 레그 매크로는 시작 응답이 줌 — 자금 비중 셈을 양쪽에서 하면 레그 금액의 합이
+    /// 묶음 금액과 어긋남.
     pub(crate) fn launch_bundle(self: &S, id: &str, legs: Vec<String>) -> StartReply {
         let base_job = match self.lock().launch_job(id) {
             Ok(job) => job,
@@ -185,12 +196,16 @@ impl Shared {
         if macro_has_bundle_risk(&base_job.macro_) {
             self.lock().start_failed(id, BUNDLE_RISK_HEAD, BUNDLE_RISK_BODY);
             self.emit();
-            return StartReply::Blocked { message: format!("{BUNDLE_RISK_HEAD}
-{BUNDLE_RISK_BODY}") };
+            return StartReply::Blocked {
+                message: format!(
+                    "{BUNDLE_RISK_HEAD}
+{BUNDLE_RISK_BODY}"
+                ),
+            };
         }
         let key = format!("bun-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
         let size = legs.len();
-        // 부모 줄은 여기서 '시작하는 중'을 푼다 — 실제로 도는 것은 아래 레그 줄들이다.
+        // 부모 줄은 여기서 '시작하는 중'을 풂 — 실제로 도는 것은 아래 레그 줄들임.
         {
             let mut c = self.lock();
             if let Some(r) = c.run_mut(id) {
@@ -212,11 +227,7 @@ impl Shared {
                 Some(leg_id) => leg_id,
                 None => continue,
             };
-            let mut payload = base_job.payload.clone();
-            payload["leg_index"] = json!(index);
-            payload["bundle_key"] = json!(key);
-            // 요청의 종목도 레그로 — 서버가 요청과 매크로가 어긋나면 막는다.
-            payload["symbol"] = json!(symbol);
+            let payload = leg_payload(&base_job.payload, symbol, &bundle);
             let job = LaunchJob {
                 id: leg_id,
                 payload,
@@ -236,8 +247,8 @@ impl Shared {
         StartReply::Started
     }
 
-    /// 레그 한 줄을 목록에 더한다. 매크로는 일단 원본 — 시작 응답이 레그 매크로를 주면
-    /// 그때 바꾼다(`launch_async`). 제목만 레그 종목으로 둬 목록이 헷갈리지 않게 한다.
+    /// 레그 한 줄을 목록에 더함. 매크로는 일단 원본 — 시작 응답이 레그 매크로를 주면
+    /// 그때 바꿈(`launch_async`). 제목만 레그 종목으로 둬 목록이 헷갈리지 않게 함.
     fn add_leg_run(self: &S, base: &LaunchJob, symbol: &str, bundle: &RunBundle) -> Option<String> {
         let leg_id = format!("run-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
         let mut c = self.lock();
@@ -303,7 +314,7 @@ impl Shared {
             self.emit();
             return;
         }
-        // 묶음이면 봇이 돌릴 것은 **서버가 준 레그 매크로**다 — 비중 셈은 서버가 한다.
+        // 묶음이면 봇이 돌릴 것은 **서버가 준 레그 매크로** — 비중 셈은 서버가 함.
         let leg_macro = started.get("leg_macro").filter(|v| v.is_object()).cloned();
         let LaunchJob { id, macro_, mode, creds, preflight, .. } = job;
         let macro_ = leg_macro.unwrap_or(macro_);
@@ -602,6 +613,55 @@ mod tests {
             start_error_text(&StartError::Network("key ggp_member_secret_value timed out".into()), &creds);
         assert_eq!(head, "서버에 연결하지 못했어요");
         assert!(!msg.contains("ggp_member_secret_value"), "{msg}");
+    }
+
+    // --- 묶음을 레그로 갈라 시작하기 (2026-10-30) ---------------------------
+
+    fn bundle_macro() -> Value {
+        json!({"symbol": "BTCUSDT", "rule_type": "F", "candle_interval": "1h",
+               "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]})
+    }
+
+    #[test]
+    fn a_leg_request_carries_the_whole_macro_and_only_says_which_leg() {
+        // 쪼개서 보내면 서명이 깨져 모든 묶음이 "고쳐서 돌린 파일"이 됨.
+        let base = json!({"symbol": "BTCUSDT", "macro": bundle_macro(), "testnet": true});
+        let bundle = RunBundle { key: "bun-1".into(), index: 1, size: 3 };
+        let out = leg_payload(&base, "ETHUSDT", &bundle);
+        assert_eq!(out["macro"], bundle_macro(), "매크로는 원본 그대로여야 한다");
+        assert_eq!(out["leg_index"], json!(1));
+        assert_eq!(out["bundle_key"], json!("bun-1"));
+        assert_eq!(out["symbol"], json!("ETHUSDT"), "요청 종목도 레그여야 서버가 안 막는다");
+        assert_eq!(out["testnet"], json!(true), "나머지 칸은 그대로");
+    }
+
+    #[test]
+    fn every_leg_of_one_start_shares_the_same_bundle_key() {
+        let base = json!({"symbol": "BTCUSDT", "macro": bundle_macro()});
+        let key = "bun-same";
+        let keys: Vec<Value> = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+            .iter()
+            .enumerate()
+            .map(|(index, symbol)| {
+                leg_payload(&base, symbol, &RunBundle { key: key.into(), index, size: 3 })["bundle_key"].clone()
+            })
+            .collect();
+        assert!(keys.iter().all(|k| k == &json!(key)), "{keys:?}");
+    }
+
+    #[test]
+    fn a_bundle_is_recognised_but_a_single_symbol_run_is_not() {
+        // launch()가 이 값으로 갈림길을 고름 — 단일 종목은 옛 길 그대로 감.
+        assert_eq!(macro_leg_symbols(&bundle_macro()).len(), 3);
+        assert!(macro_leg_symbols(&json!({"symbol": "BTCUSDT", "rule_type": "F"})).is_empty());
+    }
+
+    #[test]
+    fn a_bundle_with_a_limit_is_spotted_before_any_request_goes_out() {
+        let mut capped = bundle_macro();
+        capped["bundle_risk"] = json!({"max_positions": 1});
+        assert!(macro_has_bundle_risk(&capped));
+        assert!(!BUNDLE_RISK_BODY.is_empty());
     }
 
     fn core_with(macros: &[(&str, Value)]) -> Core {

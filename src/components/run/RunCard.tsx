@@ -98,12 +98,18 @@ function Coin({ m, compact, serverBase }: { m: MacroInfo; compact: boolean; serv
   );
 }
 
-/** 기본이 아닌 것만 배지 — 숏·실전·테스트넷. */
+/** 기본이 아닌 것만 배지 — 숏·실전·테스트넷·묶음. */
 function Badges({ slot }: { slot: RunSlot }) {
   return (
     <>
       {slot.macro.side === "short" && <span className="side side-short">{SIDE_LABELS.short}</span>}
       {slot.mode !== "mock" && <ModeBadge mode={slot.mode} />}
+      {/* 묶음의 한 레그 — 같은 묶음의 다른 줄이 따로 돌고 있다는 것을 목록에서 알 수 있게. */}
+      {slot.bundle && (
+        <span className="bundle-badge" title={`여러 종목 묶음 ${slot.bundle.size}종목 중 하나예요.`}>
+          묶음 {slot.bundle.index + 1}/{slot.bundle.size}
+        </span>
+      )}
     </>
   );
 }

@@ -29,8 +29,8 @@ use tauri_plugin_opener::OpenerExt;
 pub const WEB_URL: &str = "https://gg-parrot.vercel.app/";
 
 use crate::state::{
-    CAPITAL_LOCKED, CLAIM_BUSY_WAIT, Core, GuideStep, KeyCheckRecord, MEMBER_KEY_NEEDED, Notice, Run, RunData,
-    RunBundle, SavedRun, SlotStatus, StartReply, WizardTarget, now_ms,
+    CAPITAL_LOCKED, CLAIM_BUSY_WAIT, Core, GuideStep, KeyCheckRecord, MEMBER_KEY_NEEDED, Notice, Run, RunBundle,
+    RunData, SavedRun, SlotStatus, StartReply, WizardTarget, now_ms,
 };
 
 pub const EV_STATE: &str = "runner:state";
