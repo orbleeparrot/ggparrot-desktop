@@ -81,9 +81,5 @@ impl Levels {
 
 /// 0 이하 · 유한하지 않은 값은 선이 아니다 — 그리면 축이 망가진다.
 pub fn price(value: f64) -> Option<f64> {
-    if value.is_finite() && value > 0.0 {
-        Some(value)
-    } else {
-        None
-    }
+    if value.is_finite() && value > 0.0 { Some(value) } else { None }
 }

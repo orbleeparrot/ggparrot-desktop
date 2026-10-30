@@ -12,9 +12,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use super::{
-    cool, cooling, fee_inclusive, get_pos, is_close, lookup_delay, network_error, positive_f64, positive_number,
-    py_str, py_truthy, retry_after_secs, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide,
-    SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, LOOKUP_ATTEMPTS, TERMINAL_STATUSES,
+    Broker, BrokerError, DOMESTIC_BID_FEE_FALLBACK, FeePaid, LOOKUP_ATTEMPTS, LogFn, Order, OrderRules, OrderSide,
+    SubmitRequest, TERMINAL_STATUSES, cool, cooling, fee_inclusive, get_pos, is_close, lookup_delay, network_error,
+    positive_f64, positive_number, py_str, py_truthy, retry_after_secs,
 };
 use crate::money::{grouped, plain_number, price_text, qty_text};
 use crate::types::{Exchange, Market, Side};
@@ -188,11 +188,7 @@ pub fn explain_domestic_error(ex: Exchange, name: &str, message: &str) -> String
 
 /// 지원용 오류 코드 — 거래소 오류 이름. 이름이 없으면 HTTP 상태.
 pub fn domestic_error_code(status: u16, name: &str) -> String {
-    if name.is_empty() {
-        format!("HTTP {status}")
-    } else {
-        name.to_string()
-    }
+    if name.is_empty() { format!("HTTP {status}") } else { name.to_string() }
 }
 
 /// 잔고가 모자라 거절된 주문인지 여부(업비트 insufficient_funds_bid 등).
@@ -217,11 +213,7 @@ fn floor_plain(x: f64, places: u32) -> Option<String> {
     match Decimal::from_str(&text) {
         Ok(d) => {
             let q = d.round_dp_with_strategy(places, RoundingStrategy::ToZero);
-            if q.is_zero() {
-                None
-            } else {
-                Some(q.normalize().to_string())
-            }
+            if q.is_zero() { None } else { Some(q.normalize().to_string()) }
         }
         // Decimal 범위(28자리) 밖: 아주 작은 값은 0으로 내려가고, 아주 큰 값은 소수부가 없음.
         Err(_) => {
@@ -434,14 +426,12 @@ impl DomesticBroker {
     async fn get(&self, path: &str, params: &[(String, String)], private: bool) -> Result<Value, BrokerError> {
         // 요청 한도로 쉬는 중이면 공개 요청(시세)은 보내지 않음 — 같은 거래소로 나가는 모든 실행이 함께 쉼.
         // 주문·주문 조회는 막지 않음: 결과를 모르는 주문은 조회로 확인해야 함.
-        if !private {
-            if let Some(left) = cooling(&self.base) {
-                return Err(BrokerError::Api {
-                    status: 429,
-                    name: "too_many_requests".into(),
-                    message: format!("{} 요청 한도로 {left}초 쉬는 중이에요", self.label()),
-                });
-            }
+        if !private && let Some(left) = cooling(&self.base) {
+            return Err(BrokerError::Api {
+                status: 429,
+                name: "too_many_requests".into(),
+                message: format!("{} 요청 한도로 {left}초 쉬는 중이에요", self.label()),
+            });
         }
         let mut req = self.http.get(self.url(path, params));
         if private {
@@ -490,11 +480,7 @@ impl DomesticBroker {
 
     fn bid_rate(&self) -> f64 {
         let bid = self.fees.lock().unwrap().bid;
-        if bid != 0.0 {
-            bid
-        } else {
-            DOMESTIC_BID_FEE_FALLBACK
-        }
+        if bid != 0.0 { bid } else { DOMESTIC_BID_FEE_FALLBACK }
     }
 
     /// 시장가 주문 본문(보낸 순서 그대로). submit과 리허설이 같은 함수로 만듦.
@@ -753,12 +739,12 @@ impl Broker for DomesticBroker {
         let body = self.order_body(req.side, req.base_qty, req.notional, req.reduce_only, &req.client_id)?;
 
         let mut rejection = String::new();
-        if let Ok((status, text)) = self.post(self.spec.order_path, &body).await {
-            if (400..500).contains(&status) {
-                // 거래소가 오류 이름을 달아 돌려준 4xx만 '받지 않음'으로 봄.
-                if let Ok(parsed) = serde_json::from_str::<Value>(&text) {
-                    rejection = py_word(parsed.get("error").and_then(|e| e.get("name")));
-                }
+        if let Ok((status, text)) = self.post(self.spec.order_path, &body).await
+            && (400..500).contains(&status)
+        {
+            // 거래소가 오류 이름을 달아 돌려준 4xx만 '받지 않음'으로 봄.
+            if let Ok(parsed) = serde_json::from_str::<Value>(&text) {
+                rejection = py_word(parsed.get("error").and_then(|e| e.get("name")));
             }
         }
         // 타임아웃·5xx·이름 없는 4xx는 거절의 증거가 아님. 같은 client_id로 조회할 뿐 재주문은 없음.

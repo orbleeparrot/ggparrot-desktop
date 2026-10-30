@@ -1,7 +1,7 @@
 //! 앱 기록 — 알림 없이 남기는 앱 전체의 일, 앱 기록 읽기·복사.
 
 use super::*;
-use crate::state::{app_log_copy_text, AppLogEntry, ACTIVITY_COPY_CHARS};
+use crate::state::{ACTIVITY_COPY_CHARS, AppLogEntry, app_log_copy_text};
 
 impl Shared {
     /// 앱 기록에 한 줄 남기고 바로 화면으로 보냄(알림은 띄우지 않음). Core 잠금을 든 채 부르지 않음 —

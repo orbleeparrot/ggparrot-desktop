@@ -119,7 +119,7 @@
 
 ## 개발
 
-- 필요한 도구: Node 22.12 이상(`.nvmrc`는 24 LTS), Rust stable(`src-tauri/rust-toolchain.toml`).
+- 필요한 도구: Node 22.12 이상(`.nvmrc`는 26 LTS), Rust stable(`src-tauri/rust-toolchain.toml`).
 - macOS에서 설치 파일까지 만들려면 Xcode가 필요함.
 
 ```bash

@@ -99,11 +99,7 @@ fn krw_cursor(stamp_ms: i64, exchange: &str) -> String {
     let naive = chrono::DateTime::from_timestamp(secs, (millis as u32) * 1_000_000)
         .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).expect("epoch"));
     let text = naive.format("%Y-%m-%dT%H:%M:%S%.3f").to_string();
-    if bithumb {
-        text
-    } else {
-        format!("{text}+00:00")
-    }
+    if bithumb { text } else { format!("{text}+00:00") }
 }
 
 /// 국내 거래소 응답 한 줄 → [`Candle`].
@@ -270,11 +266,11 @@ impl CandleSource {
             let parsed: Vec<Candle> =
                 page.iter().map(|raw| krw_candle(raw, &self.interval, &self.exchange)).collect::<Result<_, _>>()?;
             let oldest = parsed.iter().map(|c| c.t).min().unwrap_or(i64::MAX);
-            if let Some(at) = cursor {
-                if oldest >= at {
-                    // 커서가 안 밀리면 같은 쪽을 맴돈다 — 무한 반복 대신 가진 것으로 끝낸다.
-                    break;
-                }
+            if let Some(at) = cursor
+                && oldest >= at
+            {
+                // 커서가 안 밀리면 같은 쪽을 맴돈다 — 무한 반복 대신 가진 것으로 끝낸다.
+                break;
             }
             let page_len = page.len();
             rows.extend(parsed.into_iter().map(|c| (c.t, c)));

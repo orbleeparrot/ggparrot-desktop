@@ -3,7 +3,7 @@
 //! - 메모리에만 둠(최근 [`APP_LOG_LIMIT`]줄). 앱을 끄면 사라짐.
 //! - 넣기 전에 키 값·인증 값을 가림([`Core::scrub`]) — 복사·문의용 정보에 그대로 나가므로.
 
-use super::{clip_chars, now_ms, Core, ACTIVITY_DETAIL_CHARS, ACTIVITY_TITLE_CHARS};
+use super::{ACTIVITY_DETAIL_CHARS, ACTIVITY_TITLE_CHARS, Core, clip_chars, now_ms};
 use serde::Serialize;
 
 /// 앱 기록 줄 수 한도 — 넘으면 오래된 줄부터 뺌.

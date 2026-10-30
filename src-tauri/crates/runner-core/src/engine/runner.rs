@@ -10,8 +10,8 @@ use serde_json::Value;
 
 use super::candle_sim::{Bar, CandleSim, Risk};
 use super::indicators::MaType;
-use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
-use super::levels::{price, Levels};
+use super::ledger::{Costs, Fill, Ledger, Side, is_exit};
+use super::levels::{Levels, price};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::indicator::{IndicatorRule, Signal};
@@ -96,11 +96,7 @@ fn risk_of(macro_: &Value) -> Risk {
 }
 
 fn side_of(macro_: &Value) -> Side {
-    if text(macro_, "position_side").eq_ignore_ascii_case("short") {
-        Side::Short
-    } else {
-        Side::Long
-    }
+    if text(macro_, "position_side").eq_ignore_ascii_case("short") { Side::Short } else { Side::Long }
 }
 
 /// 봉 기반 규칙 하나를 돌리는 엔진.

@@ -13,7 +13,7 @@
 //! 0 으로 돌아가 이미 채운 단계를 다시 산다.
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
-use crate::engine::levels::{price, Levels};
+use crate::engine::levels::{Levels, price};
 
 #[derive(Debug, Clone)]
 pub struct Martingale {

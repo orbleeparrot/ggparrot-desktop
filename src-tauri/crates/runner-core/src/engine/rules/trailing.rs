@@ -15,7 +15,7 @@
 //! (2026-10-12 KRW-CKB 제보가 그것이었다).
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
-use crate::engine::levels::{price, Levels};
+use crate::engine::levels::{Levels, price};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryMode {
@@ -71,20 +71,12 @@ impl Trailing {
 
     /// 지금 트레일이 발동해 있다면 그 손절선. 화면에 그리는 선이 이 값이다.
     pub fn trail_stop(&self) -> Option<f64> {
-        if self.armed && self.peak > 0.0 {
-            Some(self.peak * (1.0 - self.trail_percent / 100.0))
-        } else {
-            None
-        }
+        if self.armed && self.peak > 0.0 { Some(self.peak * (1.0 - self.trail_percent / 100.0)) } else { None }
     }
 
     /// 트레일이 켜지는 가격(평단 기준). 아직 안 켜졌을 때 화면에 그린다.
     pub fn activation_price(&self, avg_entry: f64) -> Option<f64> {
-        if self.armed || avg_entry <= 0.0 {
-            None
-        } else {
-            Some(avg_entry * (1.0 + self.activation_profit / 100.0))
-        }
+        if self.armed || avg_entry <= 0.0 { None } else { Some(avg_entry * (1.0 + self.activation_profit / 100.0)) }
     }
 
     /// 눌림목 진입을 노리는 가격. 보유 중이면 없다.
@@ -140,11 +132,7 @@ impl Strategy for Trailing {
             EntryMode::Dip => {
                 let reference = self.dip_ref.unwrap_or(bar.o);
                 let target = reference * (1.0 - self.entry_dip / 100.0);
-                if bar.l <= target {
-                    ctx.open_long(margin, target, bar.c, "진입")
-                } else {
-                    false
-                }
+                if bar.l <= target { ctx.open_long(margin, target, bar.c, "진입") } else { false }
             }
             EntryMode::Immediate => ctx.open_long(margin, bar.c, bar.c, "진입"),
         };

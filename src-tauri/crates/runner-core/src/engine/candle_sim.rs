@@ -199,15 +199,7 @@ impl SimContext<'_> {
 
     /// 전량 청산. `is_stop` 이면 쿨다운이 걸린다. `reason` 이 비면 기본 문구.
     pub fn close_all(&mut self, close: f64, mark: f64, is_stop: bool, reason: &str) -> bool {
-        let reason = if reason.is_empty() {
-            if is_stop {
-                "손절"
-            } else {
-                "청산"
-            }
-        } else {
-            reason
-        };
+        let reason = if reason.is_empty() { if is_stop { "손절" } else { "청산" } } else { reason };
         match self.ledger.close_all(close, mark, reason) {
             Some(fill) => {
                 *self.entry_time_ms = None;
@@ -256,22 +248,22 @@ impl SimContext<'_> {
         let mut forced = false;
 
         // 1) 손절 — 봉의 저가(숏은 고가)로 본다. 봉 안에서 스쳤다면 실제로는 체결됐다.
-        if let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0) {
-            if self.ledger.in_position() && self.ledger.stop_hit(bar.l, bar.h, sl) {
-                let avg = self.ledger.avg_entry();
-                let px =
-                    if self.ledger.side == Side::Short { avg * (1.0 + sl / 100.0) } else { avg * (1.0 - sl / 100.0) };
-                forced = self.close_all(px, px, true, "");
-            }
+        if let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0)
+            && self.ledger.in_position()
+            && self.ledger.stop_hit(bar.l, bar.h, sl)
+        {
+            let avg = self.ledger.avg_entry();
+            let px = if self.ledger.side == Side::Short { avg * (1.0 + sl / 100.0) } else { avg * (1.0 - sl / 100.0) };
+            forced = self.close_all(px, px, true, "");
         }
 
         // 2) 최대 보유시간 — 종가에 강제 청산.
-        if !forced {
-            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, *self.entry_time_ms) {
-                if self.ledger.in_position() && bar.t - entered >= (hours * MS_HOUR) as i64 {
-                    forced = self.close_all(bar.c, bar.c, false, "");
-                }
-            }
+        if !forced
+            && let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, *self.entry_time_ms)
+            && self.ledger.in_position()
+            && bar.t - entered >= (hours * MS_HOUR) as i64
+        {
+            forced = self.close_all(bar.c, bar.c, false, "");
         }
 
         // 3) 일일 손실 한도 — 청산하고 그날은 더 사지 않는다. 비어 있어도 중단은 건다.
@@ -411,12 +403,13 @@ impl<S: Strategy> CandleSim<S> {
     pub fn levels(&self, last_bar: Option<&Bar>) -> Levels {
         let avg = self.ledger.avg_entry();
         let mut out = self.strategy().levels(avg, last_bar);
-        if out.stop_loss.is_none() && self.ledger.in_position() {
-            if let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0) {
-                let line =
-                    if self.ledger.side == Side::Short { avg * (1.0 + sl / 100.0) } else { avg * (1.0 - sl / 100.0) };
-                out.stop_loss = super::levels::price(line);
-            }
+        if out.stop_loss.is_none()
+            && self.ledger.in_position()
+            && let Some(sl) = self.risk.stop_loss_pct.filter(|v| *v > 0.0)
+        {
+            let line =
+                if self.ledger.side == Side::Short { avg * (1.0 + sl / 100.0) } else { avg * (1.0 - sl / 100.0) };
+            out.stop_loss = super::levels::price(line);
         }
         out
     }

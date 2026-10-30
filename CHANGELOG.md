@@ -21,7 +21,15 @@
 - 편집기 권장 확장을 Prettier에서 oxc(`oxc.oxc-vscode`)로. 이제 JS·TS 도구는 번들(Rolldown)·변환·압축(Vite 8)·린트·포맷 모두 oxc 기반.
 - README를 0.21에 맞춤 — 서버 연동 레벨 21, 앱 판단(`decides: "local"`)과 서버 판단을 나눈 동작·역할 표, 기능 표(차트·테마·알림·[에이전트(web)]), 구조(`bot/`·`engine/`·`candles.rs`). 화면 스크린샷을 실제 앱으로 다시 찍고 첫 화면·다크 테마를 더함.
 - README에서 기능별 최소 레벨 목록(연결 6 등)을 뺌 — 서버가 정하는 값이라 이 저장소에서 확인할 수 없고 서버가 바꾸면 틀려짐. 코드 주석(`lib.rs`)에서도 뺌. `docs/conventions.md`의 지금 레벨 20 → 21.
-- 동작 변경 없음.
+- Rust edition 2021 → 2024(앱·`runner-core`·rustfmt). `cargo fix --edition`을 macOS·Windows(gnu) 두 대상으로 돌림.
+  - `gen`이 예약어가 되어 시험의 변수 이름을 `generation`으로.
+  - `std::env::set_var`가 `unsafe`가 되어 주문 상한 시험이 환경변수를 바꾸지 않게 고침 — 글자를 받는 `lowered_cap`으로 나눠 시험(다른 시험 스레드의 읽기와 겹치지 않음). 0·음수·NaN·빈 글자 경우를 더함.
+  - `if let` 연쇄가 가능해져 clippy `collapsible_if` 28곳을 `if … && let …`으로 합침(else 없는 곳만 — 동작 같음).
+  - rustfmt 2024 스타일로 다시 맞춤(가져오기 정렬 등).
+  - 꼬리 식의 임시 값 해제 순서가 바뀌는 곳 7곳 경고 — 모두 블록 끝에서 해제 순서만 바뀌고 사이에 도는 코드가 없어 그대로 둠.
+- Node 24 → 26 LTS(`.nvmrc` — CI·릴리스 빌드가 읽음). `@playwright/test` 1.63.0 → 1.64.1.
+- Dependabot에 `cooldown: default-days: 7`(npm·Cargo·GitHub Actions) — 새 버전이 나오고 7일 뒤에 PR을 엶. 배포 직후 회수·악성 버전을 피함. 보안 업데이트는 기다리지 않음.
+- 동작 변경 없음 — 형식·린트·타입·vitest 291개·Rust 테스트 495개(판단 계약 포함)·clippy(macOS·Windows 대상)·e2e 114개 통과.
 
 ## [0.21.3]
 

@@ -135,11 +135,7 @@ pub fn candle_interval_label(m: &Value) -> &'static str {
 /// %·시간 값을 소수 둘째 자리까지, 끝의 0 없이 — 5·2.5·0.33 (웹 `fmtPct`와 같음).
 pub fn pct_text(v: f64) -> String {
     let s = crate::money::round_away(v, 2).normalize().to_string();
-    if s == "-0" {
-        "0".into()
-    } else {
-        s
-    }
+    if s == "-0" { "0".into() } else { s }
 }
 
 /// 투자 금액을 바꿈. 다른 값은 건드리지 않음.

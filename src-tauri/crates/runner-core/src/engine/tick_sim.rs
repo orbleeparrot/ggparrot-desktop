@@ -12,7 +12,7 @@
 //! 진입 수수료를 실현손익에서 빼고, 봉 기계는 빼지 않는다(들어갈 때 이미 현금에서 나갔다).
 //! 그 차이를 한 장부에 욱여넣으면 어느 한쪽이 서버와 달라진다.
 
-use super::ledger::{buy_fill, is_exit, sell_fill, Costs, Fill, Side};
+use super::ledger::{Costs, Fill, Side, buy_fill, is_exit, sell_fill};
 
 const MS_HOUR: f64 = 3_600_000.0;
 const MS_MINUTE: f64 = 60_000.0;
@@ -200,10 +200,10 @@ impl TickSim {
             if self.stop_hit(price) {
                 return Some(self.close(price, price, now_ms, true));
             }
-            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, self.entry_time_ms) {
-                if now_ms - entered >= (hours * MS_HOUR) as i64 {
-                    return Some(self.close(price, price, now_ms, false));
-                }
+            if let (Some(hours), Some(entered)) = (self.risk.max_holding_hours, self.entry_time_ms)
+                && now_ms - entered >= (hours * MS_HOUR) as i64
+            {
+                return Some(self.close(price, price, now_ms, false));
             }
             if self.daily_loss_breached(price) {
                 let fill = self.close(price, price, now_ms, false);
@@ -359,26 +359,28 @@ impl DcaSim {
         let mut fill = None;
 
         // 쌓아 둔 물량의 손절 — 넣은 돈 대비로 본다.
-        if let Some(sl) = self.stop_loss_pct.filter(|v| *v > 0.0) {
-            if self.qty > 0.0 && !self.stopped && self.qty * price <= self.cost_basis * (1.0 - sl / 100.0) {
-                let f = sell_fill(price, self.costs.slippage_pct);
-                let proceeds = self.qty * f;
-                let traded = self.qty;
-                self.cash += proceeds - proceeds * self.costs.commission_pct / 100.0;
-                self.qty = 0.0;
-                self.cost_basis = 0.0;
-                self.stopped = true;
-                fill = Some(self.fill("sell", f, traded, price, "손절"));
-            }
+        if let Some(sl) = self.stop_loss_pct.filter(|v| *v > 0.0)
+            && self.qty > 0.0
+            && !self.stopped
+            && self.qty * price <= self.cost_basis * (1.0 - sl / 100.0)
+        {
+            let f = sell_fill(price, self.costs.slippage_pct);
+            let proceeds = self.qty * f;
+            let traded = self.qty;
+            self.cash += proceeds - proceeds * self.costs.commission_pct / 100.0;
+            self.qty = 0.0;
+            self.cost_basis = 0.0;
+            self.stopped = true;
+            fill = Some(self.fill("sell", f, traded, price, "손절"));
         }
 
         // 일일 한도 — 그날은 더 사지 않는다(들고 있는 것은 그대로. 적립식은 쥐고 간다).
-        if let Some(limit) = self.daily_max_loss_pct.filter(|v| *v > 0.0) {
-            if self.day_start_equity > 0.0 {
-                let drawdown = (self.equity(price) - self.day_start_equity) / self.day_start_equity * 100.0;
-                if drawdown <= -limit {
-                    self.halted_today = true;
-                }
+        if let Some(limit) = self.daily_max_loss_pct.filter(|v| *v > 0.0)
+            && self.day_start_equity > 0.0
+        {
+            let drawdown = (self.equity(price) - self.day_start_equity) / self.day_start_equity * 100.0;
+            if drawdown <= -limit {
+                self.halted_today = true;
             }
         }
 

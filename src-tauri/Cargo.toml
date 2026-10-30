@@ -17,7 +17,7 @@ async-trait = "0.1"
 [package]
 name = "ggparrot-desktop"
 version.workspace = true
-edition = "2021"
+edition = "2024"
 description = "GGParrot (껄무새)"
 default-run = "ggparrot-desktop"
 # 앱이라 crates.io에 올리지 않음.

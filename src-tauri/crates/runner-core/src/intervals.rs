@@ -38,11 +38,7 @@ pub fn step_ms(interval: &str) -> Option<i64> {
 /// 1시간 이하는 9시간이 간격의 배수라 결과가 0 이지만 식은 그대로 둔다(간격이 늘어나도 맞는다).
 pub fn grid_offset(exchange: &str, interval: &str) -> i64 {
     let Some(step) = step_ms(interval) else { return 0 };
-    if exchange.eq_ignore_ascii_case("bithumb") {
-        (-KST_SHIFT_MS).rem_euclid(step)
-    } else {
-        0
-    }
+    if exchange.eq_ignore_ascii_case("bithumb") { (-KST_SHIFT_MS).rem_euclid(step) } else { 0 }
 }
 
 /// `now_ms` 가 속한 봉이 열린 시각.

@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::types::{exchange_name_of, macro_leverage, macro_side, market_of};
 

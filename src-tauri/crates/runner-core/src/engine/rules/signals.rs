@@ -9,19 +9,15 @@
 use crate::engine::candle_sim::Bar;
 use crate::engine::indicators::{Bollinger, Ma, MaType, Rsi};
 use crate::engine::ledger::Side;
-use crate::engine::series::{bollinger_series, ma_series, rsi_oscillator, Oscillator, Series};
+use crate::engine::series::{Oscillator, Series, bollinger_series, ma_series, rsi_oscillator};
 use crate::money::{py_g, py_gp};
 
 use super::indicator::{Intent, Pending, Signal};
-use crate::engine::levels::{price, Indicator, Levels};
+use crate::engine::levels::{Indicator, Levels, price};
 
 /// 몇 봉 연속으로 조건이 맞아야 믿을 것인가. 1 이면 한 봉만 맞아도 된다.
 fn streak(hit: bool, current: u32) -> u32 {
-    if hit {
-        current + 1
-    } else {
-        0
-    }
+    if hit { current + 1 } else { 0 }
 }
 
 // --- F: RSI 문턱 ------------------------------------------------------------

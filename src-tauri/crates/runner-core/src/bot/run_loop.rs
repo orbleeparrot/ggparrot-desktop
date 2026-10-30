@@ -91,11 +91,11 @@ impl Bot {
                 }
                 None => self.report_status().await,
             };
-            if !reply.offline {
-                if let Some(engine) = local.as_mut() {
-                    // 서버가 받았다 — 보낸 만큼만 비운다(그 사이 새로 난 체결은 남긴다).
-                    self.clear_sent_fills(engine, sent_fills);
-                }
+            if !reply.offline
+                && let Some(engine) = local.as_mut()
+            {
+                // 서버가 받았다 — 보낸 만큼만 비운다(그 사이 새로 난 체결은 남긴다).
+                self.clear_sent_fills(engine, sent_fills);
             }
             // 하트비트를 기다리는 동안(최대 10초) 시세가 움직였을 수 있음 — 명령이 있으면 새 시세로 안전망을 다시 보고
             // 그 값으로 주문 크기를 정함.

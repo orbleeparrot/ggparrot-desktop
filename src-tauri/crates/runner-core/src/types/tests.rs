@@ -107,10 +107,10 @@ mod before_split {
             return rest.to_string();
         }
         for q in ["USDT", "BUSD", "USDC", "FDUSD"] {
-            if let Some(b) = s.strip_suffix(q) {
-                if !b.is_empty() {
-                    return b.to_string();
-                }
+            if let Some(b) = s.strip_suffix(q)
+                && !b.is_empty()
+            {
+                return b.to_string();
             }
         }
         s

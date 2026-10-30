@@ -4,18 +4,18 @@
 //! 두 경우 모두 stop_only(포지션 유지) / close_and_stop(청산 후)을 지원함.
 //! 진입/청산 판단은 서버가 함. 로컬에 남은 판단은 안전망(손절 %, 일일 손실, 최대 보유시간)뿐임.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::{Notify, mpsc};
 
 use crate::brokers::{
-    fee_inclusive, with_error_code, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker,
-    OrderSide, SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
+    BinanceBroker, Broker, BrokerError, DOMESTIC_BID_FEE_FALLBACK, DomesticBroker, FeePaid, LogFn, MockBroker,
+    OrderSide, SubmitRequest, VOLUME_DECIMALS, fee_inclusive, with_error_code,
 };
 use crate::clock::unix_ms;
-use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
+use crate::connection::{PreflightResult, preflight_fingerprint, safe_preflight_reason};
 use crate::log_kind::event_kind;
 use crate::money::{
     grouped, money, order_qty, pnl_amount, pnl_pct, price_text, py_g, py_gp, py_num, qty_full, qty_text, round_step,
@@ -24,8 +24,8 @@ use crate::money::{
 use crate::risk::RiskGuard;
 use crate::server::ServerClient;
 use crate::types::{
-    base_asset, exchange_label, exchange_name_of, macro_leverage, macro_side, market_of, order_cap, quote_of,
-    Credentials, Exchange, KeyPair, Market, RunMode, Side,
+    Credentials, Exchange, KeyPair, Market, RunMode, Side, base_asset, exchange_label, exchange_name_of,
+    macro_leverage, macro_side, market_of, order_cap, quote_of,
 };
 
 /// 손절·강제 청산 주문이 이만큼 연달아 실패하면 실행을 멈추고 사용자에게 넘김.
@@ -232,11 +232,7 @@ pub fn rehearsal_amounts(m: &Value, exchange_name: &str, broker: Option<&Arc<dyn
     let quote = quote_of(&crate::types::macro_symbol(m));
     let budget = smallest_entry_notional(m, leverage, market, quote);
     let domestic = Exchange::parse(exchange_name).is_some_and(Exchange::is_domestic);
-    if domestic {
-        (fee_inclusive(budget, bid_fee_rate(broker)), Some(budget))
-    } else {
-        (budget, None)
-    }
+    if domestic { (fee_inclusive(budget, bid_fee_rate(broker)), Some(budget)) } else { (budget, None) }
 }
 
 /// 마틴게일(H)이 국내 거래소 최소 주문 금액에 걸린 리허설 문구 — 투자 금액이 아니라 어느 칸이 작은지 말함.
@@ -421,11 +417,7 @@ impl Bot {
         let exchange_name = exchange_name_of(&macro_);
         let symbol = {
             let s = crate::types::macro_symbol(&macro_);
-            if s.is_empty() && macro_.get("symbol").is_none() {
-                "BTCUSDT".to_string()
-            } else {
-                s
-            }
+            if s.is_empty() && macro_.get("symbol").is_none() { "BTCUSDT".to_string() } else { s }
         };
         let quote = quote_of(&symbol);
         let side = macro_side(&macro_);
@@ -436,25 +428,25 @@ impl Bot {
             _ => order_cap(quote),
         };
         let logger = Logger::new(tx.clone(), server.clone(), credentials.clone());
-        if let Some(server) = &server {
-            if !server.has_event_warning() {
-                // 서버 → 봇 송신자를 약하게만 붙잡음. Logger를 담으면 서버 ↔ Logger 참조 순환이 생겨
-                // 봇 작업이 죽어도 채널이 닫히지 않고, 앱이 '예기치 않게 끝났어요' 정리를 하지 못함.
-                let weak = tx.downgrade();
-                let creds = credentials.clone();
-                server.set_event_warning(Arc::new(move |m: String| {
-                    let Some(tx) = weak.upgrade() else { return };
-                    let msg = crate::connection::mask_secrets(&m, &creds);
-                    let _ = tx.send(BotEvent::Log(msg.clone()));
-                    let _ = tx.send(BotEvent::Activity(ActivityEvent {
-                        kind: "connection",
-                        title: "실행 기록 보관에 문제가 생겼어요".into(),
-                        detail: msg.clone(),
-                        raw: msg,
-                        tone: "warn",
-                    }));
+        if let Some(server) = &server
+            && !server.has_event_warning()
+        {
+            // 서버 → 봇 송신자를 약하게만 붙잡음. Logger를 담으면 서버 ↔ Logger 참조 순환이 생겨
+            // 봇 작업이 죽어도 채널이 닫히지 않고, 앱이 '예기치 않게 끝났어요' 정리를 하지 못함.
+            let weak = tx.downgrade();
+            let creds = credentials.clone();
+            server.set_event_warning(Arc::new(move |m: String| {
+                let Some(tx) = weak.upgrade() else { return };
+                let msg = crate::connection::mask_secrets(&m, &creds);
+                let _ = tx.send(BotEvent::Log(msg.clone()));
+                let _ = tx.send(BotEvent::Activity(ActivityEvent {
+                    kind: "connection",
+                    title: "실행 기록 보관에 문제가 생겼어요".into(),
+                    detail: msg.clone(),
+                    raw: msg,
+                    tone: "warn",
                 }));
-            }
+            }));
         }
         Bot {
             macro_,

@@ -10,7 +10,7 @@ use runner_core::credentials::{KeyringStore, MemoryStore, SecretStore};
 use tauri::{DragDropEvent, Manager, RunEvent, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 
-use crate::shared::{Shared, S};
+use crate::shared::{S, Shared};
 
 fn secret_store() -> (Box<dyn SecretStore>, bool) {
     // 개발 빌드 전용: 키를 OS 키체인 대신 메모리에만 둠(시연·스크린샷용 임시 홈에서 실제 키체인을 건드리지 않게).
@@ -278,20 +278,19 @@ pub fn run() {
             return;
         }
         // ⌘Q·메뉴 종료도 창 닫기와 같은 규칙 — 실행 중인 매크로가 있으면 끄지 않음.
-        if let RunEvent::ExitRequested { api, code, .. } = event {
-            if code.is_none() {
-                if let Some(s) = handle.try_state::<S>() {
-                    let s = s.inner().clone();
-                    api.prevent_exit();
-                    if s.request_close() {
-                        // 웹 가이드에 '닫힘'을 알리고(최대 1.5초) 끔. exit(0)은 code가 있어 다시 막히지 않음.
-                        let h = handle.clone();
-                        tauri::async_runtime::spawn(async move {
-                            s.shutdown().await;
-                            h.exit(0);
-                        });
-                    }
-                }
+        if let RunEvent::ExitRequested { api, code, .. } = event
+            && code.is_none()
+            && let Some(s) = handle.try_state::<S>()
+        {
+            let s = s.inner().clone();
+            api.prevent_exit();
+            if s.request_close() {
+                // 웹 가이드에 '닫힘'을 알리고(최대 1.5초) 끔. exit(0)은 code가 있어 다시 막히지 않음.
+                let h = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    s.shutdown().await;
+                    h.exit(0);
+                });
             }
         }
     });

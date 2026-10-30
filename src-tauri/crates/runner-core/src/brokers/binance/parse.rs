@@ -2,8 +2,8 @@
 use serde_json::{Map, Value};
 
 use super::BinanceBroker;
-use crate::brokers::{get_pos, is_close, positive_number, py_str, py_truthy, FeePaid, Order, TERMINAL_STATUSES};
-use crate::types::{split_symbol, Market};
+use crate::brokers::{FeePaid, Order, TERMINAL_STATUSES, get_pos, is_close, positive_number, py_str, py_truthy};
+use crate::types::{Market, split_symbol};
 
 /// 바이낸스가 주문 조회에 돌려주는 '더 조회해도 같은' 상태. TERMINAL_STATUSES보다 넓음.
 const BINANCE_SETTLED: [&str; 5] = ["FILLED", "CANCELED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"];
@@ -141,18 +141,17 @@ impl BinanceBroker {
         let mut fills = response_fills;
         if self.market == Market::Spot && !closing && executed != 0.0 {
             let order_id = obj.get("orderId").filter(|v| !v.is_null());
-            if fills.is_empty() {
-                if let Some(order_id) = order_id {
-                    let id = py_str(order_id);
-                    let params = [("symbol", self.symbol.clone()), ("orderId", id.clone()), ("limit", "1000".into())];
-                    fills = match self.get(false, "/api/v3/myTrades", &params, true).await {
-                        Ok(Value::Array(trades)) => trades
-                            .into_iter()
-                            .filter(|t| py_str(t.get("orderId").unwrap_or(&Value::Null)) == id)
-                            .collect(),
-                        _ => Vec::new(),
-                    };
-                }
+            if fills.is_empty()
+                && let Some(order_id) = order_id
+            {
+                let id = py_str(order_id);
+                let params = [("symbol", self.symbol.clone()), ("orderId", id.clone()), ("limit", "1000".into())];
+                fills = match self.get(false, "/api/v3/myTrades", &params, true).await {
+                    Ok(Value::Array(trades)) => {
+                        trades.into_iter().filter(|t| py_str(t.get("orderId").unwrap_or(&Value::Null)) == id).collect()
+                    }
+                    _ => Vec::new(),
+                };
             }
             fees_known = !base_asset.is_empty()
                 && !fills.is_empty()

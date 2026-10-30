@@ -11,11 +11,11 @@
 //! (`local_fills`). 실행기가 판단하면 그 보고가 리더보드 · 수익률 · 활동 기록의 **유일한**
 //! 입구다. 서버가 명령을 내던 때는 '냈던 명령' 이라도 알았지만 이제는 아무것도 모른다.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::candles::{CandleError, CandleSource, ClosedCandleStream};
 use crate::engine::candle_sim::Bar;
-use crate::engine::runner::{build, command_from_fill, session_capital, BuildError, Engine};
+use crate::engine::runner::{BuildError, Engine, build, command_from_fill, session_capital};
 
 use super::*;
 

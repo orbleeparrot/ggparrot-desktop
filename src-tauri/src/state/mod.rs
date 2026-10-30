@@ -2,14 +2,14 @@
 //! 실행 슬롯(Run) 여러 개 + 설정(키 칸·회원 키) + 매크로 폴더 + 업데이트 + 연결 도우미.
 
 use runner_core::bot::{BotHandle, RunHealth, StopMode};
-use runner_core::connection::{binance_env, check_view, Check, CheckNotes, CheckView, PreflightResult, PublicIpCache};
-use runner_core::credentials::{LoadStatus, KEY_STORE_NAME};
+use runner_core::connection::{Check, CheckNotes, CheckView, PreflightResult, PublicIpCache, binance_env, check_view};
+use runner_core::credentials::{KEY_STORE_NAME, LoadStatus};
 use runner_core::library::LibraryEntry;
 use runner_core::money::pnl_amount;
 use runner_core::setup_progress::SetupProgressReporter;
 use runner_core::types::{
-    base_asset, exchange_label, exchange_name_of, macro_leverage, macro_side, macro_symbol, market_of, quote_of,
-    Credentials, Exchange, KeyPair, KeySlot, Market, RunMode, Side,
+    Credentials, Exchange, KeyPair, KeySlot, Market, RunMode, Side, base_asset, exchange_label, exchange_name_of,
+    macro_leverage, macro_side, macro_symbol, market_of, quote_of,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -655,10 +655,10 @@ impl Core {
     /// 이 슬롯을 시작할 때 봇에 줄 자격증명 — 모드에 맞는 칸의 키를 거래소 이름으로.
     pub fn run_credentials(&self, run: &Run) -> Credentials {
         let mut c = Credentials { member_key: self.member_key.trim().to_string(), ..Default::default() };
-        if let (Some(ex), Some(slot)) = (run.exchange(), run.key_slot()) {
-            if let Some(p) = self.slot_pair(slot) {
-                c.exchanges.insert(ex.as_str().into(), p);
-            }
+        if let (Some(ex), Some(slot)) = (run.exchange(), run.key_slot())
+            && let Some(p) = self.slot_pair(slot)
+        {
+            c.exchanges.insert(ex.as_str().into(), p);
         }
         c
     }
@@ -863,7 +863,7 @@ impl Core {
 }
 
 mod app_log;
-pub use app_log::{app_log_copy_text, AppLogEntry, SUPPORT_APP_LOG_LINES};
+pub use app_log::{AppLogEntry, SUPPORT_APP_LOG_LINES, app_log_copy_text};
 mod health;
 mod render;
 pub(crate) use render::finish_label;

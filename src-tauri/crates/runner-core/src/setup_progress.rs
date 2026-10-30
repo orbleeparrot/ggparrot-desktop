@@ -5,10 +5,10 @@
 //! 거래소 키·시크릿·IP 주소·오류 문장은 어떤 경로로도 실리지 않음.
 //! 보내기 실패는 조용히 버림. 앱 동작은 이 보고에 기대지 않음.
 use once_cell::sync::Lazy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::{watch, Notify};
+use tokio::sync::{Notify, watch};
 
 use crate::connection::Check;
 

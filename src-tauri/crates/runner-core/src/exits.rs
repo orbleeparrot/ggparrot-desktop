@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::macro_info::{pct_text, rule_type};
 use crate::money::positive;
-use crate::types::{macro_side, Side};
+use crate::types::{Side, macro_side};
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct ExitRule {

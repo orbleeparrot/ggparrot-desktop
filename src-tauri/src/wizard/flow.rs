@@ -15,11 +15,7 @@ pub fn flow(env: &str) -> &'static [&'static str] {
 
 /// 키를 넣는 단계 — 기존 키 길이면 기존 키 넣기, 아니면 키 복사.
 pub(super) fn key_stage(path: &str) -> &'static str {
-    if path == "existing" {
-        "existing"
-    } else {
-        "keys"
-    }
+    if path == "existing" { "existing" } else { "keys" }
 }
 
 /// [이전]으로 갈 단계. None이면 도우미를 닫음.

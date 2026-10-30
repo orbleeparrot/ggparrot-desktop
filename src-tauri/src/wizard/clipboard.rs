@@ -3,7 +3,7 @@
 use runner_core::connection::{clipboard_key, clipboard_key_is_secret};
 use std::time::Duration;
 
-use crate::shared::{Shared, S};
+use crate::shared::{S, Shared};
 use crate::state::WATCH_STAGES;
 
 const CLIPBOARD_MS: u64 = 400;

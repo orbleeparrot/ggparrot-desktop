@@ -1,17 +1,13 @@
 //! 실행 모드·거래소·시장·자격증명 모양과 매크로 헬퍼.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use crate::SERVER_LINK_LEVEL;
 
 pub const DEFAULT_SERVER_BASE: &str = "https://gg-parrot.onrender.com";
 pub const LOCAL_SERVER_BASE: &str = "http://127.0.0.1:8000";
-
-fn env_f64(name: &str, default: f64) -> f64 {
-    std::env::var(name).ok().and_then(|v| v.trim().parse::<f64>().ok()).unwrap_or(default)
-}
 
 /// 서버 주소. 개발 빌드는 환경변수 `GGP_SERVER_BASE`(실행 시) → 빌드 시 값 → 배포 서버.
 /// 배포판은 실행 시 환경변수를 읽지 않음 — 같은 사용자 권한의 다른 프로그램이 환경변수로 서버를 바꿔
@@ -30,21 +26,20 @@ pub fn server_base() -> String {
 
 /// 개발 빌드에서만 읽는 환경변수(배포판은 늘 None) — 회원 키·매크로 폴더처럼 바꾸면 위험한 값.
 pub fn dev_env(name: &str) -> Option<String> {
-    if cfg!(debug_assertions) {
-        std::env::var(name).ok()
-    } else {
-        None
-    }
+    if cfg!(debug_assertions) { std::env::var(name).ok() } else { None }
 }
 
 /// 환경변수로 상한을 정하되 기본값보다 낮추는 쪽만 받음 — 같은 사용자 권한의 다른 프로그램이 환경변수로
-/// 상한을 풀어 큰 실주문을 내게 하지 못하게. 숫자가 아니거나 0 이하·무한이면 기본값.
+/// 상한을 풀어 큰 실주문을 내게 하지 못하게.
 fn env_cap(name: &str, default: f64) -> f64 {
-    let v = env_f64(name, default);
-    if v.is_finite() && v > 0.0 {
-        v.min(default)
-    } else {
-        default
+    lowered_cap(std::env::var(name).ok().as_deref(), default)
+}
+
+/// 환경변수 글자 → 상한. 기본값보다 낮은 값만 받고, 없거나 숫자가 아니거나 0 이하·무한이면 기본값.
+fn lowered_cap(raw: Option<&str>, default: f64) -> f64 {
+    match raw.and_then(|v| v.trim().parse::<f64>().ok()) {
+        Some(v) if v.is_finite() && v > 0.0 => v.min(default),
+        _ => default,
     }
 }
 
@@ -177,11 +172,7 @@ impl KeySlot {
     }
     /// 이 칸으로 하는 연결 확인의 모드 — 연습 칸은 테스트넷 모드(연습 주소), 나머지는 실거래.
     pub fn check_mode(self) -> RunMode {
-        if self.is_practice() {
-            RunMode::Testnet
-        } else {
-            RunMode::Live
-        }
+        if self.is_practice() { RunMode::Testnet } else { RunMode::Live }
     }
     /// 연결 도우미가 안내하는 바이낸스 사이트(`connection::binance_env`). 국내는 "".
     pub fn binance_env(self) -> &'static str {
@@ -329,11 +320,7 @@ pub enum Side {
 
 impl Side {
     pub fn parse(s: &str) -> Side {
-        if s.trim().eq_ignore_ascii_case("short") {
-            Side::Short
-        } else {
-            Side::Long
-        }
+        if s.trim().eq_ignore_ascii_case("short") { Side::Short } else { Side::Long }
     }
     pub fn as_str(self) -> &'static str {
         match self {
@@ -370,11 +357,7 @@ pub struct Credentials {
 
 /// 디버그 출력·패닉 메시지에 키가 찍히지 않게 값은 감춤(채워졌는지만).
 fn redacted(v: &str) -> &'static str {
-    if v.trim().is_empty() {
-        "<empty>"
-    } else {
-        "<redacted>"
-    }
+    if v.trim().is_empty() { "<empty>" } else { "<redacted>" }
 }
 
 impl std::fmt::Debug for KeyPair {
@@ -459,20 +442,12 @@ pub fn exchange_key_needed_message(label: &str) -> String {
 
 /// 호가 통화 — 국내는 `KRW-BTC`, 바이낸스는 `BTCUSDT`.
 pub fn quote_of(symbol: &str) -> &'static str {
-    if symbol.trim().to_uppercase().starts_with("KRW-") {
-        "KRW"
-    } else {
-        "USDT"
-    }
+    if symbol.trim().to_uppercase().starts_with("KRW-") { "KRW" } else { "USDT" }
 }
 
 /// 1회 주문 상한. 상한은 늘 통화와 함께 다님.
 pub fn order_cap(quote: &str) -> f64 {
-    if quote.eq_ignore_ascii_case("KRW") {
-        max_order_krw()
-    } else {
-        max_order_usdt()
-    }
+    if quote.eq_ignore_ascii_case("KRW") { max_order_krw() } else { max_order_usdt() }
 }
 
 /// 거래소까지 본 시장. 국내는 원화 현물뿐.
@@ -480,11 +455,7 @@ pub fn market_of(exchange: &str, side: Side, leverage: u32) -> Market {
     if !exchange.eq_ignore_ascii_case("binance") {
         return Market::Spot;
     }
-    if side == Side::Short || leverage > 1 {
-        Market::Futures
-    } else {
-        Market::Spot
-    }
+    if side == Side::Short || leverage > 1 { Market::Futures } else { Market::Spot }
 }
 
 /// 서버에 올리는 세션 시작 payload. 거래소 키·시크릿은 들어가지 않음.
@@ -523,12 +494,13 @@ mod cap_tests {
 
     #[test]
     fn caps_from_the_environment_can_only_be_lowered() {
+        // 환경변수를 바꾸지 않고 글자로 시험함 — set_var는 다른 시험 스레드의 읽기와 겹치면 안전하지 않음.
         assert_eq!(env_cap("GGP_TEST_CAP_UNSET", 100.0), 100.0);
-        std::env::set_var("GGP_TEST_CAP_HIGH", "1e9");
-        assert_eq!(env_cap("GGP_TEST_CAP_HIGH", 100.0), 100.0, "높이는 값은 무시");
-        std::env::set_var("GGP_TEST_CAP_LOW", "20");
-        assert_eq!(env_cap("GGP_TEST_CAP_LOW", 100.0), 20.0);
-        std::env::set_var("GGP_TEST_CAP_BAD", "inf");
-        assert_eq!(env_cap("GGP_TEST_CAP_BAD", 100.0), 100.0);
+        assert_eq!(lowered_cap(None, 100.0), 100.0);
+        assert_eq!(lowered_cap(Some("1e9"), 100.0), 100.0, "높이는 값은 무시");
+        assert_eq!(lowered_cap(Some(" 20 "), 100.0), 20.0);
+        for bad in ["inf", "NaN", "0", "-5", "abc", ""] {
+            assert_eq!(lowered_cap(Some(bad), 100.0), 100.0, "{bad:?}");
+        }
     }
 }

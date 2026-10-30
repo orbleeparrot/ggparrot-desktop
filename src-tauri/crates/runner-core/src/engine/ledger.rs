@@ -55,11 +55,7 @@ pub fn is_exit(side: &str) -> bool {
 }
 
 fn default_reason(side: &str) -> &'static str {
-    if is_exit(side) {
-        "청산"
-    } else {
-        "진입"
-    }
+    if is_exit(side) { "청산" } else { "진입" }
 }
 
 /// 살 때는 불리하게(비싸게) 체결된다 — 시장가라 호가를 올라타기 때문이다.

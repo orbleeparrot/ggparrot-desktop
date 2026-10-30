@@ -26,7 +26,7 @@
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::ledger::Side;
-use crate::engine::levels::{price, Levels};
+use crate::engine::levels::{Levels, price};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {

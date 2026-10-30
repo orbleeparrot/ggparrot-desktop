@@ -9,7 +9,7 @@
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::ledger::Side;
-use crate::engine::levels::{price, Levels};
+use crate::engine::levels::{Levels, price};
 use crate::engine::series::{Oscillator, Series};
 
 /// 다음 봉에 할 일.
@@ -145,10 +145,10 @@ impl<S: Signal> Strategy for IndicatorRule<S> {
 
     fn levels(&self, avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
         let mut out = self.signal.levels();
-        if avg_entry > 0.0 {
-            if let Some(tp) = self.take_profit {
-                out.exit_target = price(avg_entry * (1.0 + tp / 100.0));
-            }
+        if avg_entry > 0.0
+            && let Some(tp) = self.take_profit
+        {
+            out.exit_target = price(avg_entry * (1.0 + tp / 100.0));
         }
         out
     }

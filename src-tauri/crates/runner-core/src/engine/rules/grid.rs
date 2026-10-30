@@ -132,10 +132,12 @@ impl Strategy for Grid {
                 continue;
             }
             let buy_price = self.levels[level];
-            if bar.l <= buy_price && buy_price <= self.upper && ctx.cash() >= self.per_grid {
-                if let Some(lot_id) = ctx.open_lot(self.per_grid, buy_price, bar.c, "진입") {
-                    self.holdings.insert(level, lot_id);
-                }
+            if bar.l <= buy_price
+                && buy_price <= self.upper
+                && ctx.cash() >= self.per_grid
+                && let Some(lot_id) = ctx.open_lot(self.per_grid, buy_price, bar.c, "진입")
+            {
+                self.holdings.insert(level, lot_id);
             }
         }
     }

@@ -36,11 +36,7 @@ pub enum ClaimError {
 
 /// 426 안내에서 화면에 보일 글자만 남김 — 주소·제어 문자가 섞이면 버리고 기본 안내를 씀.
 fn update_detail(detail: String) -> String {
-    if detail.contains("://") || detail.chars().any(char::is_control) {
-        String::new()
-    } else {
-        detail
-    }
+    if detail.contains("://") || detail.chars().any(char::is_control) { String::new() } else { detail }
 }
 
 /// 티켓 교환. 426(업데이트 필요)만 서버 안내를 돌려주고, 다른 실패는 이유를 숨김.

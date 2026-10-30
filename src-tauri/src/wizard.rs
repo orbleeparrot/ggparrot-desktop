@@ -8,8 +8,8 @@ use runner_core::connection;
 
 use runner_core::types::KeySlot;
 
-use crate::shared::{Shared, S};
-use crate::state::{Wizard, WizardTarget, WATCH_STAGES};
+use crate::shared::{S, Shared};
+use crate::state::{WATCH_STAGES, Wizard, WizardTarget};
 
 mod clipboard;
 mod flow;
@@ -267,10 +267,10 @@ impl Shared {
             );
             return;
         }
-        if self.wizard_open_page(true) {
-            if let Some(w) = self.lock().wizard.as_mut() {
-                w.advance_on_return = if env.is_empty() { "perm" } else { "check" }.into();
-            }
+        if self.wizard_open_page(true)
+            && let Some(w) = self.lock().wizard.as_mut()
+        {
+            w.advance_on_return = if env.is_empty() { "perm" } else { "check" }.into();
         }
     }
 

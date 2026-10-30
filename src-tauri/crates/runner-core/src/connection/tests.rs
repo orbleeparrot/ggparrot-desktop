@@ -468,9 +468,9 @@ fn unsaved_edited_mock_failed_or_stale_checks_cannot_create_history() {
     assert!(h.updated(None, None, None, Some(h.check_at(true, -100.0)), RunMode::Live).is_none());
     assert!(h.updated(None, None, Some(h.ip_at(true, "8.8.8.8", -100.0, 1710000000.0)), None, RunMode::Live).is_none());
     assert!(h.updated(None, None, Some(h.ip_at(false, "", 100.0, 1710000000.0)), None, RunMode::Live).is_none());
-    assert!(h
-        .updated(None, None, Some(h.ip_at(true, "192.168.1.2", 100.0, 1710000000.0)), None, RunMode::Live)
-        .is_none());
+    assert!(
+        h.updated(None, None, Some(h.ip_at(true, "192.168.1.2", 100.0, 1710000000.0)), None, RunMode::Live).is_none()
+    );
     assert!(h.updated(None, None, Some(h.ip_at(true, "8.8.8.8", 100.0, f64::NAN)), None, RunMode::Live).is_none());
     // binance is not a domestic exchange with an allow-list page
     let mut binance = History::new();

@@ -291,9 +291,10 @@ mod tests {
         assert_eq!(a.body, "지금 평가손익 +2.20% (수수료 전)");
         // 수수료 반영 값이 있으면 그 값으로 — 가격은 +2% 를 넘었어도 수수료를 빼면 아직이면 조용함
         let mut c = core_running();
-        assert!(c
-            .apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 2.1, "unrealized_net_pct": 1.9}))
-            .is_none());
+        assert!(
+            c.apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 2.1, "unrealized_net_pct": 1.9}))
+                .is_none()
+        );
     }
 
     #[tokio::test]

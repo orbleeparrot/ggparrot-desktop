@@ -324,11 +324,7 @@ impl Shared {
     pub fn reveal_slot_key(&self, slot: KeySlot, field: &str) -> String {
         let c = self.lock();
         let k = &c.slot(slot).keys;
-        if field == "access" {
-            k.api_key.clone()
-        } else {
-            k.api_secret.clone()
-        }
+        if field == "access" { k.api_key.clone() } else { k.api_secret.clone() }
     }
 
     pub fn set_member_key(self: &S, value: String) {

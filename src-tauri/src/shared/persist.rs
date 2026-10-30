@@ -86,16 +86,16 @@ impl Shared {
                 });
             }
         }
-        if let Ok(text) = std::fs::read_to_string(self.prefs_path()) {
-            if let Ok(v) = serde_json::from_str::<Value>(&text) {
-                c.show_dev_log = v.get("show_dev_log").and_then(Value::as_bool).unwrap_or(false);
-                c.close_to_tray = v.get("close_to_tray").and_then(Value::as_bool).unwrap_or(true);
-                c.notify = v.get("notify_fills").and_then(Value::as_bool).unwrap_or(true);
-                let last = v.get("last_version").and_then(Value::as_str).unwrap_or("");
-                if is_newer(&self.version, last) {
-                    c.update.updated_from = last.to_string();
-                    c.push_app_log("info", "update", &format!("v{last}에서 v{}으로 업데이트했어요", self.version), "");
-                }
+        if let Ok(text) = std::fs::read_to_string(self.prefs_path())
+            && let Ok(v) = serde_json::from_str::<Value>(&text)
+        {
+            c.show_dev_log = v.get("show_dev_log").and_then(Value::as_bool).unwrap_or(false);
+            c.close_to_tray = v.get("close_to_tray").and_then(Value::as_bool).unwrap_or(true);
+            c.notify = v.get("notify_fills").and_then(Value::as_bool).unwrap_or(true);
+            let last = v.get("last_version").and_then(Value::as_str).unwrap_or("");
+            if is_newer(&self.version, last) {
+                c.update.updated_from = last.to_string();
+                c.push_app_log("info", "update", &format!("v{last}에서 v{}으로 업데이트했어요", self.version), "");
             }
         }
         // 이번 버전을 기록해 둠(다음 실행에서 업데이트 여부를 앎).

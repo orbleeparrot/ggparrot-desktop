@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use crate::macro_info::{rule_type, strategy_label, unsupported_reason};
-use crate::types::{exchange_label, exchange_name_of, macro_leverage, macro_side, macro_symbol, Exchange};
+use crate::types::{Exchange, exchange_label, exchange_name_of, macro_leverage, macro_side, macro_symbol};
 
 /// 이보다 큰 파일은 매크로로 읽지 않음.
 pub const MAX_FILE_BYTES: u64 = 256 * 1024;
@@ -88,11 +88,7 @@ fn safe_name(name: &str) -> Result<&str, String> {
         && name != ".."
         && !name.contains('\0')
         && is_macro_file(name);
-    if ok {
-        Ok(name)
-    } else {
-        Err("매크로 폴더에 있는 파일이 아니에요.".into())
-    }
+    if ok { Ok(name) } else { Err("매크로 폴더에 있는 파일이 아니에요.".into()) }
 }
 
 /// 매크로로 읽히는지. 읽히면 매크로 원문, 아니면 사람이 읽을 이유.
@@ -255,12 +251,11 @@ pub fn import(dir: &Path, src: &Path) -> Result<String, String> {
     parse_macro(&text)?;
     fs::create_dir_all(dir).map_err(|_| "매크로 폴더를 만들지 못했어요.".to_string())?;
     let target_base = format!("{}{MACRO_EXT}", title_of(&file_name));
-    if is_macro_file(&file_name) {
-        if let (Ok(a), Ok(b)) = (src.parent().map(fs::canonicalize).transpose(), fs::canonicalize(dir)) {
-            if a.as_deref() == Some(b.as_path()) {
-                return Ok(file_name);
-            }
-        }
+    if is_macro_file(&file_name)
+        && let (Ok(a), Ok(b)) = (src.parent().map(fs::canonicalize).transpose(), fs::canonicalize(dir))
+        && a.as_deref() == Some(b.as_path())
+    {
+        return Ok(file_name);
     }
     write_new(dir, &target_base, text.as_bytes())
 }
@@ -314,11 +309,7 @@ fn strategy_slug(rule_type: &str) -> String {
 fn name_part(value: &str, fallback: &str) -> String {
     let kept: String = value.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(48).collect();
     let trimmed = kept.trim_matches('-');
-    if trimmed.is_empty() {
-        fallback.into()
-    } else {
-        trimmed.into()
-    }
+    if trimmed.is_empty() { fallback.into() } else { trimmed.into() }
 }
 
 /// JS `String(v)`에 가까운 글자 — 문자열·숫자만. 나머지는 빈 문자열.

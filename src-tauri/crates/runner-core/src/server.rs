@@ -1,17 +1,17 @@
 //! 서버 연동 클라이언트 — 회원 키로 인증하고 구동 상태·명령 결과·실행 기록만 보냄(거래소 키는 절대 안 보냄).
 //! 세션 시작·heartbeat·종료 보고, 서버 오류 문장·재시도 대기 읽기, 티켓 교환·다운로드 정보.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::SERVER_LINK_LEVEL;
 use crate::brokers::LogFn;
 use crate::outbox::{self, EventOutbox};
 use crate::protocol::PROTOCOL_CLAIM_PATH;
-use crate::SERVER_LINK_LEVEL;
 
 pub const START_ATTEMPTS: usize = 4;
 pub const MAX_RETRIES: usize = 3;
@@ -722,7 +722,7 @@ impl ServerClient {
 mod claim;
 mod preview;
 mod recovery;
-pub use claim::{claim_ticket, ClaimError, ClaimedLaunch};
+pub use claim::{ClaimError, ClaimedLaunch, claim_ticket};
 pub use preview::{entry_preview, is_waiting_macro};
 
 #[cfg(test)]

@@ -19,10 +19,10 @@ impl Bot {
             }
             if self.in_position {
                 self.log("청산 후 종료 요청 — 보유 포지션을 정리해요.");
-                if let Ok(broker) = self.broker() {
-                    if let Ok(p) = broker.price().await {
-                        self.last_price = p;
-                    }
+                if let Ok(broker) = self.broker()
+                    && let Ok(p) = broker.price().await
+                {
+                    self.last_price = p;
                 }
                 // 분명히 실패하면(요청 한도로 쉬는 중·일시 거절) 잠깐 기다렸다 다시 — 한 번 실패로 포지션을 남기고 끝내지 않게.
                 // 결과를 모르는 주문이 생기면 더 주문하지 않음.

@@ -101,11 +101,7 @@ impl Shared {
                 return;
             }
             c.slot_mut(slot).busy_fp = None;
-            if fp != c.slot_fingerprint(slot) {
-                (true, None)
-            } else {
-                (false, c.store_slot_check(slot, fp, &result))
-            }
+            if fp != c.slot_fingerprint(slot) { (true, None) } else { (false, c.store_slot_check(slot, fp, &result)) }
         };
         self.after_connected(connected);
         if reschedule {

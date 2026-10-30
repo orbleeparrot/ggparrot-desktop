@@ -92,14 +92,14 @@ impl Bot {
     }
 
     pub(super) async fn rehearse(&mut self) -> bool {
-        if let Some(prepared) = self.preflight.take() {
-            if prepared.matches(&preflight_fingerprint(&self.macro_, self.mode, &self.credentials)) {
-                self.log(format!("주문 전 확인: {}", prepared.reason));
-                // 이 실행의 어댑터가 준비하며 읽은 잔고가 있으면 그게 더 새로움(국내는 주문 가능 정보에 잔고가 옴).
-                let fresh = self.broker().map(|b| b.balance_note()).unwrap_or_default();
-                self.balance_activity(if fresh.is_empty() { &prepared.balance } else { &fresh });
-                return true;
-            }
+        if let Some(prepared) = self.preflight.take()
+            && prepared.matches(&preflight_fingerprint(&self.macro_, self.mode, &self.credentials))
+        {
+            self.log(format!("주문 전 확인: {}", prepared.reason));
+            // 이 실행의 어댑터가 준비하며 읽은 잔고가 있으면 그게 더 새로움(국내는 주문 가능 정보에 잔고가 옴).
+            let fresh = self.broker().map(|b| b.balance_note()).unwrap_or_default();
+            self.balance_activity(if fresh.is_empty() { &prepared.balance } else { &fresh });
+            return true;
         }
         let broker = match self.broker() {
             Ok(b) => b,

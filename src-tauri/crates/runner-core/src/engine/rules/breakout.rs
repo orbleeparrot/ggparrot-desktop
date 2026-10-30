@@ -14,7 +14,7 @@
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::indicators::{Ma, MaType};
-use crate::engine::levels::{price, Levels};
+use crate::engine::levels::{Levels, price};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExitMode {
@@ -167,16 +167,16 @@ impl Strategy for Breakout {
                 // next_open 은 다음 봉 머리에서 처리한다.
                 ExitMode::NextOpen => {}
             }
-        } else if !ctx.entry_blocked() {
-            if let Some(target) = self.entry_target(bar.o) {
-                // 돌파선을 **고가**가 넘었는가 + 이동평균 필터가 허락하는가. 둘 다여야 한다.
-                if bar.h >= target && self.ma_allows(bar.c) {
-                    let margin = self.invest_ratio * ctx.cash();
-                    if ctx.open_long(margin, target, bar.c, "진입") {
-                        self.peak = bar.c;
-                        if self.exit_mode == ExitMode::NextOpen {
-                            self.exit_next_open = true;
-                        }
+        } else if !ctx.entry_blocked()
+            && let Some(target) = self.entry_target(bar.o)
+        {
+            // 돌파선을 **고가**가 넘었는가 + 이동평균 필터가 허락하는가. 둘 다여야 한다.
+            if bar.h >= target && self.ma_allows(bar.c) {
+                let margin = self.invest_ratio * ctx.cash();
+                if ctx.open_long(margin, target, bar.c, "진입") {
+                    self.peak = bar.c;
+                    if self.exit_mode == ExitMode::NextOpen {
+                        self.exit_next_open = true;
                     }
                 }
             }

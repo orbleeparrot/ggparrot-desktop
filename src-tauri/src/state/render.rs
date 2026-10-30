@@ -444,11 +444,7 @@ impl Run {
     /// 화면의 단계 — running·stopping·starting·checking·finished·idle.
     pub(crate) fn phase(&self) -> &'static str {
         if self.running() {
-            if self.stopping {
-                "stopping"
-            } else {
-                "running"
-            }
+            if self.stopping { "stopping" } else { "running" }
         } else if self.start_pending && self.cancel_requested.is_some() {
             "stopping"
         } else if self.start_pending {
@@ -490,11 +486,7 @@ impl Run {
 
 /// 끝난 상태 이름(stopped·error)을 사람이 읽는 말로.
 pub(crate) fn finish_label(status: &str) -> &'static str {
-    if status == "error" {
-        "오류로 멈춤"
-    } else {
-        "종료"
-    }
+    if status == "error" { "오류로 멈춤" } else { "종료" }
 }
 
 pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {

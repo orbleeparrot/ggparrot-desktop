@@ -7,7 +7,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::shared::{lock_or_recover, Shared, S};
+use crate::shared::{S, Shared, lock_or_recover};
 
 pub const TRAY_ID: &str = "main";
 const MAX_RUN_LINES: usize = 8;
@@ -125,10 +125,9 @@ impl Shared {
             .on_tray_icon_event(move |_tray, event| {
                 if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } =
                     event
+                    && !cfg!(target_os = "macos")
                 {
-                    if !cfg!(target_os = "macos") {
-                        me2.show_main_window();
-                    }
+                    me2.show_main_window();
                 }
             })
             .build(&self.app)?;
@@ -208,11 +207,7 @@ impl Shared {
             self.hide_to_tray();
             return CloseAction::Hidden;
         }
-        if self.request_close() {
-            CloseAction::Quit
-        } else {
-            CloseAction::Refused
-        }
+        if self.request_close() { CloseAction::Quit } else { CloseAction::Refused }
     }
 }
 
