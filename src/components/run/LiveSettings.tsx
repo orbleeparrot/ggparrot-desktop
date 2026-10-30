@@ -171,7 +171,11 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
       )}
       {/* 기록이 남는다는 사실을 숨기지 않는다 — 나중에 통보하면 그게 더 나쁘다. */}
       <p className="live-settings-note">바꾼 내용은 기록으로 남아요.</p>
-      {error && <p className="live-settings-bad" role="alert">{error}</p>}
+      {error && (
+        <p className="live-settings-bad" role="alert">
+          {error}
+        </p>
+      )}
       <div className="live-settings-actions">
         <button type="button" className="live-settings-save" disabled={!ready} onClick={submit}>
           {busy ? "바꾸는 중…" : "이대로 바꾸기"}

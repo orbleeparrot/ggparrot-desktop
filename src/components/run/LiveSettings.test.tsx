@@ -8,26 +8,43 @@ import type { LiveSettingField } from "../../types";
 import { badFields, buildChanges, hasChanges } from "./LiveSettings";
 
 const money: LiveSettingField = {
-  path: "params.initial_capital", section: "params", key: "initial_capital",
-  label: "투자 금액", value: 1_000_000, unit: "money", clearable: false,
+  path: "params.initial_capital",
+  section: "params",
+  key: "initial_capital",
+  label: "투자 금액",
+  value: 1_000_000,
+  unit: "money",
+  clearable: false,
 };
 const stop: LiveSettingField = {
-  path: "risk.stop_loss_pct", section: "risk", key: "stop_loss_pct",
-  label: "손절", value: 3, unit: "pct", clearable: true,
+  path: "risk.stop_loss_pct",
+  section: "risk",
+  key: "stop_loss_pct",
+  label: "손절",
+  value: 3,
+  unit: "pct",
+  clearable: true,
 };
 const ratio: LiveSettingField = {
-  path: "risk.invest_ratio", section: "risk", key: "invest_ratio",
-  label: "투자 비율", value: 1, unit: "ratio", clearable: false,
+  path: "risk.invest_ratio",
+  section: "risk",
+  key: "invest_ratio",
+  label: "투자 비율",
+  value: 1,
+  unit: "ratio",
+  clearable: false,
 };
 const FIELDS = [money, stop, ratio];
 
 describe("buildChanges", () => {
   it("바뀐 칸만 담는다", () => {
-    expect(buildChanges(FIELDS, {
-      "params.initial_capital": "2,000,000",
-      "risk.stop_loss_pct": "3",
-      "risk.invest_ratio": "1",
-    })).toEqual({ params: { initial_capital: 2_000_000 } });
+    expect(
+      buildChanges(FIELDS, {
+        "params.initial_capital": "2,000,000",
+        "risk.stop_loss_pct": "3",
+        "risk.invest_ratio": "1",
+      }),
+    ).toEqual({ params: { initial_capital: 2_000_000 } });
   });
 
   it("손 안 댄 칸은 보내지 않는다", () => {
@@ -57,8 +74,10 @@ describe("badFields", () => {
   });
 
   it("숫자가 아닌 글자와, 비울 수 없는데 비운 칸을 집는다", () => {
-    expect(badFields(FIELDS, { "risk.stop_loss_pct": "많이", "risk.invest_ratio": "" })
-      .map((f) => f.path)).toEqual(["risk.stop_loss_pct", "risk.invest_ratio"]);
+    expect(badFields(FIELDS, { "risk.stop_loss_pct": "많이", "risk.invest_ratio": "" }).map((f) => f.path)).toEqual([
+      "risk.stop_loss_pct",
+      "risk.invest_ratio",
+    ]);
   });
 
   it("끌 수 있는 칸을 비운 것은 잘못이 아니다", () => {

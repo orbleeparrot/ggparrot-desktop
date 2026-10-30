@@ -682,8 +682,7 @@ impl ServerClient {
     /// 구동 중 설정 변경을 서버에 요청함. 실제 일은 [`change_settings`]가 함.
     pub async fn change_settings(&self, changes: &Value, apply_mode: &str) -> Result<Value, String> {
         let session_id = self.session_id().ok_or("아직 서버 세션이 없어요")?;
-        change_settings(&self.inner.http, &self.inner.base, &self.inner.key, session_id, changes, apply_mode)
-            .await
+        change_settings(&self.inner.http, &self.inner.base, &self.inner.key, session_id, changes, apply_mode).await
     }
 
     pub async fn stopped(&self, status: &str, note: &str, snapshot: Option<&Value>) -> bool {
