@@ -1,7 +1,7 @@
-//! 실행기가 거래소에서 직접 받는 마감봉 (2026-10-20).
+//! 실행기가 거래소에서 직접 받는 마감봉.
 //!
-//! 봉을 잘못 가져오면 조용히 다른 자리에서 사고판다 — 서버와 다른 경계, 진행 중인 봉,
-//! 같은 봉 두 번. 셋 다 화면에는 아무 표시가 없다. 그래서 여기서 못 박는다.
+//! 봉을 잘못 가져오면 조용히 다른 자리에서 사고팖 — 서버와 다른 경계, 진행 중인 봉,
+//! 같은 봉 두 번. 셋 다 화면에는 아무 표시가 없음. 그래서 여기서 못 박음.
 
 use super::*;
 use serde_json::json;
@@ -62,7 +62,7 @@ async fn mount(server: &MockServer, url_path: &str, body: serde_json::Value) {
 // --- 마감 판정 -------------------------------------------------------------
 #[tokio::test]
 async fn 진행_중인_봉은_주지_않는다() {
-    // 진행 중 봉으로 판단하면 같은 봉에서 샀다 팔았다 한다.
+    // 진행 중 봉으로 판단하면 같은 봉에서 샀다 팔았다 함.
     let server = MockServer::start().await;
     mount(&server, "/api/v3/klines", json!(binance_rows(7 * HOUR, 4, HOUR))).await;
     let got = source(&server, "binance", "1h").recent_closed(10, 10 * HOUR).await.unwrap();
@@ -143,7 +143,7 @@ async fn 이백_개를_넘으면_커서로_거슬러_올라간다() {
 
 #[tokio::test]
 async fn 커서가_안_밀리면_멈춘다() {
-    // 같은 쪽을 계속 받으면 무한 반복이 된다 — 가진 것으로 끝낸다.
+    // 같은 쪽을 계속 받으면 무한 반복이 됨 — 가진 것으로 끝냄.
     let server = MockServer::start().await;
     mount(&server, "/v1/candles/minutes/60", json!(krw_rows(150 * HOUR, 200, HOUR))).await;
     let got = source(&server, "upbit", "1h").recent_closed(240, 400 * HOUR).await.unwrap();
@@ -152,7 +152,7 @@ async fn 커서가_안_밀리면_멈춘다() {
 
 #[tokio::test]
 async fn 빗썸은_한국시간_커서를_오프셋_없이_보낸다() {
-    // 빗썸 문서가 그렇다 — 오프셋을 붙이면 9시간 어긋난 쪽을 받는다.
+    // 빗썸 문서가 그러함 — 오프셋을 붙이면 9시간 어긋난 쪽을 받음.
     let server = MockServer::start().await;
     mount(&server, "/v1/candles/minutes/60", json!(krw_rows(150 * HOUR, 200, HOUR))).await;
     let _ = source(&server, "bithumb", "1h").recent_closed(240, 400 * HOUR).await;
@@ -188,7 +188,7 @@ async fn 업비트는_협정시_오프셋을_붙여_보낸다() {
 async fn 격자에_안_맞는_봉은_거부한다() {
     let server = MockServer::start().await;
     let mut rows = krw_rows(7 * HOUR, 2, HOUR);
-    rows[0]["candle_date_time_utc"] = json!("2026-10-20T07:17:00"); // 정시가 아니다
+    rows[0]["candle_date_time_utc"] = json!("2026-10-20T07:17:00"); // 정시가 아님
     mount(&server, "/v1/candles/minutes/60", json!(rows)).await;
     let err = source(&server, "upbit", "1h").recent_closed(5, 10 * HOUR).await.unwrap_err();
     assert!(err.message().contains("봉 간격"), "{}", err.message());
@@ -212,7 +212,7 @@ fn 국내는_선물_봉이_없다() {
 
 #[test]
 fn 매크로가_쓰는_모든_간격이_국내에서_된다() {
-    // 지금 표의 간격은 전부 국내에 있다. 새 간격을 더하면 여기서 먼저 걸린다.
+    // 지금 표의 간격은 전부 국내에 있음. 새 간격을 더하면 여기서 먼저 걸림.
     for (interval, _) in crate::intervals::INTERVALS {
         assert!(krw_path(interval).is_ok(), "{interval}");
     }
@@ -234,7 +234,7 @@ async fn 거래소가_거절하면_알린다() {
 // --- 중복 없이 흘려보내기 ---------------------------------------------------
 #[tokio::test]
 async fn 첫_폴은_기준만_잡고_아무것도_주지_않는다() {
-    // 시작하자마자 묵은 봉의 신호로 사지 않는다.
+    // 시작하자마자 묵은 봉의 신호로 사지 않음.
     let server = MockServer::start().await;
     mount(&server, "/api/v3/klines", json!(binance_rows(7 * HOUR, 4, HOUR))).await;
     let mut stream = ClosedCandleStream::new(source(&server, "binance", "1h"), None);
@@ -250,13 +250,13 @@ async fn 새로_마감된_봉만_한_번씩_준다() {
     stream.poll(3, 10 * HOUR).await.unwrap(); // 기준 = 9시
     let fresh = stream.poll(3, 11 * HOUR).await.unwrap();
     assert_eq!(fresh.iter().map(|c| c.t).collect::<Vec<_>>(), vec![10 * HOUR]);
-    // 지표는 받은 봉을 누적한다 — 중복은 조용히 결과를 바꾼다.
+    // 지표는 받은 봉을 누적함 — 중복은 조용히 결과를 바꿈.
     assert!(stream.poll(3, 11 * HOUR).await.unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn 폴을_건너뛰어도_그_사이_봉을_주워_온다() {
-    // 절전 · 네트워크 끊김으로 몇 봉을 놓쳐도 순서대로 돌려준다.
+    // 절전·네트워크 끊김으로 몇 봉을 놓쳐도 순서대로 돌려줌.
     let server = MockServer::start().await;
     mount(&server, "/api/v3/klines", json!(binance_rows(7 * HOUR, 7, HOUR))).await;
     let mut stream = ClosedCandleStream::new(source(&server, "binance", "1h"), Some(9 * HOUR));
@@ -266,7 +266,7 @@ async fn 폴을_건너뛰어도_그_사이_봉을_주워_온다() {
 
 #[tokio::test]
 async fn 웜업_뒤_첫_폴은_새_봉부터_준다() {
-    // 웜업에 들어간 봉을 다시 주면 지표가 이중으로 누적된다.
+    // 웜업에 들어간 봉을 다시 주면 지표가 이중으로 누적됨.
     let server = MockServer::start().await;
     mount(&server, "/api/v3/klines", json!(binance_rows(0, 11, HOUR))).await;
     let mut stream = ClosedCandleStream::new(source(&server, "binance", "1h"), None);

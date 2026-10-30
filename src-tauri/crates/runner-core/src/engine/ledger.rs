@@ -1,40 +1,40 @@
 //! 장부 — 돈과 수량을 세는 계산기.
 //!
-//! "언제 살까" 를 정하는 것은 규칙(D · E · F · G · H · I)이고, 그 결정이 떨어진 뒤
-//! **얼마에 몇 개를 사고 돈이 어떻게 되는지**를 전부 여기서 센다. 슬리피지 · 수수료 ·
-//! 평단 · 분할 청산 · 실현손익이 전부 장부의 일이다.
+//! "언제 살까"를 정하는 것은 규칙(D·E·F·G·H·I)이고, 그 결정이 떨어진 뒤
+//! **얼마에 몇 개를 사고 돈이 어떻게 되는지**를 전부 여기서 셈. 슬리피지·수수료·
+//! 평단·분할 청산·실현손익이 전부 장부의 일임.
 //!
-//! 여섯 규칙이 전부 이 위에 올라탄다. 그래서 장부가 1원이라도 다르면 **여섯 규칙이 전부**
-//! 어긋난다 — 판단 계약(`tests/fixtures/engine_golden.json`)의 `signal_price` ·
-//! `notional_frac` · `qty_frac` 이 전부 여기서 나온 숫자다.
+//! 여섯 규칙이 전부 이 위에 올라탐. 그래서 장부가 1원이라도 다르면 **여섯 규칙이 전부**
+//! 어긋남 — 판단 계약(`tests/fixtures/engine_golden.json`)의 `signal_price`·
+//! `notional_frac`·`qty_frac`이 전부 여기서 나온 숫자임.
 //!
-//! 서버(파이썬 `backend/engine/candles.py` 의 `CandleSim`, `stepper.py`)와 **식까지 같게**
-//! 두었다. 식을 '정리' 하면 부동소수점 결과가 달라져 계약이 깨진다 — 같은 순서로 더하고 뺀다.
+//! 서버(파이썬 `backend/engine/candles.py`의 `CandleSim`, `stepper.py`)와 **식까지 같게**
+//! 둠. 식을 '정리'하면 부동소수점 결과가 달라져 계약이 깨짐 — 같은 순서로 더하고 뺌.
 
 /// 포지션 방향. 지금 실행기가 받는 매크로는 전부 롱이지만(국내 현물은 롱 1배만),
-/// 장부 식은 숏도 서버와 같게 둔다 — 한쪽만 옮기면 나중에 갈린다.
+/// 장부 식은 숏도 서버와 같게 둠 — 한쪽만 옮기면 나중에 갈림.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Long,
     Short,
 }
 
-/// 진입 한 번이 만든 묶음. 그리드 · 마틴게일은 여러 개가 쌓인다.
+/// 진입 한 번이 만든 묶음. 그리드·마틴게일은 여러 개가 쌓임.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lot {
-    /// 이 묶음을 가리키는 번호. 그리드는 "몇 번 칸에서 산 묶음" 을 기억했다가 그 묶음만
-    /// 판다 — 서버가 객체 동일성으로 하던 것을 번호로 옮겼다. 자리(인덱스)로 기억하면
-    /// 앞 묶음이 팔릴 때마다 가리키는 곳이 밀린다.
+    /// 이 묶음을 가리키는 번호. 그리드는 "몇 번 칸에서 산 묶음"을 기억했다가 그 묶음만
+    /// 팖. 자리(인덱스)로 기억하면
+    /// 앞 묶음이 팔릴 때마다 가리키는 곳이 밀림.
     pub id: u64,
     /// 수량.
     pub qty: f64,
     /// 체결가(슬리피지를 이미 반영한 값).
     pub fill: f64,
-    /// 이 묶음에 묶인 **자기 돈**. 레버리지 명목금액이 아니다(1배면 `qty * fill` 과 같다).
+    /// 이 묶음에 묶인 **자기 돈**. 레버리지 명목금액이 아님(1배면 `qty * fill`과 같음).
     pub margin: f64,
 }
 
-/// 체결 하나. 서버 `stepper.Fill` 과 같은 칸을 갖는다.
+/// 체결 하나. 서버 `stepper.Fill`과 같은 칸을 가짐.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fill {
     /// `buy` | `sell` | `short` | `cover`.
@@ -43,13 +43,13 @@ pub struct Fill {
     pub qty: f64,
     pub equity_after: f64,
     pub return_pct: f64,
-    /// 사람이 읽는 한 줄("RSI 23.1 ≤ 25 · 진입"). 활동 기록과 주문 명령에 그대로 간다.
+    /// 사람이 읽는 한 줄("RSI 23.1 ≤ 25 · 진입"). 활동 기록과 주문 명령에 그대로 감.
     pub reason: String,
-    /// 이 체결 **직전**의 보유 수량. 청산 비율(`qty / qty_before`)을 낼 때 쓴다.
+    /// 이 체결 **직전**의 보유 수량. 청산 비율(`qty / qty_before`)을 낼 때 씀.
     pub qty_before: f64,
 }
 
-/// 청산 쪽 체결인가. 서버 `EXIT_SIDES` 와 같다.
+/// 청산 쪽 체결인지. 서버 `EXIT_SIDES`와 같음.
 pub fn is_exit(side: &str) -> bool {
     side == "sell" || side == "cover"
 }
@@ -58,17 +58,17 @@ fn default_reason(side: &str) -> &'static str {
     if is_exit(side) { "청산" } else { "진입" }
 }
 
-/// 살 때는 불리하게(비싸게) 체결된다 — 시장가라 호가를 올라타기 때문이다.
+/// 살 때는 불리하게(비싸게) 체결됨 — 시장가라 호가를 올라타기 때문임.
 pub fn buy_fill(close: f64, slippage_pct: f64) -> f64 {
     close * (1.0 + slippage_pct / 100.0)
 }
 
-/// 팔 때는 불리하게(싸게) 체결된다.
+/// 팔 때는 불리하게(싸게) 체결됨.
 pub fn sell_fill(close: f64, slippage_pct: f64) -> f64 {
     close * (1.0 - slippage_pct / 100.0)
 }
 
-/// 수수료 · 슬리피지 · 레버리지 — 매크로의 `fees` · `leverage` 에서 온다.
+/// 수수료·슬리피지·레버리지 — 매크로의 `fees`·`leverage`에서 옴.
 #[derive(Debug, Clone, Copy)]
 pub struct Costs {
     /// 한쪽 수수료(%).
@@ -77,7 +77,7 @@ pub struct Costs {
     pub slippage_pct: f64,
     /// 보유 중인 숏에 봉마다 붙는 비용(%). 현물은 0.
     pub funding_pct: f64,
-    /// 1 이면 현물(청산 없음).
+    /// 1이면 현물(청산 없음).
     pub leverage: f64,
 }
 
@@ -87,12 +87,12 @@ impl Default for Costs {
     }
 }
 
-/// 현금 · 보유 묶음 · 실현손익을 센다.
+/// 현금·보유 묶음·실현손익을 셈.
 #[derive(Debug, Clone)]
 pub struct Ledger {
     pub side: Side,
     pub costs: Costs,
-    /// 이 세션이 굴리는 돈. 수익률의 분모이자 진입 금액 비율의 기준이다.
+    /// 이 세션이 굴리는 돈. 수익률의 분모이자 진입 금액 비율의 기준임.
     pub initial_capital: f64,
     /// 아직 포지션에 안 들어간 돈.
     pub cash: f64,
@@ -133,16 +133,16 @@ impl Ledger {
         self.lots.iter().map(|l| l.qty * l.fill).sum::<f64>() / q
     }
 
-    /// 이 포지션에 묶인 **자기 돈**. 레버리지 명목금액이 아니다 — 사용자가 "내 자금의 몇
-    /// 퍼센트를 시장에 넣었나" 라고 할 때 뜻하는 값이다.
+    /// 이 포지션에 묶인 **자기 돈**. 레버리지 명목금액이 아님 — 사용자가 "내 자금의 몇
+    /// 퍼센트를 시장에 넣었나"라고 할 때 뜻하는 값임.
     pub fn committed_margin(&self) -> f64 {
         self.lots.iter().map(|l| l.margin).sum()
     }
 
-    /// 지금 가격 기준 자산. 서버 `CandleSim.equity` 와 식까지 같다.
+    /// 지금 가격 기준 자산. 서버 `CandleSim.equity`와 식까지 같음.
     pub fn equity(&self, price: f64) -> f64 {
         if self.side == Side::Short {
-            // 숏은 묶음 하나만 쓴다.
+            // 숏은 묶음 하나만 씀.
             return match self.lots.first() {
                 None => self.cash,
                 Some(lot) => self.cash + lot.qty * (lot.fill - price),
@@ -153,8 +153,8 @@ impl Ledger {
         self.cash + margin + unreal
     }
 
-    /// 체결 한 줄을 만든다. 자산은 **`mark`**(판단 기준가)로 재고, 체결가로 재지 않는다 —
-    /// 서버와 같게. 장부가 이미 바뀐 뒤에 불리므로 직전 수량은 되계산한다.
+    /// 체결 한 줄을 만듦. 자산은 **`mark`**(판단 기준가)로 재고, 체결가로 재지 않음 —
+    /// 서버와 같게. 장부가 이미 바뀐 뒤에 불리므로 직전 수량은 되계산함.
     fn fill(&self, side: &'static str, price: f64, qty: f64, mark: f64, reason: &str) -> Fill {
         let equity_after = self.equity(mark);
         let return_pct = (equity_after - self.initial_capital) / self.initial_capital * 100.0;
@@ -164,7 +164,7 @@ impl Ledger {
         Fill { side, price, qty, equity_after, return_pct, reason, qty_before }
     }
 
-    /// 묶음 하나를 장부에 더하고 그 번호를 준다.
+    /// 묶음 하나를 장부에 더하고 그 번호를 줌.
     fn push_lot(&mut self, qty: f64, fill: f64, margin: f64) -> u64 {
         let id = self.next_lot_id;
         self.next_lot_id += 1;
@@ -172,8 +172,8 @@ impl Ledger {
         id
     }
 
-    /// 그리드 한 칸을 산다 — **정해진 가격**에 정해진 돈만큼. 돌려주는 번호로 나중에
-    /// 그 칸만 판다. 돈이 모자라면 None(다른 칸은 그대로 둔다).
+    /// 그리드 한 칸을 삼 — **정해진 가격**에 정해진 돈만큼. 돌려주는 번호로 나중에
+    /// 그 칸만 팖. 돈이 모자라면 None(다른 칸은 그대로 둠).
     pub fn open_lot(&mut self, margin: f64, price: f64, mark: f64, reason: &str) -> Option<(u64, Fill)> {
         if margin <= 1e-9 || self.cash < margin {
             return None;
@@ -186,8 +186,8 @@ impl Ledger {
         Some((id, self.fill("buy", f, qty, mark, reason)))
     }
 
-    /// 묶음 **하나만** 판다(그리드 칸). 그 칸의 증거금과 실현손익만 현금으로 돌린다 —
-    /// 다른 칸은 건드리지 않는다. 이미 팔렸으면 None.
+    /// 묶음 **하나만** 팖(그리드 칸). 그 칸의 증거금과 실현손익만 현금으로 돌림 —
+    /// 다른 칸은 건드리지 않음. 이미 팔렸으면 None.
     pub fn close_lot(&mut self, id: u64, price: f64, mark: f64, reason: &str) -> Option<Fill> {
         let index = self.lots.iter().position(|l| l.id == id)?;
         let lot = self.lots.remove(index);
@@ -198,15 +198,15 @@ impl Ledger {
         Some(self.fill("sell", f, lot.qty, mark, reason))
     }
 
-    /// 번호로 묶음을 찾는다(화면 표시 · 상태 저장용).
+    /// 번호로 묶음을 찾음(화면 표시·상태 저장용).
     pub fn lot(&self, id: u64) -> Option<&Lot> {
         self.lots.iter().find(|l| l.id == id)
     }
 
-    // --- 열기 · 닫기 ---------------------------------------------------
-    /// 롱 진입. `margin` 은 넣을 **자기 돈**(현금보다 많으면 현금까지만).
+    // --- 열기·닫기 -----------------------------------------------------
+    /// 롱 진입. `margin`은 넣을 **자기 돈**(현금보다 많으면 현금까지만).
     ///
-    /// 돈이 없거나 너무 적으면 None — 아무 일도 일어나지 않는다.
+    /// 돈이 없거나 너무 적으면 None — 아무 일도 일어나지 않음.
     pub fn open_long(&mut self, margin: f64, close: f64, mark: f64, reason: &str) -> Option<Fill> {
         let margin = margin.min(self.cash);
         if margin <= 1e-9 {
@@ -220,7 +220,7 @@ impl Ledger {
         Some(self.fill("buy", f, qty, mark, reason))
     }
 
-    /// 숏 진입. 서버와 달리 `invest_ratio` 를 여기서 곱하지 않는다 — 부르는 쪽이 정한다.
+    /// 숏 진입. 서버와 달리 `invest_ratio`를 여기서 곱하지 않음 — 부르는 쪽이 정함.
     pub fn open_short(&mut self, margin: f64, close: f64, mark: f64, reason: &str) -> Option<Fill> {
         if margin <= 1e-9 {
             return None;
@@ -245,13 +245,13 @@ impl Ledger {
         let (side, f, pnl) = if self.side == Side::Short {
             let f = buy_fill(close, self.costs.slippage_pct); // cover
             let exit_comm = qty * f * comm / 100.0;
-            // 진입 수수료는 들어갈 때 이미 현금에서 나갔다.
+            // 진입 수수료는 들어갈 때 이미 현금에서 나감.
             self.cash += qty * (avg - f) - exit_comm;
             ("cover", f, qty * (avg - f) - exit_comm)
         } else {
             let f = sell_fill(close, self.costs.slippage_pct);
             let exit_comm = qty * f * comm / 100.0;
-            // 묶였던 자기 돈 + 실현손익을 돌려준다(1배면 qty * f 와 같다).
+            // 묶였던 자기 돈 + 실현손익을 돌려줌(1배면 qty * f와 같음).
             self.cash += margin + qty * (f - avg) - exit_comm;
             ("sell", f, qty * (f - avg) - exit_comm)
         };
@@ -260,9 +260,9 @@ impl Ledger {
         Some(self.fill(side, f, qty, mark, reason))
     }
 
-    /// 롱 장부의 `fraction`(0 < f ≤ 1)만 판다. 묶음마다 같은 비율로 줄인다.
+    /// 롱 장부의 `fraction`(0 < f ≤ 1)만 팖. 묶음마다 같은 비율로 줄임.
     ///
-    /// 숏이거나 보유가 없으면 None. 전량은 [`Ledger::close_all`] 을 쓴다.
+    /// 숏이거나 보유가 없으면 None. 전량은 [`Ledger::close_all`]을 씀.
     pub fn reduce_long(&mut self, fraction: f64, close: f64, mark: f64, reason: &str) -> Option<Fill> {
         if fraction <= 0.0 || self.side == Side::Short || !self.in_position() {
             return None;
@@ -283,12 +283,12 @@ impl Ledger {
             sold_qty += q;
         }
         self.closed_trades.push(pnl);
-        // 먼지만 남은 묶음은 버린다.
+        // 먼지만 남은 묶음은 버림.
         self.lots.retain(|l| l.qty > 1e-12);
         Some(self.fill("sell", f, sold_qty, mark, reason))
     }
 
-    /// 보유 중인 숏에 봉마다 붙는 비용. 현물(`funding_pct == 0`)은 아무 일도 없다.
+    /// 보유 중인 숏에 봉마다 붙는 비용. 현물(`funding_pct == 0`)은 아무 일도 없음.
     pub fn apply_funding(&mut self, close: f64) {
         if self.side != Side::Short || self.costs.funding_pct == 0.0 || !self.in_position() {
             return;
@@ -296,10 +296,10 @@ impl Ledger {
         self.cash -= self.total_qty() * close * self.costs.funding_pct / 100.0;
     }
 
-    /// 손절선에 닿았는가 — 봉의 **저가**(롱) · **고가**(숏)로 본다.
+    /// 손절선에 닿았는지 — 봉의 **저가**(롱)·**고가**(숏)로 봄.
     ///
-    /// 현재가가 아니라 봉의 극값으로 보는 이유: 봉 안에서 스쳤다면 실제로는 체결됐다.
-    /// 종가만 보면 "그 사이 손절선을 지났는데 안 팔린" 것이 된다.
+    /// 현재가가 아니라 봉의 극값으로 보는 이유: 봉 안에서 스쳤다면 실제로는 체결됨.
+    /// 종가만 보면 "그 사이 손절선을 지났는데 안 팔린" 것이 됨.
     pub fn stop_hit(&self, low: f64, high: f64, stop_loss_pct: f64) -> bool {
         if stop_loss_pct <= 0.0 || !self.in_position() {
             return false;

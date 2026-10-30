@@ -1,15 +1,15 @@
-//! 지표 — 종가를 하나씩 먹으며 값을 만든다.
+//! 지표 — 종가를 하나씩 먹으며 값을 만듦.
 //!
-//! 충분한 봉을 못 먹었으면 `None` 을 준다. 그 동안 규칙은 판단하지 않는다 —
-//! 반쪽 지표로 판단하면 처음 몇 봉에서만 다른 답이 나오고, 그게 제일 찾기 어렵다.
+//! 충분한 봉을 못 먹었으면 `None`을 줌. 그 동안 규칙은 판단하지 않음 —
+//! 반쪽 지표로 판단하면 처음 몇 봉에서만 다른 답이 나오고, 그게 제일 찾기 어려움.
 //!
-//! 서버(파이썬 `engine/candles.py` 의 `RSIState` · `BollingerState` · `MAState`)와
-//! **식까지 같게** 두었다. 합을 매번 다시 더하는 것도 그대로다 — 누적합으로 바꾸면
-//! 부동소수점 오차가 쌓여 수백 봉 뒤에 값이 갈린다.
+//! 서버(파이썬 `engine/candles.py`의 `RSIState`·`BollingerState`·`MAState`)와
+//! **식까지 같게** 두었음. 합을 매번 다시 더하는 것도 그대로임 — 누적합으로 바꾸면
+//! 부동소수점 오차가 쌓여 수백 봉 뒤에 값이 갈림.
 
 use std::collections::VecDeque;
 
-/// 고정 길이 창. 서버의 `deque(maxlen=period)` 와 같다.
+/// 고정 길이 창. 서버의 `deque(maxlen=period)`와 같음.
 #[derive(Debug, Clone)]
 struct Window {
     period: usize,
@@ -32,7 +32,7 @@ impl Window {
         self.values.len() >= self.period
     }
 
-    /// 창 안의 합. **매번 다시 더한다** — 서버와 같은 순서로 더해야 같은 값이 나온다.
+    /// 창 안의 합. **매번 다시 더함** — 서버와 같은 순서로 더해야 같은 값이 나옴.
     fn sum(&self) -> f64 {
         self.values.iter().sum()
     }
@@ -42,7 +42,7 @@ impl Window {
     }
 }
 
-/// Wilder 의 RSI. 과매도 · 과매수를 재는 0~100 값.
+/// Wilder의 RSI. 과매도·과매수를 재는 0~100 값.
 #[derive(Debug, Clone)]
 pub struct Rsi {
     period: usize,
@@ -57,8 +57,8 @@ impl Rsi {
         Self { period: period.max(1), prev: None, avg_gain: 0.0, avg_loss: 0.0, count: 0 }
     }
 
-    /// 같은 설정의 **빈** 지표. 차트용으로 봉을 처음부터 다시 먹일 때 쓴다 —
-    /// 돌고 있는 것을 복제하면 웜업 상태가 섞여 값이 달라진다.
+    /// 같은 설정의 **빈** 지표. 차트용으로 봉을 처음부터 다시 먹일 때 씀 —
+    /// 돌고 있는 것을 복제하면 웜업 상태가 섞여 값이 달라짐.
     pub fn fresh(&self) -> Self {
         Self::new(self.period)
     }
@@ -69,7 +69,7 @@ impl Rsi {
 
     pub fn update(&mut self, close: f64) -> Option<f64> {
         let prev = match self.prev {
-            // 첫 종가는 '변화' 가 없다 — 기준만 잡는다.
+            // 첫 종가는 '변화'가 없음 — 기준만 잡음.
             None => {
                 self.prev = Some(close);
                 return None;
@@ -83,19 +83,19 @@ impl Rsi {
         let period = self.period as f64;
         self.count += 1;
         if self.count <= self.period {
-            // 첫 `period` 개는 단순 평균으로 채운다.
+            // 첫 `period` 개는 단순 평균으로 채움.
             self.avg_gain += gain / period;
             self.avg_loss += loss / period;
             if self.count < self.period {
                 return None;
             }
         } else {
-            // 그 뒤로는 Wilder 평활 — 직전 평균에 새 값을 1/period 만큼 섞는다.
+            // 그 뒤로는 Wilder 평활 — 직전 평균에 새 값을 1/period만큼 섞음.
             self.avg_gain = (self.avg_gain * (period - 1.0) + gain) / period;
             self.avg_loss = (self.avg_loss * (period - 1.0) + loss) / period;
         }
         if self.avg_loss == 0.0 {
-            // 내린 봉이 하나도 없다 — 나누지 않는다.
+            // 내린 봉이 하나도 없음 — 나누지 않음.
             return Some(100.0);
         }
         let rs = self.avg_gain / self.avg_loss;
@@ -103,7 +103,7 @@ impl Rsi {
     }
 }
 
-/// 볼린저 밴드 — 중심선과 위 · 아래 선.
+/// 볼린저 밴드 — 중심선과 위·아래 선.
 #[derive(Debug, Clone)]
 pub struct Bollinger {
     num_std: f64,
@@ -118,7 +118,7 @@ impl Bollinger {
         Self { num_std, window: Window::new(period) }
     }
 
-    /// 같은 설정의 **빈** 밴드 — 돌고 있는 것을 복제하면 웜업 상태가 섞인다.
+    /// 같은 설정의 **빈** 밴드 — 돌고 있는 것을 복제하면 웜업 상태가 섞임.
     pub fn fresh(&self) -> Self {
         Self::new(self.window.period, self.num_std)
     }
@@ -133,7 +133,7 @@ impl Bollinger {
             return None;
         }
         let mean = self.window.mean();
-        // 표본이 아니라 **모집단** 분산(n 으로 나눈다) — 서버와 같다.
+        // 표본이 아니라 **모집단** 분산(n으로 나눔) — 서버와 같음.
         let var = self.window.values.iter().map(|x| (x - mean) * (x - mean)).sum::<f64>() / self.window.period as f64;
         let sd = var.sqrt();
         Some((mean, mean + self.num_std * sd, mean - self.num_std * sd))
@@ -144,7 +144,7 @@ impl Bollinger {
 pub enum MaType {
     /// 단순 평균.
     Sma,
-    /// 지수 평균 — 최근 값에 더 무게를 준다.
+    /// 지수 평균 — 최근 값에 더 무게를 줌.
     Ema,
 }
 
@@ -163,7 +163,7 @@ impl Ma {
         Self { kind, window: Window::new(period), ema: None, k: 2.0 / (period as f64 + 1.0) }
     }
 
-    /// 같은 설정의 **빈** 이동평균 — 돌고 있는 것을 복제하면 웜업 상태가 섞인다.
+    /// 같은 설정의 **빈** 이동평균 — 돌고 있는 것을 복제하면 웜업 상태가 섞임.
     pub fn fresh(&self) -> Self {
         Self::new(self.kind, self.window.period)
     }
@@ -179,7 +179,7 @@ impl Ma {
                 if !self.window.full() {
                     return None;
                 }
-                // 첫 값은 단순 평균으로 심는다(서버와 같게).
+                // 첫 값은 단순 평균으로 심음(서버와 같게).
                 let seed = self.window.mean();
                 self.ema = Some(seed);
                 return Some(seed);

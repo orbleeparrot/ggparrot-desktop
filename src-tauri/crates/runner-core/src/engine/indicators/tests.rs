@@ -1,13 +1,13 @@
-//! 지표가 서버와 **같은 값**을 내는가 (2026-10-20).
+//! 지표가 서버와 **같은 값**을 내는지.
 //!
 //! 기대값은 서버 지표(파이썬 `engine/candles.py`)에 **판단 계약과 같은 봉**을 흘려보내
-//! 받아 적은 것이다. 손으로 계산하지 않았다 — 손으로 하면 내 산수를 검증할 뿐이다.
+//! 받아 적은 것임. 손으로 계산하지 않았음 — 손으로 하면 내 산수를 검증할 뿐임.
 //!
-//! 지표가 한 자리만 달라도 F · G · I · J 가 전부 다른 자리에서 사고판다.
+//! 지표가 한 자리만 달라도 F·G·I·J가 전부 다른 자리에서 사고팖.
 
 use super::*;
 
-/// 계약과 같은 봉의 종가. `tests/fixtures/engine_golden.json` 의 `candles[*][4]` 다.
+/// 계약과 같은 봉의 종가. `tests/fixtures/engine_golden.json`의 `candles[*][4]`임.
 fn closes() -> Vec<f64> {
     let path: std::path::PathBuf =
         [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "engine_golden.json"].iter().collect();
@@ -22,8 +22,8 @@ fn near(got: f64, want: f64) {
     assert!((got - want).abs() <= 1e-12 * scale, "서버와 다르다: got {got:.17}, want {want:.17}");
 }
 
-/// 값이 나오기 시작한 **첫 자리**와 마지막 몇 개를 함께 본다.
-/// 첫 자리가 밀리면 웜업이 끝나는 시점이 달라져 초반 판단이 통째로 어긋난다.
+/// 값이 나오기 시작한 **첫 자리**와 마지막 몇 개를 함께 봄.
+/// 첫 자리가 밀리면 웜업이 끝나는 시점이 달라져 초반 판단이 통째로 어긋남.
 fn feed<T, F: FnMut(f64) -> Option<T>>(mut update: F) -> (usize, Vec<T>) {
     let mut first = usize::MAX;
     let mut values = Vec::new();
@@ -51,7 +51,7 @@ fn rsi_가_서버와_같다() {
 
 #[test]
 fn rsi_는_내린_봉이_없으면_백을_준다() {
-    // 나누기 0 을 피하는 자리. 오르기만 한 구간에서 실제로 걸린다.
+    // 나누기 0을 피하는 자리. 오르기만 한 구간에서 실제로 걸림.
     let mut rsi = Rsi::new(3);
     let mut last = None;
     for close in [1.0, 2.0, 3.0, 4.0, 5.0] {
@@ -100,7 +100,7 @@ fn 볼린저_밴드가_서버와_같다() {
 
 #[test]
 fn 밴드는_모집단_분산을_쓴다() {
-    // 표본 분산(n-1)으로 바꾸면 밴드가 넓어져 진입이 늦어진다. 손으로 셀 수 있는 값으로 못 박는다.
+    // 표본 분산(n-1)으로 바꾸면 밴드가 넓어져 진입이 늦어짐. 손으로 셀 수 있는 값으로 못 박음.
     let mut bb = Bollinger::new(4, 1.0);
     let mut bands = None;
     for close in [1.0, 2.0, 3.0, 4.0] {
@@ -115,7 +115,7 @@ fn 밴드는_모집단_분산을_쓴다() {
 
 #[test]
 fn 창이_덜_찼으면_값을_주지_않는다() {
-    // 반쪽 지표로 판단하면 처음 몇 봉에서만 다른 답이 나온다 — 제일 찾기 어려운 어긋남이다.
+    // 반쪽 지표로 판단하면 처음 몇 봉에서만 다른 답이 나옴 — 제일 찾기 어려운 어긋남임.
     let mut sma = Ma::new(MaType::Sma, 5);
     for close in [1.0, 2.0, 3.0, 4.0] {
         assert!(sma.update(close).is_none());
@@ -137,7 +137,7 @@ fn 창이_덜_찼으면_값을_주지_않는다() {
 
 #[test]
 fn 창은_길이를_넘기지_않는다() {
-    // 창이 자라면 옛 봉이 영원히 평균에 남는다.
+    // 창이 자라면 옛 봉이 영원히 평균에 남음.
     let mut sma = Ma::new(MaType::Sma, 3);
     for close in [10.0, 20.0, 30.0, 40.0, 50.0] {
         sma.update(close);

@@ -34,8 +34,8 @@ impl Bot {
         }
         let mut guard = self.risk_guard();
         let broker = self.broker()?;
-        // 서버가 "네가 판단해라" 고 한 세션이면 로컬 엔진을 세운다. 세우지 못하면
-        // **아무도 판단하지 않는다** — 서버도 이 세션의 드라이버를 띄우지 않았다.
+        // 서버가 "네가 판단해라"고 한 세션이면 로컬 엔진을 세움. 세우지 못하면
+        // **아무도 판단하지 않음** — 서버도 이 세션의 드라이버를 띄우지 않음.
         let mut local = if self.decides_locally() {
             match self.start_local_engine().await {
                 Ok(engine) => Some(engine),
@@ -71,8 +71,8 @@ impl Bot {
             guard.roll_day();
             // 3) 로컬 안전망 — 일일 손실·최대 보유시간 + 손절
             self.enforce_safety_net(&mut guard, price).await?;
-            // 4) 로컬 판단 — 마감봉을 받아 스스로 사고판다(서버가 켜 준 세션만).
-            //    안전망(3) 뒤에 둔다: 손절이 이미 포지션을 닫았으면 그 상태로 판단한다.
+            // 4) 로컬 판단 — 마감봉을 받아 스스로 사고팖(서버가 켜 준 세션만).
+            //    안전망(3) 뒤에 둠: 손절이 이미 포지션을 닫았으면 그 상태로 판단함.
             if let Some(engine) = local.as_mut() {
                 self.local_round(engine, price, &mut guard).await?;
             }
@@ -94,7 +94,7 @@ impl Bot {
             if !reply.offline
                 && let Some(engine) = local.as_mut()
             {
-                // 서버가 받았다 — 보낸 만큼만 비운다(그 사이 새로 난 체결은 남긴다).
+                // 서버가 받음 — 보낸 만큼만 비움(그 사이 새로 난 체결은 남김).
                 self.clear_sent_fills(engine, sent_fills);
             }
             // 하트비트를 기다리는 동안(최대 10초) 시세가 움직였을 수 있음 — 명령이 있으면 새 시세로 안전망을 다시 보고
@@ -112,8 +112,8 @@ impl Bot {
                 }
             };
             if local.is_some() {
-                // 판단은 이 PC 가 한다 — 서버 명령이 섞여 오면 같은 신호로 두 번 산다.
-                // 원격 종료 · 청산은 그대로 듣는다.
+                // 판단은 이 PC가 함 — 서버 명령이 섞여 오면 같은 신호로 두 번 삼.
+                // 원격 종료·청산은 그대로 들음.
                 if let Some(m) = StopMode::parse(&reply.action) {
                     self.note_remote_stop(&reply, m);
                 }

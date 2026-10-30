@@ -103,8 +103,8 @@ pub struct HeartbeatReply {
     pub rejected: u16,
     /// 서버가 종료를 지시한 이유(세션이 없어짐·이미 끝남 등). 비어 있으면 웹에서 누른 종료임.
     pub reason: String,
-    /// 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보내는 '무엇을 · 얼마나 · 언제'
-    /// (조건 문장 · 거리 · 막대 · 사는 선 · 다음 확인 · 확인 기록). 산 뒤·해당 없는 매크로·옛 서버면 None.
+    /// 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보내는 '무엇을·얼마나·언제'
+    /// (조건 문장·거리·막대·사는 선·다음 확인·확인 기록). 산 뒤·해당 없는 매크로·서버가 안 보내면 None.
     pub entry_wait: Option<Value>,
 }
 
@@ -171,7 +171,7 @@ struct Inner {
     namespace: String,
     session_id: Mutex<Option<i64>>,
     macro_origin: Mutex<String>,
-    /// 이 세션의 판단을 누가 하는가 — 서버가 시작 응답으로 정한다. 모르면 "server".
+    /// 이 세션의 판단을 누가 하는지 — 서버가 시작 응답으로 정함. 모르면 "server".
     decides: Mutex<String>,
     state: Mutex<EventState>,
     on_event_warning: Mutex<Option<LogFn>>,
@@ -228,7 +228,7 @@ impl ServerClient {
     pub fn session_id(&self) -> Option<i64> {
         *self.inner.session_id.lock().unwrap()
     }
-    /// 이 세션을 실행기가 직접 판단하는가. 서버가 시작 응답으로 정한 값이다.
+    /// 이 세션을 실행기가 직접 판단하는지. 서버가 시작 응답으로 정한 값임.
     pub fn decides_locally(&self) -> bool {
         self.inner.decides.lock().unwrap().as_str() == "local"
     }
@@ -578,7 +578,7 @@ impl ServerClient {
             Some(Value::String(s)) => s.clone(),
             _ => String::new(),
         };
-        // 판단 주체. 모르면 서버 — 가장 보수적인 쪽(지금까지의 동작)이다.
+        // 판단 주체. 모르면 서버 — 가장 보수적인 쪽임.
         *self.inner.decides.lock().unwrap() = match data.get("decides") {
             Some(Value::String(s)) if s == "local" => "local".to_string(),
             _ => "server".to_string(),

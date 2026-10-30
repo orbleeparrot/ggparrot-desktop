@@ -164,7 +164,7 @@ export function mockEntryWait(at: number, tick: number): EntryWait {
       now: rsi.toFixed(1),
       progress: (70 - rsi) / 40,
     },
-    // 서버 _ladder 와 같은 눈금 — 30 · 70 · 지금 값에 15% 여유(24 ~ 76), 사는 구역은 30 아래.
+    // 서버 _ladder와 같은 눈금 — 30·70·지금 값에 15% 여유(24 ~ 76), 사는 구역은 30 아래.
     scale: {
       marks: [
         { key: "line", label: "사는 선", value: "30", pos: (30 - 24) / 52, main: true },
@@ -185,8 +185,8 @@ export function mockEntryWait(at: number, tick: number): EntryWait {
 
 /**
  * 디자인 검토용 봉 차트 한 벌. 실제로는 실행기가 거래소에서 받은 봉과 엔진이 낸 선이지만,
- * 브라우저 미리보기에는 둘 다 없으므로 모양만 같은 값을 만든다 — 화면이 값을 다시 계산하지
- * 않는지 보려면 `src/components/run/CandlePlot.test.tsx` 쪽을 본다.
+ * 브라우저 미리보기에는 둘 다 없으므로 모양만 같은 값을 만듦 — 화면이 값을 다시 계산하지
+ * 않는지 보려면 `src/components/run/CandlePlot.test.tsx` 쪽을 봄.
  */
 function mockChart(price: number, interval: string, withRsi: boolean): Run["chart"] {
   const step = 15 * 60_000;
@@ -199,7 +199,7 @@ function mockChart(price: number, interval: string, withRsi: boolean): Run["char
     close = price * 0.97 + drift;
     bars.push([start + i * step, open, Math.max(open, close) * 1.002, Math.min(open, close) * 0.998, close]);
   }
-  // 이동평균선 — 앞쪽은 값이 없어 비운다(0 으로 채우면 그 0 이 지표값처럼 그려진다).
+  // 이동평균선 — 앞쪽은 값이 없어 비움(0으로 채우면 그 0이 지표값처럼 그려짐).
   const period = 20;
   const ma = bars.map((_, i) =>
     i + 1 < period ? null : bars.slice(i + 1 - period, i + 1).reduce((sum, b) => sum + b[4], 0) / period,
@@ -243,10 +243,9 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
     online: true,
     authFailed: false,
     rejected: 0,
-    // 0.21.0 부터 판단이 이 PC 에서 돌아 앱이 봉을 들고 있다 — 조건 차트가 기본이다.
-    // 레버리지 견본은 **서버가 판단하는 세션**으로 남긴다(옛 실행기 · 스위치를 켜기 전에
-    // 시작한 세션이 그렇다). 두 화면이 다 살아 있어야 e2e 가 현재가 그래프와 봉 차트를
-    // 둘 다 잰다 — 활동이 가장 많은 견본이라 '활동 기록 세 줄' 예산도 거기서 잰다.
+    // 판단이 이 PC에서 돌면 앱이 봉을 들고 있음 — 조건 차트가 기본임.
+    // 레버리지 견본은 **서버가 판단하는 세션**으로 남김(서버가 `decides`를 켜지 않은 세션). 두 화면이 다 살아 있어야 e2e가 현재가 그래프와 봉 차트를
+    // 둘 다 잼 — 활동이 가장 많은 견본이라 '활동 기록 세 줄' 예산도 거기서 잼.
     chart: m.leverage > 1 ? null : mockChart(price, m.interval || "15m", /RSI/i.test(m.strategy)),
     chartLive: null,
     offlineSince: 0,
@@ -302,8 +301,8 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
 }
 
 /**
- * 만들어지는 중인 봉을 현재가로 쌓는다 — 실행기에서는 `local.feed_live` 가 하는 일이다.
- * 이게 없으면 미리보기 차트가 봉 마감 사이에 멈춰 있어 움직임을 볼 수 없다.
+ * 만들어지는 중인 봉을 현재가로 쌓음 — 실행기에서는 `local.feed_live`가 하는 일임.
+ * 이게 없으면 미리보기 차트가 봉 마감 사이에 멈춰 있어 움직임을 볼 수 없음.
  */
 function feedLiveBar(run: Run) {
   if (!run.chart) return;
@@ -337,8 +336,8 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
     return;
   }
   if (r.fixedWait) {
-    // ?demo=wait — 신호 · 매수 없이 고정한 진입 대기 값만 보임.
-    // 원화 반올림(round)을 쓰면 26.2 가 26 으로 굳어 그래프가 안 그려짐 — 소수 셋째 자리까지만.
+    // ?demo=wait — 신호·매수 없이 고정한 진입 대기 값만 보임.
+    // 원화 반올림(round)을 쓰면 26.2가 26으로 굳어 그래프가 안 그려짐 — 소수 셋째 자리까지만.
     const base = Number(r.fixedWait.meter?.now ?? run.price);
     run.price = Math.round(base * (1 + (Math.random() - 0.5) * 0.004) * 1000) / 1000;
     Object.assign(run, { online: true, updatedAt: at, offlineSince: 0, entryWait: r.fixedWait });
@@ -363,7 +362,7 @@ export function tickRun(emit: Emit, r: MockRun, at: number) {
   }
 
   const p = plain(run.price, q);
-  // 진입 대기 — 서버가 하트비트로 보내는 entry_wait 흉내(RSI 매크로 · 1분 봉). 산 뒤에는 서버가 보내지 않음.
+  // 진입 대기 — 서버가 하트비트로 보내는 entry_wait 흉내(RSI 매크로·1분 봉). 산 뒤에는 서버가 보내지 않음.
   run.entryWait = run.inPosition || !waitsForEntry(m.strategy) ? null : mockEntryWait(at, r.tick);
   if (run.online && !run.inPosition && t % 7 === 2) {
     const qty = Math.floor((orderCap(r) / run.price) * 100000) / 100000;

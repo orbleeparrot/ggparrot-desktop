@@ -2,7 +2,8 @@
 //!
 //! 종료 경로는 두 가지 — 로컬(화면의 종료 버튼) → `BotHandle::command`, 원격(웹의 [내 에이전트]) → heartbeat 응답의 action.
 //! 두 경우 모두 stop_only(포지션 유지) / close_and_stop(청산 후)을 지원함.
-//! 진입/청산 판단은 서버가 함. 로컬에 남은 판단은 안전망(손절 %, 일일 손실, 최대 보유시간)뿐임.
+//! 진입·청산 판단은 서버가 시작 응답으로 정함 — 실행기가 직접 하거나(`bot/local.rs`) 서버 명령을 따름.
+//! 안전망(손절 %, 일일 손실, 최대 보유시간)은 어느 쪽이든 이 루프가 봄.
 
 use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
@@ -92,14 +93,14 @@ pub enum BotEvent {
     },
     /// 사람이 읽는 활동 한 줄(활동 기록). 서버로 가는 실행 기록과는 별개임.
     Activity(ActivityEvent),
-    /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None 이면 대기 아님(샀거나 해당 없음).
+    /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None이면 대기 아님(샀거나 해당 없음).
     /// 서버와 끊긴 틱에는 보내지 않아 마지막 값이 남음.
     EntryWait(Option<Value>),
     /// 실행기가 직접 판단하는 세션의 **차트 재료** — 받은 마감봉과 지표선, 지금 그릴 가격선.
-    /// 봉이 새로 마감됐을 때만 보냄(매 틱 보내면 300개 배열이 5초마다 화면으로 간다).
+    /// 봉이 새로 마감됐을 때만 보냄(매 틱 보내면 300개 배열이 5초마다 화면으로 감).
     Chart(Value),
     /// 그 사이의 **움직이는 부분** — 만들어지는 중인 봉과 지금 가격선. 매 바퀴 보냄.
-    /// 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춰 보인다.
+    /// 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춰 보임.
     ChartLive(Value),
     Finished {
         status: String,
@@ -153,7 +154,7 @@ pub struct ClosePnl {
     pub fees_known: bool,
 }
 
-/// 지금 유닉스 ms. 봉 마감 판정 · 쿨다운 · 적립식 달력이 이 값을 본다.
+/// 지금 유닉스 ms. 봉 마감 판정·쿨다운·적립식 달력이 이 값을 봄.
 fn now_ms() -> i64 {
     crate::clock::unix_ms() as i64
 }
@@ -236,8 +237,8 @@ pub fn rehearsal_amounts(m: &Value, exchange_name: &str, broker: Option<&Arc<dyn
 }
 
 /// 마틴게일(H)이 국내 거래소 최소 주문 금액에 걸린 리허설 문구 — 투자 금액이 아니라 어느 칸이 작은지 말함.
-/// 거래소 문구("매크로 투자 금액을 … 올리세요")는 투자 금액이 충분해도 그렇게 말해 엉뚱한 칸을 가리켰다(2026-10-17 업비트
-/// 47,000원 · 처음 살 금액 4,700원). 마틴게일이 아니거나 최소 금액 미달이 아니거나 바이낸스면 None(거래소 문구 그대로 —
+/// 거래소 문구("매크로 투자 금액을 … 올리세요")는 투자 금액이 충분해도 그렇게 말해 엉뚱한 칸을 가리킴(예: 업비트
+/// 47,000원·처음 살 금액 4,700원). 마틴게일이 아니거나 최소 금액 미달이 아니거나 바이낸스면 None(거래소 문구 그대로 —
 /// 바이낸스는 종목마다 최소 금액이 달라 거래소 문구가 정확함).
 pub fn martingale_min_order_reason(m: &Value, exchange_name: &str, error_name: &str) -> Option<String> {
     if !error_name.starts_with("under_min_total") || !Exchange::parse(exchange_name).is_some_and(Exchange::is_domestic)
@@ -616,7 +617,7 @@ impl Bot {
         snap
     }
 
-    /// 수수료 반영 손익 — 화면과 서버(웹)가 같은 숫자를 보이게 둘 다에 실음(2026-10-18: 실행기 +1.23% · 웹 +1.33%).
+    /// 수수료 반영 손익 — 화면과 서버(웹)가 같은 숫자를 보이게 둘 다에 실음.
     /// 실현손익은 수수료를 다 알 때만, 평가손익은 진입 수수료를 알 때만 — 모르면 null(웹은 수수료 전 값으로 표시).
     fn put_net(&self, snap: &mut Value) {
         snap["realized_net"] = if self.fees_complete { json!(self.realized_net) } else { Value::Null };

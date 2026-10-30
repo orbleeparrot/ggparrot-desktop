@@ -1,15 +1,15 @@
-// 매크로 조건 차트 — 봉 · 지표선 · 가격선을 한 판에.
+// 매크로 조건 차트 — 봉·지표선·가격선을 한 판에.
 //
-// 봉도 지표선도 가격선도 **다시 계산하지 않는다.** 봉은 거래소에서 받은 그대로, 지표선과
-// 가격선은 엔진이 낸 그대로다. 화면이 다시 계산하면 규칙 산수가 두 벌이 되고, 실제로 그
-// 일이 있었다(E 눌림목 선이 현재가를 따라 영원히 내려왔다).
+// 봉도 지표선도 가격선도 **다시 계산하지 않음.** 봉은 거래소에서 받은 그대로, 지표선과
+// 가격선은 엔진이 낸 그대로임. 화면이 다시 계산하면 규칙 산수가 두 벌이 되고 엔진과
+// 어긋남(예: E 눌림목 선이 현재가를 따라 영원히 내려옴).
 //
-// 차트는 **한 번만 만들고** 데이터만 갈아끼운다. 봉이 마감될 때마다 다시 만들면 보고 있던
-// 확대 · 스크롤이 그때마다 처음으로 돌아간다.
+// 차트는 **한 번만 만들고** 데이터만 갈아끼움. 봉이 마감될 때마다 다시 만들면 보고 있던
+// 확대·스크롤이 그때마다 처음으로 돌아감.
 //
-// 축은 봉에 맞춘다. 가격선을 전부 담으려고 축을 늘리면 봉이 납작해져 아무것도 안 보인다 —
-// BTC 에서 익절 +5% · 손절 -3% 가 5시간치 봉 범위보다 훨씬 넓어 봉 300개가 한 줄이 됐다.
-// 그래서 축은 candleRange 가 정한다.
+// 축은 봉에 맞춤. 가격선을 전부 담으려고 축을 늘리면 봉이 납작해져 아무것도 안 보임 —
+// BTC에서 익절 +5%·손절 -3%가 5시간치 봉 범위보다 훨씬 넓어 봉 300개가 한 줄이 됨.
+// 그래서 축은 candleRange가 정함.
 import { useEffect, useId, useRef } from "react";
 import {
   CandlestickSeries,
@@ -33,7 +33,7 @@ import {
 import { formatPrice } from "../../state/format";
 import type { MacroInfo } from "../../types";
 
-/** 지표선 색 — 이름으로 고른다. 모르는 이름은 회색 참고선. */
+/** 지표선 색 — 이름으로 고름. 모르는 이름은 회색 참고선. */
 const SERIES_TONE: Record<string, string> = {
   breakout: "#16a34a",
   ma_fast: "#ea580c",
@@ -46,7 +46,7 @@ const SERIES_TONE: Record<string, string> = {
 
 interface Props {
   chart: ChartData | null;
-  /** 봉 마감 사이에 움직이는 부분. 없으면 마감봉만 그린다. */
+  /** 봉 마감 사이에 움직이는 부분. 없으면 마감봉만 그림. */
   live?: ChartLive | null;
   price: number;
   /** 보유 중이면 평단 — 가로 점선으로 겹침. */
@@ -75,7 +75,7 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
   const labelId = useId();
   const bars = chart?.bars ?? [];
   const oscillator = chart?.oscillator ?? null;
-  // 엔진이 낸 가격선이 둘 있으면 **새것**(live)을 쓴다 — 마감봉 payload 의 선은 그 봉까지의 값이다.
+  // 엔진이 낸 가격선이 둘 있으면 **새것**(live)을 씀 — 마감봉 payload의 선은 그 봉까지의 값임.
   const levels = live?.levels ?? chart?.levels ?? null;
 
   const api = useRef<IChartApi | null>(null);
@@ -85,22 +85,22 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
   const lines = useRef(new Map<string, IPriceLine>());
   const oscLines = useRef(new Map<string, IPriceLine>());
   const overlays = useRef(new Map<string, ISeriesApi<"Line">>());
-  /** 축 범위 — autoscaleInfoProvider 가 읽는다. 데이터가 바뀔 때마다 여기에 새로 담는다. */
+  /** 축 범위 — autoscaleInfoProvider가 읽음. 데이터가 바뀔 때마다 여기에 새로 담음. */
   const span = useRef({ min: 0, max: 1 });
-  /** 처음 데이터를 받았을 때 한 번만 전체 보기로 맞춘다. 그 뒤 확대 · 스크롤은 사용자 것이다. */
+  /** 처음 데이터를 받았을 때 한 번만 전체 보기로 맞춤. 그 뒤 확대·스크롤은 사용자 것임. */
   const fitted = useRef(false);
-  /** 직전에 그린 봉들의 시각 — 링버퍼가 앞을 버리면 보고 있던 구간이 밀린다. */
+  /** 직전에 그린 봉들의 시각 — 링버퍼가 앞을 버리면 보고 있던 구간이 밀림. */
   const times = useRef<number[]>([]);
 
   const hasOscillator = !!oscillator;
   const blank = bars.length < 2;
 
-  // --- 한 번만: 차트를 세운다 -------------------------------------------------
+  // --- 한 번만: 차트를 세움 --------------------------------------------------
   useEffect(() => {
     const node = host.current;
     if (!node || blank) return;
 
-    // 정리 함수가 읽을 것은 여기서 붙잡아 둔다 — 그때는 ref 가 이미 바뀌어 있을 수 있다.
+    // 정리 함수가 읽을 것은 여기서 붙잡아 둠 — 그때는 ref가 이미 바뀌어 있을 수 있음.
     const held = lines.current;
     const heldOsc = oscLines.current;
     const heldOverlays = overlays.current;
@@ -118,7 +118,7 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
       autoSize: true,
     } as const;
 
-    // 아래 칸(RSI)이 있으면 시간축은 거기 하나만 둔다 — 두 번 나오면 읽을 것만 늘어난다.
+    // 아래 칸(RSI)이 있으면 시간축은 거기 하나만 둠 — 두 번 나오면 읽을 것만 늘어남.
     const main = createChart(node, { ...common, timeScale: { ...common.timeScale, visible: !hasOscillator } });
     api.current = main;
     candles.current = main.addSeries(CandlestickSeries, {
@@ -142,7 +142,7 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
         priceLineVisible: false,
         lastValueVisible: true,
       });
-      // 두 차트의 가로축을 묶는다. 빗장이 없으면 A 가 B 를, B 가 다시 A 를 설정하며 영원히 주고받는다.
+      // 두 차트의 가로축을 묶음. 빗장이 없으면 A가 B를, B가 다시 A를 설정하며 영원히 주고받음.
       let syncing = false;
       const sync = (source: IChartApi, target: IChartApi) =>
         source.timeScale().subscribeVisibleLogicalRangeChange((range) => {
@@ -180,7 +180,7 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
     const main = api.current;
     if (!series || !main || blank) return;
 
-    // 링버퍼가 앞 봉을 버리면 같은 자리를 보려면 그만큼 당겨야 한다 — 안 하면 보던 구간이 밀린다.
+    // 링버퍼가 앞 봉을 버리면 같은 자리를 보려면 그만큼 당겨야 함 — 안 하면 보던 구간이 밀림.
     const before = times.current;
     const now = bars.map((b) => b[0]);
     const dropped = before.length ? now.indexOf(before[0]) : -1;
@@ -233,7 +233,7 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
     } else if (keep && dropped > 0) {
       main.timeScale().setVisibleLogicalRange({ from: keep.from - dropped, to: keep.to - dropped });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- shape 가 내용 변화를 대신한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shape가 내용 변화를 대신함
   }, [shape, blank]);
 
   // --- 매 바퀴: 만들어지는 중인 봉과 가격선 -----------------------------------
@@ -258,13 +258,13 @@ export function CandlePlot({ chart, live = null, price, entry = 0, quote, interv
       ...(entry > 0 ? [{ key: "entry", label: "평단", value: entry, color: muted, dotted: true }] : []),
     ]);
 
-    // 축은 봉과 지금 선을 함께 담되, 먼 선 때문에 봉이 납작해지지 않게 candleRange 가 정한다.
+    // 축은 봉과 지금 선을 함께 담되, 먼 선 때문에 봉이 납작해지지 않게 candleRange가 정함.
     const rows = live?.live ? [...bars, live.live] : bars;
     span.current = candleRange(rows, drawn, entry);
     series.applyOptions({
       autoscaleInfoProvider: () => ({ priceRange: { minValue: span.current.min, maxValue: span.current.max } }),
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick 이 내용 변화를 대신한다
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tick이 내용 변화를 대신함
   }, [tick, blank]);
 
   if (blank) {
@@ -317,8 +317,8 @@ interface Drawn {
 }
 
 /**
- * 가격선을 **지우고 다시 긋지 않고** 값만 고친다. 매 바퀴 지웠다 그으면 선이 깜빡이고,
- * 보고 있던 자리도 흔들린다.
+ * 가격선을 **지우고 다시 긋지 않고** 값만 고침. 매 바퀴 지웠다 그으면 선이 깜빡이고,
+ * 보고 있던 자리도 흔들림.
  */
 function syncPriceLines(
   held: Map<string, IPriceLine>,

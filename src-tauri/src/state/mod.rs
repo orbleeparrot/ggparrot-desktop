@@ -33,7 +33,7 @@ pub fn clip_chars(s: &str, max: usize) -> String {
     }
 }
 
-/// 복사 글의 줄 시각 — 연도까지("2026-10-18 19:00:05", 이 PC 시간대). 해를 넘긴 기록도 헷갈리지 않게(2026-10-19).
+/// 복사 글의 줄 시각 — 연도까지("2026-10-18 19:00:05", 이 PC 시간대). 해를 넘긴 기록도 헷갈리지 않게.
 pub fn copy_line_time(ms: i64) -> String {
     chrono::DateTime::from_timestamp_millis(ms)
         .map(|d| d.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M:%S").to_string())
@@ -180,10 +180,10 @@ pub struct RunData {
     /// 진입 대기(서버 하트비트의 entry_wait) — 조건을 기다리는 매크로가 아직 안 샀을 때만 Some.
     pub entry_wait: Option<Value>,
     /// 실행기가 직접 판단하는 세션의 차트(봉 + 지표선 + 가격선). 서버가 판단하면 None —
-    /// 그때는 앱이 봉을 받지 않으므로 그릴 재료가 없다. 봉이 마감될 때만 바뀐다.
+    /// 그때는 앱이 봉을 받지 않으므로 그릴 재료가 없음. 봉이 마감될 때만 바뀜.
     pub chart: Option<Value>,
-    /// 그 사이의 움직이는 부분(만들어지는 중인 봉 + 지금 가격선). 매 바퀴 바뀐다 —
-    /// 무거운 `chart` 와 나눠 두어야 화면이 봉 배열을 매번 다시 받지 않는다.
+    /// 그 사이의 움직이는 부분(만들어지는 중인 봉 + 지금 가격선). 매 바퀴 바뀜 —
+    /// 무거운 `chart`와 나눠 두어야 화면이 봉 배열을 매번 다시 받지 않음.
     pub chart_live: Option<Value>,
 }
 
@@ -278,7 +278,7 @@ pub struct Run {
     /// 실전 시작 확인을 띄웠고 아직 답을 받지 않음 — 확인 명령은 이 표시를 써야만 시작함(화면이 오염돼도
     /// 확인 창 없이 실전을 시작하지 못하게).
     pub live_confirm_issued: bool,
-    /// 마지막으로 알린 평가손익 구간(부호 포함, ±3 · 5 · 10 …%) — 무포지션이면 0(다음 진입은 처음부터 셈).
+    /// 마지막으로 알린 평가손익 구간(부호 포함, ±3·5·10 …%) — 무포지션이면 0(다음 진입은 처음부터 셈).
     pub pnl_band: f64,
     /// 서버와 5분 넘게 끊겼다고 알렸는지 — 연결이 돌아오면 그 소식도 알리고 끔.
     pub offline_alerted: bool,
@@ -514,7 +514,7 @@ pub struct Core {
     pub show_dev_log: bool,
     /// 창을 닫으면 트레이로 숨기고 계속 실행함(기본 켬).
     pub close_to_tray: bool,
-    /// 알림(기본 켬, 소리 포함) — 체결 · 손익 구간 · 오류 · 위험 · 서버 끊김 · 실행 멈춤 OS 알림을 한 스위치로 켜고 끔.
+    /// 알림(기본 켬, 소리 포함) — 체결·손익 구간·오류·위험·서버 끊김·실행 멈춤 OS 알림을 한 스위치로 켜고 끔.
     pub notify: bool,
     pub hidden_to_tray: bool,
     pub server_base: String,

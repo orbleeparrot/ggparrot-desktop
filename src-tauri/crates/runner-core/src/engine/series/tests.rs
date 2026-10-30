@@ -1,4 +1,4 @@
-//! 지표선이 **엔진이 보는 값과 같은지**. 다르면 화면이 거짓을 그린다.
+//! 지표선이 **엔진이 보는 값과 같은지**. 다르면 화면이 거짓을 그림.
 use super::*;
 use crate::engine::indicators::MaType;
 
@@ -24,7 +24,7 @@ fn 이동평균선은_같은_설정의_지표를_그대로_돌린_값이다() {
 
 #[test]
 fn 값이_없는_앞쪽은_비워_둔다() {
-    // 0 으로 채우면 화면이 그 0 을 진짜 지표값으로 그린다.
+    // 0으로 채우면 화면이 그 0을 진짜 지표값으로 그림.
     let rows = bars(&[10.0, 11.0, 12.0, 13.0]);
     let line = ma_series(&Ma::new(MaType::Sma, 3), &rows, "ma", "단기 3".into());
     assert_eq!(line.values[0], None);
@@ -34,7 +34,7 @@ fn 값이_없는_앞쪽은_비워_둔다() {
 
 #[test]
 fn 돌고_있는_지표의_웜업_상태가_섞이지_않는다() {
-    // fresh() 가 아니라 복제본을 쓰면 이미 먹은 봉 때문에 값이 밀린다.
+    // fresh()가 아니라 복제본을 쓰면 이미 먹은 봉 때문에 값이 밀림.
     let mut live = Ma::new(MaType::Sma, 3);
     for close in [100.0, 200.0, 300.0, 400.0] {
         live.update(close);
@@ -77,8 +77,8 @@ fn rsi_는_문턱과_함께_간다() {
 
 #[test]
 fn 돌파선은_봉마다_그_봉_시가에서_새로_잡힌다() {
-    // 지금 봉의 선 하나만 가로로 그으면 "이 값이 늘 기준이었다" 로 읽힌다 — 실제로는
-    // 봉마다 `그 봉 시가 + k x 직전 봉 변동폭` 으로 새로 잡힌다.
+    // 지금 봉의 선 하나만 가로로 그으면 "이 값이 늘 기준이었다"로 읽힘 — 실제로는
+    // 봉마다 `그 봉 시가 + k x 직전 봉 변동폭`으로 새로 잡힘.
     use crate::engine::rules::breakout::{Breakout, ExitMode};
     let rows = vec![
         Bar { t: 0, o: 100.0, h: 110.0, l: 90.0, c: 105.0, v: None },
@@ -90,7 +90,7 @@ fn 돌파선은_봉마다_그_봉_시가에서_새로_잡힌다() {
     let lines = rule.chart_series(&rows);
     assert_eq!(lines.len(), 1, "필터가 없으면 돌파선 하나뿐");
     assert_eq!(lines[0].id, "breakout");
-    // 첫 봉은 직전 봉이 없어 비운다.
+    // 첫 봉은 직전 봉이 없어 비움.
     assert_eq!(lines[0].values[0], None);
     // 2번째: 시가 106 + 0.5 x (110-90) = 116
     assert_eq!(lines[0].values[1], Some(116.0));

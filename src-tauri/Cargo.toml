@@ -38,8 +38,8 @@ tauri-plugin-opener = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-# zip 기능은 끔 — 업데이트 파일이 Windows setup.exe · macOS .app.tar.gz 라 압축 해제를 쓰지 않고,
-# zip 4.x 보안 권고(RUSTSEC-2026-0367~0369, 고친 9.x 를 쓰는 updater 가 아직 없음)가 cargo audit 를 막는다.
+# zip 기능은 끔 — 업데이트 파일이 Windows setup.exe·macOS .app.tar.gz라 압축 해제를 쓰지 않고,
+# zip 4.x 보안 권고(RUSTSEC-2026-0367~0369, 고친 9.x를 쓰는 updater가 아직 없음)가 cargo audit을 막음.
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-notification = "2"
 dirs = "7"

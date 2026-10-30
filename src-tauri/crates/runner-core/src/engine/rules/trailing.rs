@@ -1,27 +1,26 @@
-//! **E — 트레일링 스탑.** 오를 때는 따라 올라가고, 고점에서 정해진 만큼 밀리면 판다.
+//! **E — 트레일링 스탑.** 오를 때는 따라 올라가고, 고점에서 정해진 만큼 밀리면 팖.
 //!
-//! 세 숫자로 움직인다:
+//! 세 숫자로 움직임:
 //!
-//! * **진입** — 바로 사거나(`immediate`), 기준가에서 `entry_dip`% 눌렸을 때 산다(`dip`).
-//! * **발동**(`activation_profit`) — 평단 대비 이만큼 올라야 트레일이 **켜진다**. 그 전에는
-//!   트레일이 아무것도 지키지 않는다(손절선만 작동한다).
-//! * **따라가기**(`trail_percent`) — 켜진 뒤로는 **고점** 대비 이만큼 밀리면 판다.
+//! * **진입** — 바로 사거나(`immediate`), 기준가에서 `entry_dip`% 눌렸을 때 삼(`dip`).
+//! * **발동**(`activation_profit`) — 평단 대비 이만큼 올라야 트레일이 **켜짐**. 그 전에는
+//!   트레일이 아무것도 지키지 않음(손절선만 작동함).
+//! * **따라가기**(`trail_percent`) — 켜진 뒤로는 **고점** 대비 이만큼 밀리면 팖.
 //!
-//! 고점은 봉의 **고가**로, 밀림은 봉의 **저가**로 본다. 봉 안에서 스쳤다면 실제로는
-//! 체결됐기 때문이다 — 종가만 보면 "그 사이 선을 지났는데 안 팔린" 것이 된다.
+//! 고점은 봉의 **고가**로, 밀림은 봉의 **저가**로 봄. 봉 안에서 스쳤다면 실제로는
+//! 체결됐기 때문임 — 종가만 보면 "그 사이 선을 지났는데 안 팔린" 것이 됨.
 //!
-//! 고점 · 발동 여부 · 눌림목 기준가 셋은 **봉에서 다시 구할 수 없다.** 재기동할 때
-//! 체크포인트가 실어 보내지 않으면 트레일이 고점을 잊고 발동 전으로 돌아간다
-//! (2026-10-12 KRW-CKB 제보가 그것이었다).
+//! 고점·발동 여부·눌림목 기준가 셋은 **봉에서 다시 구할 수 없음.** 재기동할 때
+//! 체크포인트가 실어 보내지 않으면 트레일이 고점을 잊고 발동 전으로 돌아감.
 
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::levels::{Levels, price};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryMode {
-    /// 평평한 상태가 되면 바로 산다.
+    /// 평평한 상태가 되면 바로 삼.
     Immediate,
-    /// 기준가에서 `entry_dip`% 눌리기를 기다린다.
+    /// 기준가에서 `entry_dip`% 눌리기를 기다림.
     Dip,
 }
 
@@ -32,18 +31,18 @@ pub struct Trailing {
     pub entry_dip: f64,
     /// 트레일이 켜지는 수익률(%).
     pub activation_profit: f64,
-    /// 고점 대비 밀림 폭(%) — 여기서 판다.
+    /// 고점 대비 밀림 폭(%) — 여기서 팖.
     pub trail_percent: f64,
-    /// 한 번 팔고 다시 살 것인가. 거짓이면 첫 청산 뒤 규칙을 멈춘다.
+    /// 한 번 팔고 다시 살지. 거짓이면 첫 청산 뒤 규칙을 멈춤.
     pub reenter_after_exit: bool,
     /// 진입 한 번에 쓰는 자본 비율.
     pub invest_ratio: f64,
 
     /// 포지션을 들고 있는 동안의 고점.
     pub peak: f64,
-    /// 트레일이 켜졌는가.
+    /// 트레일이 켜졌는지.
     pub armed: bool,
-    /// 눌림목 진입의 기준가. 평평해지는 순간 잡는다.
+    /// 눌림목 진입의 기준가. 평평해지는 순간 잡음.
     pub dip_ref: Option<f64>,
 }
 
@@ -69,17 +68,17 @@ impl Trailing {
         }
     }
 
-    /// 지금 트레일이 발동해 있다면 그 손절선. 화면에 그리는 선이 이 값이다.
+    /// 지금 트레일이 발동해 있다면 그 손절선. 화면에 그리는 선이 이 값임.
     pub fn trail_stop(&self) -> Option<f64> {
         if self.armed && self.peak > 0.0 { Some(self.peak * (1.0 - self.trail_percent / 100.0)) } else { None }
     }
 
-    /// 트레일이 켜지는 가격(평단 기준). 아직 안 켜졌을 때 화면에 그린다.
+    /// 트레일이 켜지는 가격(평단 기준). 아직 안 켜졌을 때 화면에 그림.
     pub fn activation_price(&self, avg_entry: f64) -> Option<f64> {
         if self.armed || avg_entry <= 0.0 { None } else { Some(avg_entry * (1.0 + self.activation_profit / 100.0)) }
     }
 
-    /// 눌림목 진입을 노리는 가격. 보유 중이면 없다.
+    /// 눌림목 진입을 노리는 가격. 보유 중이면 없음.
     pub fn entry_target(&self) -> Option<f64> {
         match (self.entry_mode, self.dip_ref) {
             (EntryMode::Dip, Some(reference)) => Some(reference * (1.0 - self.entry_dip / 100.0)),
@@ -90,8 +89,8 @@ impl Trailing {
 
 impl Strategy for Trailing {
     fn on_bar(&mut self, ctx: &mut SimContext<'_>, bar: &Bar) {
-        // 손절 · 보유시간 · 일일 한도가 먼저다. 끌려 나갔으면 이 봉에서 더 판단하지 않는다 —
-        // 다만 "한 번 팔면 다시 사지 않는다" 는 설정은 그때도 지킨다.
+        // 손절·보유시간·일일 한도가 먼저임. 끌려 나갔으면 이 봉에서 더 판단하지 않음 —
+        // 다만 "한 번 팔면 다시 사지 않는다"는 설정은 그때도 지킴.
         if ctx.common_risk(bar) {
             if !self.reenter_after_exit {
                 ctx.stop_rule();
@@ -111,16 +110,16 @@ impl Strategy for Trailing {
                     if !self.reenter_after_exit {
                         ctx.stop_rule();
                     }
-                    // 다음 눌림목의 기준은 **판 봉의 종가**다(서버와 같게).
+                    // 다음 눌림목의 기준은 **판 봉의 종가**임(서버와 같게).
                     self.dip_ref = Some(bar.c);
                 }
             }
             return;
         }
 
-        // 눌림목 기준가는 관문 **앞**에서 잡는다. 뒤에 두면 관문이 막는 동안 기준가가
-        // 비어 있다가 "관문이 처음 허락한 봉" 의 시가로 잡히고, 오르는 구간에서는 문턱이
-        // 함께 올라가 없던 매수를 하게 된다.
+        // 눌림목 기준가는 관문 **앞**에서 잡음. 뒤에 두면 관문이 막는 동안 기준가가
+        // 비어 있다가 "관문이 처음 허락한 봉"의 시가로 잡히고, 오르는 구간에서는 문턱이
+        // 함께 올라가 없던 매수를 하게 됨.
         if self.entry_mode == EntryMode::Dip && self.dip_ref.is_none() {
             self.dip_ref = Some(bar.o);
         }
@@ -137,7 +136,7 @@ impl Strategy for Trailing {
             EntryMode::Immediate => ctx.open_long(margin, bar.c, bar.c, "진입"),
         };
         if opened {
-            // 고점은 **산 봉의 종가**에서 시작한다 — 산 뒤의 고점만 세야 한다.
+            // 고점은 **산 봉의 종가**에서 시작함 — 산 뒤의 고점만 세야 함.
             self.peak = bar.c;
             self.armed = false;
         }
@@ -145,7 +144,7 @@ impl Strategy for Trailing {
 
     fn levels(&self, avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
         if avg_entry > 0.0 {
-            // 보유 중 — 발동 전이면 켜지는 선을, 발동 뒤면 따라가는 손절선을 그린다.
+            // 보유 중 — 발동 전이면 켜지는 선을, 발동 뒤면 따라가는 손절선을 그림.
             return Levels {
                 trail_stop: self.trail_stop().and_then(price),
                 trail_activation: self.activation_price(avg_entry).and_then(price),
@@ -154,9 +153,9 @@ impl Strategy for Trailing {
             };
         }
         match self.entry_mode {
-            // 바로 사는 설정은 그릴 선이 없다 — 다음 봉에 산다.
+            // 바로 사는 설정은 그릴 선이 없음 — 다음 봉에 삼.
             EntryMode::Immediate => Levels::default(),
-            // 눌림목은 기준가를 잡기 전까지 선이 없다(첫 봉 마감 전).
+            // 눌림목은 기준가를 잡기 전까지 선이 없음(첫 봉 마감 전).
             EntryMode::Dip => match self.entry_target().and_then(price) {
                 Some(target) => Levels { entry_target: Some(target), ..Default::default() },
                 None => Levels::pending(),

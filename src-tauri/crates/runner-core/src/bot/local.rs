@@ -1,15 +1,15 @@
-//! 실행기가 **스스로** 내리는 매수 · 매도 판단.
+//! 실행기가 **스스로** 내리는 매수·매도 판단.
 //!
-//! 지금까지는 서버가 봉을 받아 판단하고 명령만 내려보냈다. 그 구조에서는 우리 서버가 잠깐
-//! 멈추면 사용자는 자기 PC 가 멀쩡한데도 매수 · 매도 시점을 놓친다 — 원인이 전적으로 우리
-//! 쪽에 있고, 전 사용자에게 동시에, 사용자는 손쓸 수도 볼 수도 없다.
+//! 서버가 봉을 받아 판단하고 명령만 내려보내면 우리 서버가 잠깐
+//! 멈출 때 사용자는 자기 PC가 멀쩡한데도 매수·매도 시점을 놓침 — 원인이 전적으로 우리
+//! 쪽에 있고, 전 사용자에게 동시에, 사용자는 손쓸 수도 볼 수도 없음.
 //!
-//! 주문은 서버 명령과 **같은 길**([`Bot::execute_command`])로 나간다. 길이 하나여야 주문
-//! 상한 · 최소 수량 · 수수료 보정 · 포지션 불확실 판정이 양쪽에 똑같이 걸린다.
+//! 주문은 서버 명령과 **같은 길**([`Bot::execute_command`])로 나감. 길이 하나여야 주문
+//! 상한·최소 수량·수수료 보정·포지션 불확실 판정이 양쪽에 똑같이 걸림.
 //!
-//! 서버에는 **ack 를 보내지 않는다** — 서버가 모르는 명령이다. 대신 체결 자체를 보고한다
-//! (`local_fills`). 실행기가 판단하면 그 보고가 리더보드 · 수익률 · 활동 기록의 **유일한**
-//! 입구다. 서버가 명령을 내던 때는 '냈던 명령' 이라도 알았지만 이제는 아무것도 모른다.
+//! 서버에는 **ack를 보내지 않음** — 서버가 모르는 명령임. 대신 체결 자체를 보고함
+//! (`local_fills`). 실행기가 판단하면 그 보고가 리더보드·수익률·활동 기록의 **유일한**
+//! 입구임. 서버는 이 판단을 따로 알 길이 없음.
 
 use serde_json::{Value, json};
 
@@ -20,23 +20,23 @@ use crate::engine::runner::{BuildError, Engine, build, command_from_fill, sessio
 use super::*;
 
 /// 로컬 명령 번호 앞에 붙는 말. 서버 명령 번호(정수)와 겹치면 "이미 했다" 기억이 서로의
-/// 명령을 지워 주문이 통째로 사라진다.
+/// 명령을 지워 주문이 통째로 사라짐.
 pub const LOCAL_ID_PREFIX: &str = "local-";
 
-/// 지표를 세우는 데 쓰는 과거 봉 수. 서버와 같아야 같은 판정이 난다.
+/// 지표를 세우는 데 쓰는 과거 봉 수. 서버와 같아야 같은 판정이 남.
 pub const WARMUP_CANDLES: usize = 500;
 
-/// 한 틱에 꺼낼 체결 상한. 그리드 칸 수보다 넉넉하다 — 여기 걸린다는 건 큐가 끝없이
-/// 나온다는 뜻이고, 그러면 주문이 아니라 기록이 필요한 상황이다.
+/// 한 틱에 꺼낼 체결 상한. 그리드 칸 수보다 넉넉함 — 여기 걸린다는 건 큐가 끝없이
+/// 나온다는 뜻이고, 그러면 주문이 아니라 기록이 필요한 상황임.
 const MAX_FILLS_PER_TICK: usize = 50;
 
-/// 한 번에 되짚는 봉 수. 절전 · 네트워크 끊김으로 몇 봉을 놓쳐도 주워 온다.
+/// 한 번에 되짚는 봉 수. 절전·네트워크 끊김으로 몇 봉을 놓쳐도 주워 옴.
 const POLL_LOOKBACK: usize = 5;
 
-/// 화면에 들고 있는 최근 봉 수. 차트 한 화면에 넉넉하고, 메모리는 수십 KB 다.
+/// 화면에 들고 있는 최근 봉 수. 차트 한 화면에 넉넉하고, 메모리는 수십 KB임.
 pub const CHART_BARS: usize = 300;
 
-/// 로컬 판단에 필요한 것들. 서버가 켜 준 세션에서만 만든다.
+/// 로컬 판단에 필요한 것들. 서버가 켜 준 세션에서만 만듦.
 pub struct LocalEngine {
     engine: Engine,
     stream: ClosedCandleStream,
@@ -45,14 +45,14 @@ pub struct LocalEngine {
     seq: u64,
     /// 아직 서버에 못 올린 체결.
     pending_fills: Vec<Value>,
-    /// 봉을 못 받은 것이 이어진 횟수 — 처음과 가끔만 알린다.
+    /// 봉을 못 받은 것이 이어진 횟수 — 처음과 가끔만 알림.
     fetch_failures: u32,
-    /// 마지막으로 본 마감봉. 돌파선처럼 **그 봉의 시가**가 필요한 규칙이 있다.
+    /// 마지막으로 본 마감봉. 돌파선처럼 **그 봉의 시가**가 필요한 규칙이 있음.
     last_bar: Option<Bar>,
     /// 화면이 그릴 최근 봉들(차트용). 오래된 것부터.
     recent: std::collections::VecDeque<Bar>,
-    /// 지금 **만들어지는 중인** 봉. 거래소에서 받은 것이 아니라 틱 가격으로 쌓는다 —
-    /// 화면이 봉 마감 사이에 멈춰 보이지 않게 하는 용도이고, 판단에는 쓰지 않는다.
+    /// 지금 **만들어지는 중인** 봉. 거래소에서 받은 것이 아니라 틱 가격으로 쌓음 —
+    /// 화면이 봉 마감 사이에 멈춰 보이지 않게 하는 용도이고, 판단에는 쓰지 않음.
     forming: Option<Bar>,
 }
 
@@ -69,11 +69,11 @@ impl LocalEngine {
 
     /// 화면이 그릴 차트 한 벌 — 받은 마감봉과 지금의 가격선.
     ///
-    /// 봉은 거래소에서 받은 **그대로**이고, 선은 엔진이 낸 **그대로**다. 화면은 둘을
-    /// 겹쳐 그리기만 한다 — 화면이 다시 계산하면 규칙 산수가 두 벌이 된다.
+    /// 봉은 거래소에서 받은 **그대로**이고, 선은 엔진이 낸 **그대로**임. 화면은 둘을
+    /// 겹쳐 그리기만 함 — 화면이 다시 계산하면 규칙 산수가 두 벌이 됨.
     pub fn chart(&self, macro_: &serde_json::Value) -> Value {
-        // 지표선도 **엔진이 쓰는 그 지표**로 만든다(engine::series). 화면이 따로 계산하면
-        // 산수가 두 벌이 되고, 그중 하나는 엔진이 보는 것과 다르다.
+        // 지표선도 **엔진이 쓰는 그 지표**로 만듦(engine::series). 화면이 따로 계산하면
+        // 산수가 두 벌이 되고, 그중 하나는 엔진이 보는 것과 다름.
         let bars: Vec<Bar> = self.recent.iter().copied().collect();
         let (series, oscillator) = self.engine.chart_series(&bars);
         json!({
@@ -88,7 +88,7 @@ impl LocalEngine {
         })
     }
 
-    /// 틱 가격 하나를 만들어지는 중인 봉에 반영한다. `open_ms` 가 바뀌면 새 봉을 연다.
+    /// 틱 가격 하나를 만들어지는 중인 봉에 반영함. `open_ms`가 바뀌면 새 봉을 엶.
     pub(super) fn feed_live(&mut self, price: f64, open_ms: i64) {
         if price <= 0.0 || !price.is_finite() {
             return;
@@ -99,19 +99,19 @@ impl LocalEngine {
                 bar.l = bar.l.min(price);
                 bar.c = price;
             }
-            // 봉이 바뀌었거나 처음 — 이 가격을 시가로 연다.
+            // 봉이 바뀌었거나 처음 — 이 가격을 시가로 엶.
             _ => self.forming = Some(Bar { t: open_ms, o: price, h: price, l: price, c: price, v: None }),
         }
     }
 
-    /// 만들어지는 중인 봉. 마감봉과 시각이 겹치면(거래소가 이미 준 봉) 내보내지 않는다.
+    /// 만들어지는 중인 봉. 마감봉과 시각이 겹치면(거래소가 이미 준 봉) 내보내지 않음.
     pub(super) fn live_bar(&self) -> Option<Bar> {
         let last_closed = self.recent.back().map(|b| b.t);
         self.forming.filter(|bar| Some(bar.t) != last_closed)
     }
 
     /// 매 바퀴 보내는 **움직이는 부분**. 봉 배열과 지표선은 빼고, 만들어지는 중인 봉과
-    /// 지금 가격선만 담는다 — 작아서 자주 보내도 된다.
+    /// 지금 가격선만 담음 — 작아서 자주 보내도 됨.
     pub(super) fn live_chart(&self) -> Value {
         json!({
             "live": self.live_bar().map(|b| json!([b.t, b.o, b.h, b.l, b.c])),
@@ -129,16 +129,16 @@ impl LocalEngine {
 }
 
 impl Bot {
-    /// 이 세션을 실행기가 직접 판단하는가. 서버가 시작 응답으로 정한다 —
-    /// 서버가 꺼 두었으면 지금까지처럼 서버 명령만 실행한다.
+    /// 이 세션을 실행기가 직접 판단하는지. 서버가 시작 응답으로 정함 —
+    /// 서버가 꺼 두었으면 서버 명령만 실행함.
     pub(super) fn decides_locally(&self) -> bool {
         self.server.as_ref().map(|s| s.decides_locally()).unwrap_or(false)
     }
 
-    /// 서버가 "네가 판단해라" 고 한 세션에서 로컬 엔진을 세운다.
+    /// 서버가 "네가 판단해라"고 한 세션에서 로컬 엔진을 세움.
     ///
-    /// 여기서 실패하면 **아무도 판단하지 않는다** — 서버는 이 세션의 드라이버를 띄우지
-    /// 않았다. 조용히 서버 모드로 되돌아가는 길이 없으므로 세션을 오류로 끝낸다.
+    /// 여기서 실패하면 **아무도 판단하지 않음** — 서버는 이 세션의 드라이버를 띄우지
+    /// 않음. 조용히 서버 모드로 되돌아가는 길이 없으므로 세션을 오류로 끝냄.
     pub(super) async fn start_local_engine(&mut self) -> Result<LocalEngine, String> {
         let interval = crate::macro_info::candle_interval(&self.macro_);
         let engine = build(&self.macro_).map_err(|e| match e {
@@ -175,7 +175,7 @@ impl Bot {
             local.engine.on_bar(&bar);
             local.remember(bar);
         }
-        // 지표는 두고 장부만 되돌린다 — 웜업 중의 가짜 매수가 실거래 포지션으로 둔갑하지 않게.
+        // 지표는 두고 장부만 되돌림 — 웜업 중의 가짜 매수가 실거래 포지션으로 둔갑하지 않게.
         local.engine.warmup_done();
 
         let last = history.last().map(|c| c.t).unwrap_or(0);
@@ -196,26 +196,26 @@ impl Bot {
                 "engine_version": crate::engine::ENGINE_VERSION,
             })),
         );
-        // 웜업 봉이 이미 차트 몫만큼 쌓여 있다 — 여기서 한 번 보내지 않으면 **첫 봉이
-        // 마감될 때까지** 화면에 차트가 없다. 일봉 매크로면 하루를 기다린다.
+        // 웜업 봉이 이미 차트 몫만큼 쌓여 있음 — 여기서 한 번 보내지 않으면 **첫 봉이
+        // 마감될 때까지** 화면에 차트가 없음. 일봉 매크로면 하루를 기다림.
         let _ = self.tx.send(BotEvent::Chart(local.chart(&self.macro_)));
         Ok(local)
     }
 
-    /// 로컬 판단 한 바퀴 — 마감봉을 받아 판단하고, 나온 주문을 서버 명령과 같은 길로 낸다.
+    /// 로컬 판단 한 바퀴 — 마감봉을 받아 판단하고, 나온 주문을 서버 명령과 같은 길로 냄.
     ///
-    /// `Err` 는 '포지션이 불확실해져 루프를 끝내야 함' 이라는 뜻이다(서버 명령과 같은 규칙).
+    /// `Err`는 '포지션이 불확실해져 루프를 끝내야 함'이라는 뜻임(서버 명령과 같은 규칙).
     pub(super) async fn local_round(
         &mut self,
         local: &mut LocalEngine,
         price: f64,
         guard: &mut RiskGuard,
     ) -> Result<(), String> {
-        // 틱 기반 규칙(A · B · C)은 봉이 아니라 시계를 본다.
+        // 틱 기반 규칙(A·B·C)은 봉이 아니라 시계를 봄.
         local.engine.set_clock(now_ms());
 
-        // 만들어지는 중인 봉을 틱 가격으로 쌓는다. 판단에는 쓰지 않는다 — 화면이 봉
-        // 마감 사이에 멈춰 보이지 않게 하는 용도다.
+        // 만들어지는 중인 봉을 틱 가격으로 쌓음. 판단에는 쓰지 않음 — 화면이 봉
+        // 마감 사이에 멈춰 보이지 않게 하는 용도임.
         let interval = crate::macro_info::candle_interval(&self.macro_);
         if let Some(open_ms) = crate::intervals::bar_open_ms(&interval, now_ms(), &self.exchange_name) {
             local.feed_live(price, open_ms);
@@ -234,20 +234,20 @@ impl Bot {
                     local.remember(bar);
                 }
                 if arrived {
-                    // 봉 전체(300개)와 지표선은 **마감됐을 때만** 보낸다 — 매 바퀴 보내면
-                    // 큰 배열이 5초마다 화면으로 간다.
+                    // 봉 전체(300개)와 지표선은 **마감됐을 때만** 보냄 — 매 바퀴 보내면
+                    // 큰 배열이 5초마다 화면으로 감.
                     let _ = self.tx.send(BotEvent::Chart(local.chart(&self.macro_)));
                 }
             }
             Err(e) => {
-                // 봉을 못 받은 것은 치명적이지 않다 — 다음 바퀴에 다시 받는다. 그동안에도
-                // 손절 · 보유시간 같은 안전망은 이미 루프가 따로 보고 있다.
+                // 봉을 못 받은 것은 치명적이지 않음 — 다음 바퀴에 다시 받음. 그동안에도
+                // 손절·보유시간 같은 안전망은 이미 루프가 따로 보고 있음.
                 self.note_candle_failure(local, &e);
             }
         }
 
-        // 움직이는 부분만 매 바퀴 보낸다 — 만들어지는 중인 봉과 지금 가격선.
-        // 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춘다.
+        // 움직이는 부분만 매 바퀴 보냄 — 만들어지는 중인 봉과 지금 가격선.
+        // 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춤.
         let _ = self.tx.send(BotEvent::ChartLive(local.live_chart()));
 
         for _ in 0..MAX_FILLS_PER_TICK {
@@ -285,7 +285,7 @@ impl Bot {
         }
     }
 
-    /// 로컬 명령 하나를 실행하고 그 결과를 **체결 보고**로 쌓는다.
+    /// 로컬 명령 하나를 실행하고 그 결과를 **체결 보고**로 쌓음.
     async fn run_local_command(
         &mut self,
         local: &mut LocalEngine,
@@ -296,7 +296,7 @@ impl Bot {
         let action = value_text(command.get("action")).to_lowercase();
         let is_entry = action == "buy" || action == "short";
 
-        // 진입 전 확인 — 서버 명령과 같은 관문을 거친다. 청산은 막지 않는다.
+        // 진입 전 확인 — 서버 명령과 같은 관문을 거침. 청산은 막지 않음.
         let (blocked, why) = if self.close_failures > 0 {
             (true, "정리하지 못한 포지션이 있어 새 진입을 미뤄요".to_string())
         } else if self.get_command().is_some() {
@@ -313,7 +313,7 @@ impl Bot {
         let ack = match self.execute_command(command, price).await {
             Ok(ack) => ack,
             Err(e) => {
-                // 포지션이 불확실해졌다 — 실행을 끝내기 전에 이 체결도 보고에 남긴다.
+                // 포지션이 불확실해짐 — 실행을 끝내기 전에 이 체결도 보고에 남김.
                 local.pending_fills.push(local_fill(command, &json!({}), false, &e));
                 return Err(e);
             }
@@ -335,11 +335,11 @@ impl Bot {
         Ok(())
     }
 
-    /// 로컬 판단 세션이 하트비트에 덧붙이는 것 — 서버는 이걸로 장부를 적고 화면을 비춘다.
+    /// 로컬 판단 세션이 하트비트에 덧붙이는 것 — 서버는 이걸로 장부를 적고 화면을 비춤.
     ///
-    /// 체결은 **보낸 뒤에** 비운다([`Bot::clear_sent_fills`]). 전송이 실패해 다시 보내면
-    /// 서버가 같은 체결을 두 번 적을 수 있지만, 빠뜨리는 쪽이 훨씬 나쁘다 — 빠진 체결은
-    /// 리더보드 · 수익률에서 영영 사라진다.
+    /// 체결은 **보낸 뒤에** 비움([`Bot::clear_sent_fills`]). 전송이 실패해 다시 보내면
+    /// 서버가 같은 체결을 두 번 적을 수 있지만, 빠뜨리는 쪽이 훨씬 나쁨 — 빠진 체결은
+    /// 리더보드·수익률에서 영영 사라짐.
     pub(super) fn local_snapshot_extra(&self, local: &LocalEngine) -> Value {
         let mut extra = serde_json::Map::new();
         if !local.pending_fills.is_empty() {
@@ -358,20 +358,20 @@ impl Bot {
             "in_position": local.engine.in_position(),
             "equity": local.engine.equity(self.last_price),
             "last_candle_ms": local.stream.last_t,
-            // 가격선은 **엔진 상태에서만** 나온다. 웹이 다시 계산하면 산수가 두 벌이 되고,
-            // 실제로 그 일이 있었다(E 눌림목 선이 현재가를 따라 내려왔다).
+            // 가격선은 **엔진 상태에서만** 나옴. 웹이 다시 계산하면 산수가 두 벌이 되고,
+            // 선이 엔진과 어긋남(예: E 눌림목 선이 현재가를 따라 내려옴).
             "levels": levels,
         })
     }
 
-    /// 서버가 받았다 — 보낸 만큼만 비운다(그 사이 새로 난 체결은 남긴다).
+    /// 서버가 받음 — 보낸 만큼만 비움(그 사이 새로 난 체결은 남김).
     pub(super) fn clear_sent_fills(&self, local: &mut LocalEngine, sent: usize) {
         let sent = sent.min(local.pending_fills.len());
         local.pending_fills.drain(..sent);
     }
 }
 
-/// 체결 보고 한 줄. 서버 `record_local_fills` 가 읽는 모양이다.
+/// 체결 보고 한 줄. 서버 `record_local_fills`가 읽는 모양임.
 fn local_fill(command: &Value, ack: &Value, ok: bool, error: &str) -> Value {
     json!({
         "action": value_text(command.get("action")).to_lowercase(),
