@@ -768,9 +768,13 @@ pub async fn change_settings(
     apply_mode: &str,
 ) -> Result<Value, String> {
     let base = secure_base(base)?;
-    let body = json!({"changes": changes, "apply_mode": apply_mode, "source": "runner"});
+    // 세션 번호는 **본문**에 담는다 — 주소는 중계 서버·접근 기록에 그대로 남는다.
+    // start·heartbeat·stopped 도 같은 이유로 본문에 담는다.
+    let body = json!({
+        "session_id": session_id, "changes": changes, "apply_mode": apply_mode, "source": "runner",
+    });
     let resp = http
-        .post(format!("{base}/api/runner/sessions/{session_id}/settings"))
+        .post(format!("{base}/api/runner/settings"))
         .header("X-Runner-Key", runner_key)
         .json(&body)
         .timeout(Duration::from_secs(10))
