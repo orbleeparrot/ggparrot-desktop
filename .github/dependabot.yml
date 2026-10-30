@@ -1,9 +1,12 @@
 version: 2
+# cooldown: 새 버전이 나오고 7일 지난 뒤에 PR을 엶 — 배포 직후 회수·악성 버전을 피함. 보안 업데이트는 기다리지 않음.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       tauri:
         patterns: ["@tauri-apps/*"]
@@ -17,6 +20,8 @@ updates:
     directory: /src-tauri
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     groups:
       tauri:
         patterns: ["tauri", "tauri-*"]
@@ -26,3 +31,5 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
