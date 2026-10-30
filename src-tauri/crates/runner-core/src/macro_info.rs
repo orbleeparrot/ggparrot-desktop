@@ -84,7 +84,7 @@ pub fn risk_summary(m: &Value) -> Vec<String> {
     out
 }
 
-/// 안전 설정을 이름 · 값 두 칸으로 — 화면의 칸 표(투자 금액 옆)에 씀. 문구는 [`risk_summary`]와 같은 낱말.
+/// 안전 설정을 이름·값 두 칸으로 — 화면의 칸 표(투자 금액 옆)에 씀. 문구는 [`risk_summary`]와 같은 낱말.
 /// ("손절", "평단 대비 가격 -3%") · ("하루 최대 손실", "5%(수수료 포함)") · ("최대 보유", "24시간").
 pub fn risk_items(m: &Value) -> Vec<(String, String)> {
     let Some(risk) = m.get("risk").filter(|r| r.is_object()) else { return vec![] };
@@ -102,7 +102,7 @@ pub fn risk_items(m: &Value) -> Vec<(String, String)> {
     out
 }
 
-/// 봉 간격 그대로("1h" · "1d" 등). 없으면 서버 기본값과 같은 "1d".
+/// 봉 간격 그대로("1h"·"1d" 등). 없으면 서버 기본값과 같은 "1d".
 pub fn candle_interval(m: &Value) -> String {
     match m.get("candle_interval").and_then(Value::as_str).map(str::trim) {
         Some(s) if !s.is_empty() => s.to_string(),

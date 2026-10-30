@@ -1,4 +1,4 @@
-// 오른쪽 상세 — 머리줄(종목·칩)·모드·시작/종료·돈 · 안전 칸·상태 카드(끝났으면 결과, 시작 전이면 '시작 전 확인')·활동 기록.
+// 오른쪽 상세 — 머리줄(종목·칩)·모드·시작/종료·돈·안전 칸·상태 카드(끝났으면 결과, 시작 전이면 '시작 전 확인')·활동 기록.
 // - 대기·끝남: 모드 카드(세그먼트 + [시작], 아래 한 줄은 고른 모드의 설명 modeNote). 그 밖(확인·시작·실행·종료 중):
 //   모드를 바꿀 수 없어 모드 카드를 없애고, 상태("● 실행 중 06:02" — RunState)는 제목 옆, 끝내는 단추는 머리 오른쪽.
 // - 키가 없으면 [시작] 자리가 [○○ 키 연결하기](연결 도우미), 회원 키가 없으면 [회원 키 입력하기] — 막힌 이유 띠를 따로 두지 않음.
@@ -11,6 +11,7 @@ import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
 import { DetailHeader } from "./DetailHeader";
 import { FinishedCard } from "./FinishedCard";
+import { LiveSettings } from "./LiveSettings";
 import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
 import { PreStartChecks } from "./PreStartChecks";
@@ -108,7 +109,7 @@ export function RunDetail({
   const m = slot.macro;
   const r = slot.readiness;
   const idle = isIdle(slot.phase);
-  // 키 · 회원 키 말고 막힌 이유는 '시작 전 확인' 첫 줄이 말함.
+  // 키·회원 키 말고 막힌 이유는 '시작 전 확인' 첫 줄이 말함.
   const blockerShown = idle && !r.canStart && !!r.blocker && !r.needs;
   // 시작 전 확인 — 아직 돌린 적 없거나(결과 카드가 없음), 끝났지만 다시 시작할 수 없을 때.
   const showChecks = idle && (!slot.run?.finished || !r.canStart);
@@ -143,6 +144,8 @@ export function RunDetail({
         )}
 
         <MacroNotes slot={slot} blockerShown={blockerShown} />
+        {/* 돌고 있는 그대로 금액·조건 바꾸기 — 실행 중에만 보임(끝난 실행은 서버가 칸을 주지 않음). */}
+        <LiveSettings slot={slot} />
         {/* 실행 중에는 설명을 두지 않음(청산 막대가 기준을 그림으로 보임). 끝난 뒤에는 한 줄로 줄여 결과 카드를 밀어내지 않게. */}
         {m.summary && idle && (
           <p className={`macro-summary ${slot.run ? "is-compact" : ""}`} title={slot.run ? m.summary : undefined}>

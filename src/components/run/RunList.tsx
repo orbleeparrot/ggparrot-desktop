@@ -1,6 +1,6 @@
-// 왼쪽 '내 매크로' 목록 — 확인 필요 · 실행 중 · 대기 세 묶음(색 · 칸 · 행 모양이 다름). ↑·↓·Home·End로 고르고
+// 왼쪽 '내 매크로' 목록 — 확인 필요·실행 중·대기 세 묶음(색·칸·행 모양이 다름). ↑·↓·Home·End로 고르고
 // (고른 카드를 따라 상세가 바뀜), 맨 아래 [+ 매크로 추가]. 매크로가 8개를 넘으면 맨 위에 찾기 칸.
-// - 확인 필요: 노란 칸 안의 카드(머리줄 '확인 필요 N개'를 누르면 이 묶음으로 굴러옴) · 실행 중: 흰 카드 · 대기: 회색 칸의 한 줄 행
+// - 확인 필요: 노란 칸 안의 카드(머리줄 '확인 필요 N개'를 누르면 이 묶음으로 굴러옴)·실행 중: 흰 카드·대기: 회색 칸의 한 줄 행
 // - 대기 묶음은 머리를 눌러 접음(이 PC에 기억). 찾는 중에는 모두 펼침.
 // 순서 바꾸기: 카드 왼쪽 손잡이를 끌거나 Alt+↑·↓ — 같은 묶음 안에서만. 순서는 Rust가 저장함(move_run).
 // - HTML 끌어 놓기(draggable)는 쓰지 않음 — Windows에서 창의 파일 끌어 놓기와 겹쳐 이벤트가 오지 않음. 포인터로 직접 처리.
@@ -105,14 +105,14 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
   const searching = searchable && query.trim() !== "";
   const groups = groupRuns(searching ? runs.filter((r) => matches(r, query)) : runs);
   const idleShown = idleOpen || searching;
-  /** 묶음에서 보이는 카드 — 대기는 처음 IDLE_PEEK줄만(찾는 중 · 모두 보기 · 고른 카드가 뒤에 있으면 다). */
+  /** 묶음에서 보이는 카드 — 대기는 처음 IDLE_PEEK줄만(찾는 중·모두 보기·고른 카드가 뒤에 있으면 다). */
   function shownOf(g: (typeof groups)[number]) {
     if (g.key !== "idle") return g.items;
     if (!idleShown) return [];
     const at = g.items.findIndex((r) => r.id === selectedId);
     return idleAll || searching || at >= IDLE_PEEK ? g.items : g.items.slice(0, IDLE_PEEK);
   }
-  // 화면에 보이는 순서 — ↑·↓가 오가는 차례(접힌 대기 묶음 · 가려진 대기 줄은 뺌).
+  // 화면에 보이는 순서 — ↑·↓가 오가는 차례(접힌 대기 묶음·가려진 대기 줄은 뺌).
   const visible = groups.flatMap((g) => shownOf(g));
   const canMove = runs.length > 1 && !searching;
   const dragging = drag !== null;

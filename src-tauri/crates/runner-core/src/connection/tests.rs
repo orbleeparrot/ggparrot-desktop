@@ -569,7 +569,7 @@ fn exchange_keys_are_accepted_as_copied() {
     for value in upbit {
         assert_eq!(clipboard_key("upbit", &value), value.trim());
     }
-    // 빗썸: 발급마다 길이가 다름 — Access 46자 · 48자(소문자 16진), Secret 82자 + "==" · 84자(패딩 없음).
+    // 빗썸: 발급마다 길이가 다름 — Access 46자·48자(소문자 16진), Secret 82자 + "=="·84자(패딩 없음).
     let access = "a1".repeat(23);
     let secret = format!("{}Ab==", "Ab1/".repeat(20));
     let access_48 = "3f9a0c7e".repeat(6);

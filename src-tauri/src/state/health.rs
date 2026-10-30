@@ -14,6 +14,7 @@ impl RunData {
             finished: None,
             macro_origin: String::new(),
             entry_wait: None,
+            live_settings: None,
             chart: None,
             chart_live: None,
         }

@@ -2,8 +2,8 @@
 // 답이 도우미(wizard)면 Rust가 이미 도우미를 열었으므로 여기서는 하지 않음.
 // 시작 전 검사가 끝난 뒤 Rust가 보내는 runner:confirm도 같은 실전 확인 시트를 띄움.
 // 조건을 기다리는 매크로는 [시작] 직후 서버에 물어(entry_preview) 둠:
-// - 실전: 실전 확인 시트 한 장에 '바로 사지 않아요' 칸 · 돈 · 안전 칸을 함께(두 장으로 끊지 않음)
-// - 모의 · 테스트넷: '바로 사지 않아요' 시트([기다리며 시작])
+// - 실전: 실전 확인 시트 한 장에 '바로 사지 않아요' 칸·돈·안전 칸을 함께(두 장으로 끊지 않음)
+// - 모의·테스트넷: '바로 사지 않아요' 시트([기다리며 시작])
 // 시트는 제목 바로 아래 테두리 칸 — 제목 밑 회색 설명 글을 두지 않음.
 import { Hourglass, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -85,7 +85,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   );
 
   // 기다리는 매크로면 안내를 먼저 물어 둠 — 서버가 답하지 않으면 안내 없이 바로 시작(막지 않음).
-  // 실전은 안내를 실전 확인 시트에 함께 넣고, 모의 · 테스트넷은 안내 시트를 먼저 띄움.
+  // 실전은 안내를 실전 확인 시트에 함께 넣고, 모의·테스트넷은 안내 시트를 먼저 띄움.
   const startRun = useCallback(
     (runId: string) =>
       void (async () => {

@@ -529,6 +529,8 @@ pub(crate) fn render_run_data(d: &RunData, side: Side) -> RunStatusDto {
         day_change_pct: s.get("day_change").and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v * 100.0),
         macro_origin: d.macro_origin.clone(),
         entry_wait: if in_position || d.finished.is_some() { None } else { d.entry_wait.clone() },
+        // 설정은 보유 중에도 보임 — 금액은 다음 진입부터, 안전망은 지금 포지션에도 걸림.
+        live_settings: if d.finished.is_some() { None } else { d.live_settings.clone() },
         // 차트는 보유 중에도 보임 — 손절선·익절선이 거기 그려짐.
         chart: if d.finished.is_some() { None } else { d.chart.clone() },
         chart_live: if d.finished.is_some() { None } else { d.chart_live.clone() },
@@ -704,6 +706,9 @@ pub(crate) struct RunStatusDto {
     macro_origin: String,
     /// 진입 대기 — 서버 하트비트의 entry_wait 그대로(안쪽 키는 서버 모양 snake_case). 대기 아니면 null.
     entry_wait: Option<Value>,
+    /// 구동 중 바꿀 수 있는 설정 — `{digest, changed_count, fields: [{path,label,value,unit,clearable}, …], …}`.
+    /// 칸 목록은 서버가 정함. 끝난 실행이거나 서버가 안 보내면 null.
+    live_settings: Option<Value>,
     /// 차트 — `{interval, bars: [[t,o,h,l,c], …], levels}`. 앱이 직접 판단할 때만 있음.
     chart: Option<Value>,
     chart_live: Option<Value>,

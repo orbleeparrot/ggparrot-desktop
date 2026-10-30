@@ -99,7 +99,7 @@ function statusOf(m: Model, r: MockRun): RunSlot["status"] {
       if (r.run?.entryWait && !r.run.inPosition) return { text: "진입 대기", tone: "ok" };
       return { text: "실행 중", tone: "ok" };
     default: {
-      // Rust Run::status_line과 같은 말 — 끝남 · 대기 중 · 시작 전 확인 필요.
+      // Rust Run::status_line과 같은 말 — 끝남·대기 중·시작 전 확인 필요.
       if (r.run?.finished)
         return r.run.finished.status === "error"
           ? { text: `종료됨 · ${r.run.finished.note || "오류로 멈춤"}`, tone: "danger" }
@@ -185,7 +185,7 @@ function balanceOf(status: SlotCard["status"], slot: KeySlot): Pick<SlotCard, "b
   return { balance: MOCK_BALANCE[slot], checkedAt: Date.now() - 2 * 60_000 };
 }
 
-/** Rust Run::needs_attention과 같은 기준 — 실행 중 심각한 저하 · 잔고 부족(모의 빼고), 실전 · 테스트넷이 오류로 끝남. */
+/** Rust Run::needs_attention과 같은 기준 — 실행 중 심각한 저하·잔고 부족(모의 빼고), 실전·테스트넷이 오류로 끝남. */
 function attentionOf(r: MockRun): boolean {
   if (r.mode === "mock") return false;
   const d = r.run;
@@ -202,7 +202,7 @@ function attentionOf(r: MockRun): boolean {
   );
 }
 
-/** Rust is_waiting_macro와 같은 규칙 묶음(B · F · G · I · J) — 견본은 전략 이름으로 셈. 트레일링(E)은 눌림 진입 견본만. */
+/** Rust is_waiting_macro와 같은 규칙 묶음(B·F·G·I·J) — 견본은 전략 이름으로 셈. 트레일링(E)은 눌림 진입 견본만. */
 const WAITING_STRATEGIES = [
   "지정가 밴드 매매",
   "RSI 조건 매매",

@@ -1,7 +1,7 @@
 // 시작 전 확인 — 가짜 그래프 대신, 시작 전에 알아야 할 것만 앱이 아는 값으로.
-// - 막힌 이유(키 · 회원 키 말고): 지원하지 않는 매크로 · 같은 종목 실행 중 · 웹 연결 중 — readiness.blocker 그대로
+// - 막힌 이유(키·회원 키 말고): 지원하지 않는 매크로·같은 종목 실행 중·웹 연결 중 — readiness.blocker 그대로
 // - 회원 키: 설정의 '입력됨 · 입력 전'과 같은 값(memberKeyFilled)
-// - 거래소 키(모의 빼고): 고른 모드의 칸(실전 · 테스트넷 · 데모가 따로) — 칸 상태 글자 · 세 확인
+// - 거래소 키(모의 빼고): 고른 모드의 칸(실전·테스트넷·데모가 따로) — 칸 상태 글자·세 확인
 // - 바로 사지 않아요(기다리는 매크로, Rust is_waiting_macro): 평소 기다린 시간은 서버에 미리 물음(답이 없으면 그 부분만 빠짐)
 import { Check, Hourglass, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";

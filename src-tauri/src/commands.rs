@@ -30,7 +30,7 @@ pub fn get_activity(s: State<'_, S>, run_id: String) -> Vec<ActivityDto> {
 
 /// [파일에서 추가] — 다른 위치의 매크로 파일을 (여러 개) 골라 매크로 폴더로 가져옴.
 /// 하나를 가져왔으면 바로 실행 목록에도 넣고 그 슬롯 id를 돌려줌. 여러 개면 폴더 목록에만 나타남(None).
-/// 예전의 [폴더로 가져오기](여러 개 · 가져오기만)와 [골라서 실행 목록에 추가…](하나 · 추가까지)를 합친 것.
+/// 예전의 [폴더로 가져오기](여러 개·가져오기만)와 [골라서 실행 목록에 추가…](하나·추가까지)를 합친 것.
 #[tauri::command]
 pub async fn add_macro_file(s: State<'_, S>) -> R<Option<String>> {
     let picked = s
@@ -83,7 +83,7 @@ pub fn start_run_confirmed(s: State<'_, S>, run_id: String) -> StartReply {
     s.inner().start_run_confirmed(&run_id)
 }
 
-/// 시작 전 진입 대기 안내 — 조건을 기다리는 매크로면 서버에 조건 문장 · 최근 조건이 맞은 횟수 · 간격을 물음.
+/// 시작 전 진입 대기 안내 — 조건을 기다리는 매크로면 서버에 조건 문장·최근 조건이 맞은 횟수·간격을 물음.
 /// 기다리는 매크로가 아니거나 서버가 답하지 않으면 {"waiting": false}(시작을 막지 않음). 잠금 안에서는 값만 꺼냄.
 #[tauri::command]
 pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
@@ -97,6 +97,27 @@ pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
         return Ok(none);
     }
     Ok(runner_core::server::entry_preview(&s.inner().http, &base, &key, &macro_).await.unwrap_or(none))
+}
+
+#[tauri::command]
+pub async fn change_run_settings(s: State<'_, S>, run_id: String, changes: Value, apply_mode: String) -> R<Value> {
+    // **실행기가 혼자 바꾸지 않음.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤,
+    // 다음 heartbeat의 `settings`로 바뀐 값이 돌아옴(그때 봇이 반영함).
+    let (session_id, base, key) = {
+        let c = s.inner().lock();
+        let run = c.run(&run_id).ok_or("실행을 찾을 수 없어요.")?;
+        let sid = run.data.as_ref().and_then(|d| d.session_id).filter(|v| *v > 0);
+        (
+            sid.ok_or("아직 서버 세션이 없어요. 잠시 뒤 다시 시도해 주세요.")?,
+            run.server_base.clone(),
+            c.member_key.trim().to_string(),
+        )
+    };
+    if key.is_empty() {
+        return Err("회원 키가 없어요.".into());
+    }
+    // 오류가 이미 `String`이라 변환하지 않음(R<T> = Result<T, String>).
+    runner_core::server::change_settings(&s.inner().http, &base, &key, session_id, &changes, &apply_mode).await
 }
 
 #[tauri::command]
@@ -177,7 +198,7 @@ pub fn set_close_to_tray(s: State<'_, S>, value: bool) {
     s.inner().set_close_to_tray(value);
 }
 
-/// 설정 › 창 · 화면 '알림' — 모든 OS 알림을 켜고 끔.
+/// 설정 › 창·화면 '알림' — 모든 OS 알림을 켜고 끔.
 #[tauri::command]
 pub fn set_notify(s: State<'_, S>, value: bool) {
     s.inner().set_notify(value);

@@ -128,7 +128,7 @@ fn json(text: &str) -> Value {
 
 #[test]
 fn file_names_follow_the_web_download_rule() {
-    // 웹 frontend/tests/macroFileName.test.js 와 같은 기대값.
+    // 웹 `frontend/tests/macroFileName.test.js`와 같은 기대값.
     let now = at("2026-10-13T06:00:00Z"); // KST 10/13 15:00
     let name = |t: &str| macro_file_name(&json(t), now);
     assert_eq!(

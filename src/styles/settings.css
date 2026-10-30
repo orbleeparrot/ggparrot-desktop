@@ -210,7 +210,7 @@
 .slot-card.is-practice .slot-title {
   font-size: var(--fs-body);
 }
-/* 이름 옆 거래소 사이트 바로가기 — 이름에 붙여 둠(머리 줄 간격 10px 보다 가깝게) */
+/* 이름 옆 거래소 사이트 바로가기 — 이름에 붙여 둠(머리 줄 간격 10px보다 가깝게) */
 .slot-site {
   margin-left: -8px;
   color: var(--muted);
@@ -223,7 +223,7 @@
   font-weight: var(--fw-bold);
   white-space: nowrap;
 }
-/* 고칠 일 한 줄 — 잔고 부족 · 권한 · 허용 IP(빨간 칸의 이유 · 이 기기 주소) */
+/* 고칠 일 한 줄 — 잔고 부족·권한·허용 IP(빨간 칸의 이유·이 기기 주소) */
 .slot-why {
   display: flex;
   align-items: flex-start;
@@ -242,13 +242,13 @@
 .slot-why.is-bad {
   color: var(--danger-ink);
 }
-/* 오른쪽 끝 — 잔고(이름 · 큰 값 · 확인 시각) 또는 [연결 도우미] */
+/* 오른쪽 끝 — 잔고(이름·큰 값·확인 시각) 또는 [연결 도우미] */
 .slot-side {
   display: flex;
   justify-content: flex-end;
   min-width: 0;
 }
-/* 금액 — 박스 오른쪽 끝 한 줄: 작은 회색 라벨 · 큰 숫자 · 작은 회색 단위(밑줄 맞춤). 모자라면 숫자만 주의 색. */
+/* 금액 — 박스 오른쪽 끝 한 줄: 작은 회색 라벨·큰 숫자·작은 회색 단위(밑줄 맞춤). 모자라면 숫자만 주의 색. */
 .slot-balance {
   display: flex;
   align-items: baseline;
@@ -275,7 +275,7 @@
 .slot-balance.is-short .slot-balance-value {
   color: var(--warn-ink);
 }
-/* 이름 옆 상태 줄의 확인 시각 · 보유 코인 */
+/* 이름 옆 상태 줄의 확인 시각·보유 코인 */
 .slot-meta {
   color: var(--muted);
   font-size: var(--fs-small);
@@ -601,7 +601,7 @@
   padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
 }
-/* 값 · [다시 확인] — 단추는 줄 오른쪽 끝(값 글자 길이가 '확인하는 중…' 등으로 바뀌어도 단추 자리가 그대로) */
+/* 값·[다시 확인] — 단추는 줄 오른쪽 끝(값 글자 길이가 '확인하는 중…' 등으로 바뀌어도 단추 자리가 그대로) */
 .about-value {
   display: flex;
   align-items: center;

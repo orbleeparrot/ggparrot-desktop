@@ -1,4 +1,4 @@
-/* 활동 기록 — 밝은 카드. 한 건이 한 줄: 시각 · 종류 배지 · 굵은 제목 · 흐린 둘째 말(줄임표) · 끝에 [›] 펼치기. */
+/* 활동 기록 — 밝은 카드. 한 건이 한 줄: 시각·종류 배지·굵은 제목·흐린 둘째 말(줄임표)·끝에 [›] 펼치기. */
 .feed {
   --act-time-w: 62px;
   --act-kind-w: 58px;
@@ -117,7 +117,7 @@
   font-weight: var(--fw-bold);
   white-space: nowrap;
 }
-/* 종류 배지 — 아이콘 + 이름(시작 · 진입 · 정리 · 신호 · 손절 · 안내 …), 칸 폭은 모두 같음 */
+/* 종류 배지 — 아이콘 + 이름(시작·진입·정리·신호·손절·안내 …), 칸 폭은 모두 같음 */
 .act-kind {
   display: inline-flex;
   align-items: center;
@@ -131,7 +131,7 @@
   font-weight: var(--fw-bold);
   white-space: nowrap;
 }
-/* 제목 · 둘째 말 · [›] 한 줄 — 제목은 제 너비를 먼저 받고, 둘째 말은 남는 자리에서 오른쪽 맞춤으로 줄어듦 */
+/* 제목·둘째 말·[›] 한 줄 — 제목은 제 너비를 먼저 받고, 둘째 말은 남는 자리에서 오른쪽 맞춤으로 줄어듦 */
 .act-line {
   display: flex;
   align-items: center;
@@ -158,7 +158,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 펼치면 제목은 다 보이게 줄바꿈하고, 아래에 둘째 말 전체 · 원문 */
+/* 펼치면 제목은 다 보이게 줄바꿈하고, 아래에 둘째 말 전체·원문 */
 .act.is-open .act-title {
   white-space: normal;
   overflow-wrap: anywhere;

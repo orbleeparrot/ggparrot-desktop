@@ -1,7 +1,7 @@
-// 시작 · 종료 시트의 칸 — 제목 바로 아래 테두리 칸(회색 줄글을 두지 않음).
-// - WaitBox: '이 매크로는 바로 사지 않아요' — 모래시계 · 큰 제목 · 조건 문장 · 숫자 세 칸(실전 시작 확인 시트 안)
-// - WaitFacts: 숫자 세 칸만(모의 · 테스트넷의 '바로 사지 않아요' 시트는 제목이 이미 그 말)
-// - StopFacts: 평가손익(지금 정리하면) · 정리할 수량 · 할 일 · 되돌릴 수 없어요
+// 시작·종료 시트의 칸 — 제목 바로 아래 테두리 칸(회색 줄글을 두지 않음).
+// - WaitBox: '이 매크로는 바로 사지 않아요' — 모래시계·큰 제목·조건 문장·숫자 세 칸(실전 시작 확인 시트 안)
+// - WaitFacts: 숫자 세 칸만(모의·테스트넷의 '바로 사지 않아요' 시트는 제목이 이미 그 말)
+// - StopFacts: 평가손익(지금 정리하면)·정리할 수량·할 일·'되돌릴 수 없어요'
 import { Hourglass, TriangleAlert } from "lucide-react";
 import { formatMoney, formatPercent, formatQty, moneyDigits, toneOf } from "../../state/format";
 import type { StopChoice } from "../../state/runs";

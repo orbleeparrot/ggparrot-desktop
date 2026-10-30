@@ -5,7 +5,7 @@ export interface ChartRange {
   max: number;
 }
 
-/** 값 범위. 평단 · 사는 선이 있으면 함께 넣어 가로선이 그래프 밖으로 나가지 않게 함. 값이 모두 같으면 위아래로 1씩 벌림. */
+/** 값 범위. 평단·사는 선이 있으면 함께 넣어 가로선이 그래프 밖으로 나가지 않게 함. 값이 모두 같으면 위아래로 1씩 벌림. */
 export function chartRange(points: number[], entry?: number, buy?: number): ChartRange {
   const values = [...points, ...[entry, buy].filter((v): v is number => !!v && v > 0)];
   let min = Math.min(...values);

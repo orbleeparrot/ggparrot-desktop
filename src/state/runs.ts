@@ -15,7 +15,7 @@ export function modeNote(mode: RunMode, market: MacroInfo["market"]): string {
   return mode === "testnet" && market === "futures" ? "바이낸스 데모 키로 연습 주문을 보내요." : MODE_NOTES[mode];
 }
 
-/** 상세 머리 제목 옆 상태 글자 — 모드는 제목 옆 배지(실전 · 테스트넷)가 말하므로 단계만. */
+/** 상세 머리 제목 옆 상태 글자 — 모드는 제목 옆 배지(실전·테스트넷)가 말하므로 단계만. */
 export function runStateText(phase: Phase): string {
   if (phase === "checking") return "시작 전 확인 중";
   if (phase === "starting") return "시작하는 중";
@@ -27,10 +27,10 @@ export const SIDE_LABELS = { long: "롱", short: "숏" } as const;
 export const MARKET_LABELS = { spot: "현물", futures: "선물" } as const;
 
 /**
- * 목록 카드 · 상세 머리줄의 종목 글자 — 기초 자산(B3 · BTC).
- * - 시장 쌍(KRW-B3 · BTCUSDT)은 보이지 않음: 거래소마다 견적 통화가 하나(업비트 · 빗썸 원화, 바이낸스 USDT)라
+ * 목록 카드·상세 머리줄의 종목 글자 — 기초 자산(B3·BTC).
+ * - 시장 쌍(KRW-B3·BTCUSDT)은 보이지 않음: 거래소마다 견적 통화가 하나(업비트·빗썸 원화, 바이낸스 USDT)라
  *   코인 로고 모서리의 거래소 로고로 충분함.
- * - 확인 창 · 활동 기록처럼 정확한 시장을 밝혀야 하는 곳은 시장 쌍(symbol)을 그대로 씀.
+ * - 확인 창·활동 기록처럼 정확한 시장을 밝혀야 하는 곳은 시장 쌍(symbol)을 그대로 씀.
  */
 export function coinTicker(m: Pick<MacroInfo, "baseAsset" | "symbol">): string {
   return (m.baseAsset.trim() || m.symbol).toUpperCase();

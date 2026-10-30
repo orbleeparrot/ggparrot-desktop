@@ -1,5 +1,5 @@
 // 세 확인(키 인증 → 허용 IP → 주문 권한)을 이어 붙인 한 줄 — 칸마다 원 아이콘 + 이름.
-// ok ✓ 초록 원 · bad ✕ 빨간 칸 · wait … 빈 원(아직 못 봄) · na – 빈 원(확인할 길이 없음).
+// ok ✓ 초록 원·bad ✕ 빨간 칸·wait … 빈 원(아직 못 봄)·na – 빈 원(확인할 길이 없음).
 // 설명(bad·na의 이유)은 칸의 풍선 도움말과 가려진 글자로 — 줄을 늘리지 않음.
 import { Check, Minus, X } from "lucide-react";
 import type { Check as CheckState } from "../types";

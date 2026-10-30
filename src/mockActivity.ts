@@ -240,6 +240,31 @@ export function beginRun(emit: Emit, r: MockRun, at: number) {
   r.run = {
     startedAt: at,
     sessionId: 4800 + Number(r.id.replace(/\D/g, "")),
+    // 모의 실행에도 바꿀 수 있는 칸을 줌 — 실제 서버가 주는 모양 그대로.
+    liveSettings: {
+      digest: "mock0000",
+      changed_count: 0,
+      fields: [
+        {
+          path: "params.initial_capital",
+          section: "params",
+          key: "initial_capital",
+          label: "투자 금액",
+          value: 1_000_000,
+          unit: "money",
+          clearable: false,
+        },
+        {
+          path: "risk.stop_loss_pct",
+          section: "risk",
+          key: "stop_loss_pct",
+          label: "손절",
+          value: 3,
+          unit: "pct",
+          clearable: true,
+        },
+      ],
+    },
     online: true,
     authFailed: false,
     rejected: 0,

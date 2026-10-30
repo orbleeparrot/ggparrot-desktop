@@ -179,6 +179,9 @@ pub struct RunData {
     pub macro_origin: String,
     /// 진입 대기(서버 하트비트의 entry_wait) — 조건을 기다리는 매크로가 아직 안 샀을 때만 Some.
     pub entry_wait: Option<Value>,
+    /// 구동 중 바꿀 수 있는 설정(서버 하트비트의 settings) — 수정 칸 목록과 지금 값.
+    /// 칸 목록은 서버가 정함. 서버가 안 보내면 None.
+    pub live_settings: Option<Value>,
     /// 실행기가 직접 판단하는 세션의 차트(봉 + 지표선 + 가격선). 서버가 판단하면 None —
     /// 그때는 앱이 봉을 받지 않으므로 그릴 재료가 없음. 봉이 마감될 때만 바뀜.
     pub chart: Option<Value>,

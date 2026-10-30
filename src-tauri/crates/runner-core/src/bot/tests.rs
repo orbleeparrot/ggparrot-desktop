@@ -1614,7 +1614,7 @@ async fn entry_checks_reach_the_screen_and_new_checks_become_one_line() {
 
 #[test]
 fn martingale_min_order_reason_names_the_small_field_not_the_budget() {
-    // 2026-10-17 업비트 47,000원 · 처음 살 금액 4,700원 — 거래소 문구는 '매크로 투자 금액을 올리세요'라고 했다.
+    // 업비트 47,000원·처음 살 금액 4,700원 — 거래소 문구는 '매크로 투자 금액을 올리세요'라고 엉뚱한 칸을 가리킴.
     let h = serde_json::json!({"rule_type": "H", "symbol": "KRW-GTC", "params": {
         "initial_capital": 47000, "base_order_size": 4700, "safety_order_size": 4700,
         "safety_order_volume_scale": 1.0, "max_safety_orders": 5}});

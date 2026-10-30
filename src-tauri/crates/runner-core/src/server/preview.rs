@@ -1,4 +1,4 @@
-//! 시작 전 진입 대기 안내 — 조건을 기다리는 매크로인지, 조건 문장과 최근 조건이 맞은 횟수 · 간격을 서버에 물음.
+//! 시작 전 진입 대기 안내 — 조건을 기다리는 매크로인지, 조건 문장과 최근 조건이 맞은 횟수·간격을 서버에 물음.
 
 use std::time::Duration;
 
@@ -27,7 +27,7 @@ pub async fn entry_preview(http: &reqwest::Client, base: &str, runner_key: &str,
     v.is_object().then_some(v)
 }
 
-/// 서버에 묻기 전에 걸러냄 — 조건을 기다리는 규칙(B · E 눌림 · F · G · I · J)만.
+/// 서버에 묻기 전에 걸러냄 — 조건을 기다리는 규칙(B·E 눌림·F·G·I·J)만.
 pub fn is_waiting_macro(macro_: &Value) -> bool {
     let rule = macro_.get("rule_type").and_then(Value::as_str).unwrap_or_default();
     match rule {

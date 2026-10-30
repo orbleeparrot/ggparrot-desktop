@@ -93,6 +93,10 @@ pub enum BotEvent {
     },
     /// 사람이 읽는 활동 한 줄(활동 기록). 서버로 가는 실행 기록과는 별개임.
     Activity(ActivityEvent),
+    /// 구동 중 바꿀 수 있는 설정(서버 하트비트의 settings) — 실행기 화면이 수정 칸을 그릴 재료.
+    /// 칸 목록은 **서버가 정함** — 실행기가 따로 들면 두 벌이 되어, 화면에는 보이는데
+    /// 서버가 거절하는 칸이 생김. 이 기능을 모르는 서버·세션이면 None.
+    Settings(Option<Value>),
     /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None이면 대기 아님(샀거나 해당 없음).
     /// 서버와 끊긴 틱에는 보내지 않아 마지막 값이 남음.
     EntryWait(Option<Value>),
@@ -351,6 +355,10 @@ pub struct Bot {
     pub last_fill_qty: f64,
     pub last_fill_price: f64,
     pub poll: Duration,
+    /// 지금 들고 있는 설정의 지문(서버 macro_digest). 서버는 heartbeat마다 같은 설정을 보내므로,
+    /// 이 값과 다를 때만 반영함 — 안 그러면 5초마다 같은 값을 다시 쓰고 로그를 채움.
+    /// 다음 heartbeat에 그대로 실어 보냄 — 서버가 "실행기가 반영했다"를 그걸로 확인함.
+    pub(crate) settings_digest: String,
 }
 
 pub struct BotHandle {
@@ -507,6 +515,7 @@ impl Bot {
             last_fill_qty: 0.0,
             last_fill_price: 0.0,
             poll: Duration::from_secs_f64(POLL_SECONDS),
+            settings_digest: String::new(),
         }
     }
 
@@ -614,6 +623,11 @@ impl Bot {
             "note": if self.position_uncertain { "주문 결과가 불확실해요 · 거래소에서 주문과 포지션을 확인하세요.".to_string() } else { self.dust_note() },
         });
         self.put_net(&mut snap);
+        // 지금 들고 있는 설정의 지문 — 서버가 "실행기가 반영했다"를 이걸로 확인함.
+        // 아직 받은 적이 없으면(옛 서버·첫 heartbeat 전) 싣지 않음.
+        if !self.settings_digest.is_empty() {
+            snap["settings_digest"] = json!(self.settings_digest);
+        }
         snap
     }
 
@@ -699,6 +713,7 @@ mod orders;
 mod price;
 mod report;
 mod run_loop;
+mod settings;
 mod setup;
 
 #[cfg(test)]

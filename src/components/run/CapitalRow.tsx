@@ -1,4 +1,4 @@
-// 시작 전 돈 · 안전 설정 칸 — 투자 금액(params.initial_capital 보기·바꾸기·원본으로) · 한 번에 최대 · 안전 설정.
+// 시작 전 돈·안전 설정 칸 — 투자 금액(params.initial_capital 보기·바꾸기·원본으로)·한 번에 최대·안전 설정.
 // 줄글 대신 칸(MoneyCells). 파일에서 연 매크로만 바꿀 수 있음 — 웹에서 연결한 매크로는 서버가 웹 저장본과 다르면 시작을 거절함.
 import { Pencil, RotateCcw, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent, type KeyboardEvent } from "react";

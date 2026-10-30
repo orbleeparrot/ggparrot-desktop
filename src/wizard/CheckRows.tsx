@@ -1,7 +1,7 @@
 // 키 확인 결과 — 키 인증·허용 IP·주문 권한. ok ✓ 초록·bad ✕ 빨강·wait … 회색·na 확인 불가.
 // notes가 있으면(바이낸스 '필요 없음'·'IP 제한 없음' 등) bad·na의 설명 글자를 그것으로 바꿈.
 // - CheckRows: 세 줄(연결 도우미 결과 — 자리가 넉넉하고 설명이 중요)
-// - 설정 · 시작 전 확인의 한 줄 띠는 components/CheckStrip(이어 붙인 한 줄)
+// - 설정·시작 전 확인의 한 줄 띠는 components/CheckStrip(이어 붙인 한 줄)
 import { Check, LoaderCircle, Minus, X } from "lucide-react";
 import type { Check as CheckState, WizardState } from "../types";
 

@@ -5,7 +5,7 @@
 // - 앱 CSP(tauri.conf.json의 img-src)는 이 두 곳만 허용함. 서버 주소가 기본 서버가 아니면(개발 빌드) 사본이 막혀 글자 배지로 감.
 // - 몇 번째 출처까지 실패했는지는 BASE와 함께 기억함 — 같은 자리에서 종목이 바뀌면 CDN부터 다시 시도함.
 // - 코인 로고는 장식(alt "") — 옆에 종목 글자가 늘 있음. 작은 로고는 거래소 이름으로 읽힘(exchangeLabel이 ""면 장식).
-// - 작은 로고의 테두리는 둘레 바탕색(--coin-ring) — 카드 · 고른 카드 · 대기 행 · 다크 모드마다 놓인 곳에서 정함(cards.css).
+// - 작은 로고의 테두리는 둘레 바탕색(--coin-ring) — 카드·고른 카드·대기 행·다크 모드마다 놓인 곳에서 정함(cards.css).
 import { useState, type CSSProperties } from "react";
 import type { Exchange } from "../types";
 import { ExchangeLogo } from "./ExchangeLogo";

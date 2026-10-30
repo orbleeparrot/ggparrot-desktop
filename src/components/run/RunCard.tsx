@@ -1,15 +1,15 @@
 // '내 매크로' 카드 하나. 고르기 버튼(카드 전체)·작은 주 단추·빼기(×)·순서 손잡이(왼쪽 끝, 두 개 이상일 때).
-// - 확인 필요 · 실행 중: 두 줄 카드
-//   - 1줄: 코인 표시(코인 로고 + 모서리 거래소 로고) · 종목 · 선물 배수 · 숏 · 모드(실전 · 테스트넷만)
+// - 확인 필요·실행 중: 두 줄 카드
+//   - 1줄: 코인 표시(코인 로고 + 모서리 거래소 로고)·종목·선물 배수·숏·모드(실전·테스트넷만)
 //     …… 오른쪽 칸(실행 중: 손익 %, 대기·끝남: × 자리, 시작·종료 중: 비움)
-//   - 2줄: ● 상태 · 경과(실행 중·끝남) · 전략 …… 작은 주 단추 자리
-// - 대기(compact): 한 줄 행 — 코인 표시 · 종목 · 선물 배수 · 숏 · 모드 · 상태 낱말 · 전략 …… [▶] · [×] 자리. 시작 전이라 손익이 없어 카드가 필요 없음.
-//   상태는 낱말 하나(종료 · 오류로 멈춤 · 시작 전 확인 필요), 그냥 기다리는 줄은 전략만 — 끝난 이유는 상세 결과 카드 · 풍선 도움말(rowStatus).
+//   - 2줄: ● 상태·경과(실행 중·끝남)·전략 …… 작은 주 단추 자리
+// - 대기(compact): 한 줄 행 — 코인 표시·종목·선물 배수·숏·모드·상태 낱말·전략 …… [▶]·[×] 자리. 시작 전이라 손익이 없어 카드가 필요 없음.
+//   상태는 낱말 하나(종료·오류로 멈춤·시작 전 확인 필요), 그냥 기다리는 줄은 전략만 — 끝난 이유는 상세 결과 카드·풍선 도움말(rowStatus).
 //   상태 낱말은 잘리지 않음 — 자리가 모자라면 전략이 통째로 숨고, 좁은 행에 숏이 있으면 모드 배지가 점, 마지막으로 종목 줄임표(run.css).
 // - 종목은 기초 자산(B3)만 크게 — 시장 쌍(KRW-B3)은 거래소 로고와 겹치는 정보라 뺌(runs.ts coinTicker).
 //   바이낸스 선물만 '선물 3배'를 옆에 작게 붙임. 빼기 단추 이름처럼 정확한 시장을 밝혀야 하는 곳은 시장 쌍을 씀.
-// - 배지는 기본이 아닌 것만(롱 · 모의는 생략) — 배지가 많으면 정작 다른 점이 안 보임.
-// - [▶] · [■] · [×]는 마우스를 올리거나 키보드 포커스가 있을 때만 보임.
+// - 배지는 기본이 아닌 것만(롱·모의는 생략) — 배지가 많으면 정작 다른 점이 안 보임.
+// - [▶]·[■]·[×]는 마우스를 올리거나 키보드 포커스가 있을 때만 보임.
 //   - 두 줄 카드는 자리를 늘 비워 둠(글자가 움직이지 않게)
 //   - 한 줄 행은 자리를 비우지 않고 글자 끝 위에 겹쳐 뜸(글자가 일찍 잘리고 오른쪽이 비지 않게) — 숨어 있을 때는 눌리지 않음
 // - 좁을 때 줄이는 순서는 run.css(.run-card-head·.run-card-meta)에서 정함 — 글자 길이를 재는 스크립트는 없음.
@@ -74,7 +74,7 @@ function End({ slot }: { slot: RunSlot }) {
 }
 
 /**
- * 종목 칸 — 코인 표시(작은 거래소 로고가 거래소 이름으로 읽힘) · 종목(줄임표로 줄어듦) · 선물 배수(줄지 않음).
+ * 종목 칸 — 코인 표시(작은 거래소 로고가 거래소 이름으로 읽힘)·종목(줄임표로 줄어듦)·선물 배수(줄지 않음).
  * 거래소를 모르는 매크로는 작은 로고가 없어 거래소 원문을 가려진 글자로 둠. 카드 이름은 "업비트 B3 …"으로 읽힘.
  */
 function Coin({ m, compact, serverBase }: { m: MacroInfo; compact: boolean; serverBase: string }) {
@@ -98,7 +98,7 @@ function Coin({ m, compact, serverBase }: { m: MacroInfo; compact: boolean; serv
   );
 }
 
-/** 기본이 아닌 것만 배지 — 숏 · 실전 · 테스트넷. */
+/** 기본이 아닌 것만 배지 — 숏·실전·테스트넷. */
 function Badges({ slot }: { slot: RunSlot }) {
   return (
     <>
@@ -121,7 +121,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
   const actionKind = primaryAction(slot.phase).kind;
   const [statusHead, statusRest] = statusParts(slot.status.text);
   const showElapsed = live || !!slot.run?.finished;
-  // 전략이 없으면 매크로 이름 — 전체(전략 · 파일 이름)는 마우스를 올리면 보이고, 상세 머리줄에도 있음.
+  // 전략이 없으면 매크로 이름 — 전체(전략·파일 이름)는 마우스를 올리면 보이고, 상세 머리줄에도 있음.
   const strategy = m.strategy || m.title;
   const strategyTitle = m.strategy && m.strategy !== m.title ? `${m.strategy} · ${m.title}` : m.title;
   const cls = `run-card mode-${slot.mode} act-${actionKind} ${compact ? "is-compact" : ""} ${idle ? "has-remove" : ""} ${selected ? "is-selected" : ""} ${live ? "is-live" : ""} ${sorting}`;

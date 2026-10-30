@@ -1,6 +1,6 @@
 /* 서체 — Pretendard 가변(wght 45–930)을 앱에 넣음. 웹(gg_parrot)과 같은 조각 파일.
    - 넣기 전에는 PC 글꼴로 그려져 Windows는 맑은 고딕(굵기 500 없음), Mac은 애플 SD 산돌고딕이었음.
-   - 앱이 쓰는 한글 · 라틴은 0번 조각(약 160KB)에, 나머지 완성형은 8조각으로 나눠 unicode-range로 필요할 때만 읽음.
+   - 앱이 쓰는 한글·라틴은 0번 조각(약 160KB)에, 나머지 완성형은 8조각으로 나눠 unicode-range로 필요할 때만 읽음.
      0번을 마지막에 선언해 겹치는 글자에서 우선함. 라이선스: SIL OFL 1.1(assets/fonts/Pretendard-OFL.txt). */
 @font-face {
   font-family: "Pretendard";

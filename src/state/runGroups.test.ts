@@ -43,7 +43,7 @@ describe("목록 묶음", () => {
     expect(globalIndex(all, idle, "d", 0)).toBe(0);
     // a를 대기 묶음 맨 뒤(d 뒤)로 → 자기를 뺀 [b, c, d]에서 d 뒤 3
     expect(globalIndex(all, idle, "a", 2)).toBe(3);
-    // a를 c 뒤 · d 앞으로 → [b, c, d]에서 d 자리 2
+    // a를 c 뒤·d 앞으로 → [b, c, d]에서 d 자리 2
     expect(globalIndex(all, idle, "a", 1)).toBe(2);
   });
 });

@@ -106,6 +106,8 @@ pub struct HeartbeatReply {
     /// 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보내는 '무엇을·얼마나·언제'
     /// (조건 문장·거리·막대·사는 선·다음 확인·확인 기록). 산 뒤·해당 없는 매크로·서버가 안 보내면 None.
     pub entry_wait: Option<Value>,
+    /// 구동 중 설정(투자 금액·안전망)과 그 지문. 이 기능을 모르는 서버·옛 세션이면 None.
+    pub settings: Option<Value>,
 }
 
 impl HeartbeatReply {
@@ -647,6 +649,7 @@ impl ServerClient {
                     commands: data.get("commands").and_then(Value::as_array).cloned().unwrap_or_default(),
                     reason: data.get("reason").and_then(Value::as_str).unwrap_or_default().trim().to_string(),
                     entry_wait: data.get("entry_wait").filter(|v| v.is_object()).cloned(),
+                    settings: data.get("settings").filter(|v| v.is_object()).cloned(),
                     ..Default::default()
                 }
             }
@@ -676,6 +679,12 @@ impl ServerClient {
     }
 
     /// 종료 보고. 같은 종료 스냅샷을 다시 보내도 안전함(3회, 4xx는 408·429 말고는 바로 포기).
+    /// 구동 중 설정 변경을 서버에 요청함. 실제 일은 [`change_settings`]가 함.
+    pub async fn change_settings(&self, changes: &Value, apply_mode: &str) -> Result<Value, String> {
+        let session_id = self.session_id().ok_or("아직 서버 세션이 없어요")?;
+        change_settings(&self.inner.http, &self.inner.base, &self.inner.key, session_id, changes, apply_mode).await
+    }
+
     pub async fn stopped(&self, status: &str, note: &str, snapshot: Option<&Value>) -> bool {
         let Some(session_id) = self.session_id() else {
             return true;
@@ -717,6 +726,68 @@ impl ServerClient {
         }
         false
     }
+}
+
+/// 회원 키를 실어 보내도 되는 주소인가. 끝의 `/`를 떼어 돌려주고, 아니면 사람이 읽을 이유.
+///
+/// 회원 키(`X-Runner-Key`)가 헤더로 나가므로 평문 http로 보내면 같은 망에서 가로챌 수 있음.
+/// 배포판은 [`crate::types::server_base`]가 이미 https만 쓰게 하지만, 이 함수는 주소를 인자로
+/// 받으므로 **여기서 한 번 더 본다** — 호출하는 쪽이 어디서 왔는지 모르는 값을 넘길 수 있음.
+///
+/// 개발용 로컬 주소(localhost·127.0.0.1·[::1])는 그대로 둠. 그 길은 기계 밖으로 나가지 않음.
+fn secure_base(base: &str) -> Result<&str, String> {
+    let base = base.trim().trim_end_matches('/');
+    if base.starts_with("https://") || is_loopback(base) {
+        return Ok(base);
+    }
+    Err("보안 때문에 https 서버에서만 설정을 바꿀 수 있어요.".to_string())
+}
+
+/// 이 기계 안의 주소인가 — `http://localhost:8000` 꼴.
+fn is_loopback(base: &str) -> bool {
+    let Some(rest) = base.strip_prefix("http://") else { return false };
+    let host = rest.split('/').next().unwrap_or("");
+    let host =
+        host.rsplit_once(':').map_or(host, |(h, port)| if port.chars().all(|c| c.is_ascii_digit()) { h } else { host });
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+}
+
+/// 구동 중 설정 변경을 서버에 요청함 — 실행기 화면이 부름.
+///
+/// **실행기가 혼자 바꾸지 않음.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
+/// heartbeat의 `settings`로 바뀐 값이 돌아옴(그때 봇이 반영함). 여기서 바로 고치면 서버
+/// 전략과 실행기 설정이 갈라져 어느 쪽이 진짜인지 알 수 없게 됨.
+///
+/// 실패하면 서버가 준 이유를 그대로 돌려줌 — "왜 안 되는지"가 사용자가 고칠 수 있는 단서임.
+pub async fn change_settings(
+    http: &reqwest::Client,
+    base: &str,
+    runner_key: &str,
+    session_id: i64,
+    changes: &Value,
+    apply_mode: &str,
+) -> Result<Value, String> {
+    let base = secure_base(base)?;
+    // 세션 번호는 **본문**에 담음 — 주소는 중계 서버·접근 기록에 그대로 남음.
+    // start·heartbeat·stopped도 같은 이유로 본문에 담음.
+    let body = json!({
+        "session_id": session_id, "changes": changes, "apply_mode": apply_mode, "source": "runner",
+    });
+    let resp = http
+        .post(format!("{base}/api/runner/settings"))
+        .header("X-Runner-Key", runner_key)
+        .json(&body)
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|_| "서버에 닿지 못했어요. 잠시 뒤 다시 시도해 주세요.".to_string())?;
+    if resp.status().is_success() {
+        return Ok(resp.json::<Value>().await.unwrap_or(Value::Null));
+    }
+    let code = resp.status().as_u16();
+    let detail = resp.text().await.unwrap_or_default();
+    let reason = server_detail(&detail).await;
+    Err(if reason.is_empty() { format!("설정을 바꾸지 못했어요({code})") } else { reason })
 }
 
 mod claim;

@@ -108,7 +108,7 @@ impl Shared {
         updater.check().await.ok().flatten()
     }
 
-    /// 기억해 둔 업데이트(`have`)보다 확인한 최신(`latest`)이 새로우면 그것으로 바꾸고 화면 버전 · 바뀐 점도 고침.
+    /// 기억해 둔 업데이트(`have`)보다 확인한 최신(`latest`)이 새로우면 그것으로 바꾸고 화면 버전·바뀐 점도 고침.
     /// 바꿨으면 참 — 받아 둔 설치 파일(옛 버전)은 버림.
     fn adopt_latest(&self, latest: Option<tauri_plugin_updater::Update>, have: &str) -> bool {
         let Some(latest) = latest else { return false };
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn a_later_release_replaces_the_remembered_update_so_one_update_reaches_the_latest() {
-        // 0.20.10 을 확인해 둔 뒤 0.20.11 이 나왔으면 0.20.11 로 받는다(두 번 업데이트하지 않게)
+        // 0.20.10을 확인해 둔 뒤 0.20.11이 나왔으면 0.20.11로 받음(두 번 업데이트하지 않게)
         assert!(newer_than_pending("0.20.11", "0.20.10"));
         assert!(!newer_than_pending("0.20.10", "0.20.10"), "같은 버전이면 받아 둔 파일을 그대로 쓴다");
         assert!(!newer_than_pending("0.20.9", "0.20.10"));

@@ -1,7 +1,7 @@
-// 목록 묶음 — 확인 필요 · 실행 중 · 대기. 묶음 안 순서는 저장된 순서(Rust move_run) 그대로.
+// 목록 묶음 — 확인 필요·실행 중·대기. 묶음 안 순서는 저장된 순서(Rust move_run) 그대로.
 // - 확인 필요: Rust needs_attention(머리줄 '확인 필요 N개'와 같은 기준) — 실행 중이어도 여기로 올라옴
-// - 실행 중: 확인 · 시작 · 실행 · 종료 중
-// - 대기: 대기 중 · 끝남(확인 필요가 아닌 것)
+// - 실행 중: 확인·시작·실행·종료 중
+// - 대기: 대기 중·끝남(확인 필요가 아닌 것)
 import type { RunSlot } from "../types";
 import { isIdle } from "./runs";
 
@@ -16,7 +16,7 @@ export function groupOf(slot: Pick<RunSlot, "attention" | "phase">): GroupKey {
   return isIdle(slot.phase) ? "idle" : "running";
 }
 
-/** 찾기 칸 — 종목 · 매크로 이름 · 전략 · 거래소 이름에 낱말이 다 들어 있으면 보임(대소문자 무시). */
+/** 찾기 칸 — 종목·매크로 이름·전략·거래소 이름에 낱말이 다 들어 있으면 보임(대소문자 무시). */
 export function matches(slot: Pick<RunSlot, "macro">, query: string): boolean {
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;

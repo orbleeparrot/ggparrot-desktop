@@ -1,4 +1,4 @@
-// 화면 테마 — 시스템(OS 설정을 따라감) · 라이트 · 다크. 고른 값은 이 PC(웹뷰 저장소)에 기억.
+// 화면 테마 — 시스템(OS 설정을 따라감)·라이트·다크. 고른 값은 이 PC(웹뷰 저장소)에 기억.
 // - 실제 색은 <html data-theme="light|dark">로 정함(theme.css). '시스템'이면 OS 설정을 읽어 넣고, OS가 바뀌면 따라 바꿈.
 // - 앱 보안 정책(CSP)이 인라인 스크립트를 막아 index.html에서 미리 못 넣음 — main.tsx가 첫 렌더 전에 initTheme()을 부름.
 import { useEffect, useState } from "react";

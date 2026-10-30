@@ -1,4 +1,4 @@
-/* 디자인 토큰 — 라이트가 기본, <html data-theme="dark">에서 다크로 바뀜(설정 › 창 · 화면의 시스템 · 라이트 · 다크, state/theme.ts). */
+/* 디자인 토큰 — 라이트가 기본, <html data-theme="dark">에서 다크로 바뀜(설정 › 창·화면의 시스템·라이트·다크, state/theme.ts). */
 :root {
   color-scheme: light;
 

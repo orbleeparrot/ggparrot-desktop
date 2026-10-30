@@ -37,7 +37,7 @@ export function arrangeSlots(slots: SlotCard[], order: SlotCard["slot"][]): Slot
     .map((x) => x.s);
 }
 
-/** 연습 칸(바이낸스 테스트넷 · 데모) — 쓰지 않으면 설정 아래 '연습 칸'에 낮게 둠. */
+/** 연습 칸(바이낸스 테스트넷·데모) — 쓰지 않으면 설정 아래 '연습 칸'에 낮게 둠. */
 export function isPractice(s: Pick<SlotCard, "slot">): boolean {
   return s.slot === "binance_testnet" || s.slot === "binance_demo";
 }

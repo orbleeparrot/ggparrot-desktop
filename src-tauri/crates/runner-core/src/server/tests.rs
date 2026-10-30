@@ -553,3 +553,35 @@ fn only_condition_rules_wait_for_entry() {
     assert!(!is_waiting_macro(&json!({"rule_type": "E", "params": {"entry_mode": "immediate"}})));
     assert!(is_waiting_macro(&json!({"rule_type": "E", "params": {"entry_mode": "dip"}})));
 }
+
+// --- 회원 키를 평문으로 내보내지 않음 ----------------------------------------
+//
+// 설정 변경은 `X-Runner-Key`(회원 키)를 헤더로 보냄. 평문 http면 같은 망에서 가로챌 수 있음.
+// 배포판은 `types::server_base`가 이미 https만 쓰게 하지만, `change_settings`는 주소를
+// **인자로 받으므로** 거기서 한 번 더 봄 — 호출하는 쪽이 어디서 왔는지 모르는 값을 넘길 수 있음.
+
+#[test]
+fn an_https_base_is_accepted_and_trimmed() {
+    assert_eq!(super::secure_base("https://gg-parrot.onrender.com/"), Ok("https://gg-parrot.onrender.com"));
+    assert_eq!(super::secure_base("  https://example.com  "), Ok("https://example.com"));
+}
+
+#[test]
+fn a_plain_http_base_is_refused_with_a_reason() {
+    let err = super::secure_base("http://gg-parrot.onrender.com").unwrap_err();
+    assert!(err.contains("https"), "왜 막혔는지 말해야 함: {err}");
+    assert!(super::secure_base("http://192.168.0.5:8000").is_err(), "같은 망의 다른 기계도 막음");
+}
+
+#[test]
+fn a_local_dev_server_still_works() {
+    // 개발은 보통 이 주소임. 이 길은 기계 밖으로 나가지 않음.
+    for base in ["http://localhost:8000", "http://127.0.0.1:8000/", "http://[::1]:8000"] {
+        assert!(super::secure_base(base).is_ok(), "{base}");
+    }
+}
+
+#[test]
+fn a_hostname_that_merely_starts_with_localhost_is_not_local() {
+    assert!(super::secure_base("http://localhost.evil.example").is_err());
+}

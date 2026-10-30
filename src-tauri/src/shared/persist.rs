@@ -47,7 +47,7 @@ impl Shared {
             &json!({
                 "show_dev_log": c.show_dev_log,
                 "close_to_tray": c.close_to_tray,
-                // 키 이름은 옛 '매수 체결 알림' 그대로 — 켜 둔 · 끈 값을 이어받음.
+                // 키 이름은 옛 '매수 체결 알림' 그대로 — 켜 둔·끈 값을 이어받음.
                 "notify_fills": c.notify,
                 "last_version": self.version,
             }),

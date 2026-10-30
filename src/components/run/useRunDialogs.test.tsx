@@ -51,7 +51,7 @@ describe("시작 전 진입 대기 안내", () => {
     expect(screen.getByText("21번 진입")).toBeTruthy();
     expect(screen.getByText("약 2일")).toBeTruthy();
     expect(act).not.toHaveBeenCalledWith("start_run", expect.anything());
-    // 알림은 설정 '알림' 하나로 켜고 끔 — 시작 확인 창에 실행마다 고르는 체크가 없다
+    // 알림은 설정 '알림' 하나로 켜고 끔 — 시작 확인 창에 실행마다 고르는 체크가 없음
     expect(screen.queryByRole("checkbox")).toBeNull();
     fireEvent.click(screen.getByText("기다리며 시작"));
     await waitFor(() => expect(act).toHaveBeenCalledWith("start_run", { runId: "run-1" }));

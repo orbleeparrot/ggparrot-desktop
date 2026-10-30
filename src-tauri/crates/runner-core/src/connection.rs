@@ -207,8 +207,8 @@ pub fn check_view(exchange: &str, ok: bool, error_name: &str) -> CheckView {
 /// 잘못 받지 않게.
 static UPBIT_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{30,100}$").unwrap());
 /// 빗썸(API 2.0) 키 모양 — 발급마다 길이가 조금씩 다름.
-/// Access Key는 영문·숫자 40~60자(46자 · 48자 소문자 16진을 확인).
-/// Secret Key는 base64 76~100자이고 길이가 4의 배수(82자 + "==" · 84자 패딩 없음을 확인).
+/// Access Key는 영문·숫자 40~60자(46자·48자 소문자 16진을 확인).
+/// Secret Key는 base64 76~100자이고 길이가 4의 배수(82자 + "=="·84자 패딩 없음을 확인).
 /// 두 범위가 겹치지 않아 모양으로 어느 칸인지 가림(시크릿을 먼저 복사해도 맞는 칸에).
 /// 짧은 비밀번호 같은 값은 받지 않음.
 static BITHUMB_ACCESS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{40,60}$").unwrap());
