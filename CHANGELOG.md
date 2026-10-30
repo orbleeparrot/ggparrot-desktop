@@ -9,6 +9,16 @@
 - `main`에 머지하면 CI 뒤 그 버전의 릴리스 초안이 자동으로 만들어짐. 초안을 [Publish release]하면 배포되고 태그가 생김.
 - 서버 연동 레벨(`runner_version`으로 보냄)은 앱 버전의 가운데 숫자임(지금 22) — 서버가 기능별 최소 레벨과 비교하는 정수. 앱 버전은 `0.<서버 연동 레벨>.<패치>`.
 
+## [0.22.3]
+
+### 개발
+
+- 열려 있던 Dependabot PR 5개(#39·#40·#41·#42·#43)를 한 PR로 합쳐 올림 — GitHub Actions만.
+  - `github/codeql-action` `init`·`analyze` 4.39.0 → 4.39.1(둘 다 같이 — 따로 올리면 버전이 어긋나 CodeQL 검사가 실패함).
+  - `taiki-e/install-action` 2.87.28 → 2.87.31, `Swatinem/rust-cache` 2.9.2 → 2.9.3, `actions/upload-artifact` 7.0.1 → 7.0.2.
+- Dependabot `github-actions`에 `codeql` 묶음을 둠 — `init`·`analyze`가 늘 한 PR로 같이 올라옴.
+- 동작 변경 없음 — 앱 코드는 그대로, CI 설정만 바뀜.
+
 ## [0.22.2]
 
 ### 개발

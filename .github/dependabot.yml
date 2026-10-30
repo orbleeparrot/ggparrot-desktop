@@ -33,3 +33,7 @@ updates:
       interval: monthly
     cooldown:
       default-days: 7
+    groups:
+      # init·analyze는 같은 버전이어야 함 — 따로 올리면 analyze가 "Loaded a configuration file for version …"로 실패.
+      codeql:
+        patterns: ["github/codeql-action*"]
