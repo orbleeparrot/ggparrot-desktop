@@ -6,7 +6,7 @@
 // **앱이 혼자 바꾸지 않는다.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
 // heartbeat 로 바뀐 값이 돌아온다. 여기서 바로 고치면 서버 전략과 실행기 설정이 갈라져
 // 어느 쪽이 진짜인지 알 수 없게 된다.
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { call } from "../../ipc";
 import type { LiveSettingField, RunSlot } from "../../types";
 
@@ -75,14 +75,18 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
 
-  // 열 때마다 지금 값으로 되돌린다 — 앞서 치다 만 값이 되살아나면 안 된다.
-  useEffect(() => {
-    if (!open) return;
-    setEdits(Object.fromEntries(fields.map((f) => [f.path, text(f)])));
+  // `edits` 는 **사람이 손댄 칸만** 담는다. 안 담긴 칸은 그릴 때 지금 값으로 채운다.
+  //
+  // 열 때 모든 칸을 미리 채워 두면 안 된다 — 그러려면 effect 가 필요한데, 그 effect 는
+  // `fields` 가 바뀔 때마다 돈다. `fields` 는 heartbeat(5초)마다 새 배열이라 **치고 있는
+  // 중에 입력이 초기화된다.** 손댄 칸만 담으면 effect 자체가 사라진다.
+  function openPanel() {
+    setEdits({});
     setApplyMode("immediate");
     setError("");
     setDone("");
-  }, [open, fields]);
+    setOpen(true);
+  }
 
   if (!run || run.finished || !settings || fields.length === 0) return null;
 
@@ -111,7 +115,7 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
   if (!open) {
     return (
       <div className="live-settings">
-        <button type="button" className="live-settings-open" onClick={() => setOpen(true)}>
+        <button type="button" className="live-settings-open" onClick={openPanel}>
           설정 바꾸기
           {settings.changed_count > 0 && <small> · {settings.changed_count}번 바뀜</small>}
         </button>
@@ -130,7 +134,7 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
             <input
               type="text"
               inputMode="decimal"
-              value={edits[field.path] ?? ""}
+              value={edits[field.path] ?? text(field)}
               disabled={busy}
               aria-invalid={bad.includes(field) || undefined}
               placeholder={field.clearable ? "비우면 끔" : ""}
