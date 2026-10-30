@@ -16,7 +16,7 @@
 - 포맷을 Prettier에서 oxfmt(oxc 포맷터) 0.75로 바꿈 — 설정(`.oxfmtrc.json`)은 `oxfmt --migrate=prettier`로 옮김. 결과가 다른 곳은 긴 유니온 타입을 한 줄씩 나누는 2곳뿐. 0.x라 정확한 버전으로 고정.
 - oxlint 1.88 → 1.90, 타입 정보 검사(`options.typeAware`·`oxlint-tsgolint`)를 켬. 처음 돌려 나온 10건을 고침:
   - 흘려보낸 Promise 3건 — `useRunner`의 구독 시작·정보 화면의 공인 IP 조회는 `void`로 표시, `SecretField` 시험의 `act`는 값을 돌려주지 않게.
-  - Promise 아닌 값의 `await` 2건(`App.test`의 `pushState`), 객체를 글자로 바꿀 수 있는 곳 3건(모의 IPC의 키 입력), 비교 함수 없는 `sort` 2건(`commands.test`).
+  - Promise 아닌 값의 `await` 2건(`App.test`의 `pushState`), 객체를 글자로 바꿀 수 있는 곳 3건(모의 IPC의 키 입력 — 공통 함수 `keyText`로 묶음), 비교 함수 없는 `sort` 2건(`commands.test` — 정렬 대신 집합으로 비교, 중복은 따로 시험함).
   - `unbound-method`는 끔 — 훅이 돌려준 함수 묶음을 구조 분해하는 곳마다(70건) 걸려 소음뿐임.
 - 편집기 권장 확장을 Prettier에서 oxc(`oxc.oxc-vscode`)로. 이제 JS·TS 도구는 번들(Rolldown)·변환·압축(Vite 8)·린트·포맷 모두 oxc 기반.
 - README를 0.21에 맞춤 — 서버 연동 레벨 21, 앱 판단(`decides: "local"`)과 서버 판단을 나눈 동작·역할 표, 기능 표(차트·테마·알림·[에이전트(web)]), 구조(`bot/`·`engine/`·`candles.rs`). 화면 스크린샷을 실제 앱으로 다시 찍고 첫 화면·다크 테마를 더함.

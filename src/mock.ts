@@ -8,6 +8,7 @@ import {
   EXCHANGE_LABELS,
   initialModel,
   IMPORT_SAMPLES,
+  keyText,
   MOCK_NEXT_VERSION,
   MOCK_VERSION,
   newRun,
@@ -483,7 +484,7 @@ export function createMockBackend(
     },
     set_slot_key: ({ slot, field, value }) => {
       const s = slot as KeySlot;
-      m.keys[s][field as KeyField] = (typeof value === "string" ? value : "").trim();
+      m.keys[s][field as KeyField] = keyText(value);
       scheduleCheck(s);
     },
     reveal_slot_key: ({ slot, field }) => m.keys[slot as KeySlot][field as KeyField],
@@ -502,7 +503,7 @@ export function createMockBackend(
       window.open(site[slot as KeySlot], "_blank", "noopener");
     },
     set_member_key: ({ value }) => {
-      m.member = (typeof value === "string" ? value : "").trim();
+      m.member = keyText(value);
     },
     reveal_member_key: () => m.member,
     resolve_member_key: ({ accept }) => {

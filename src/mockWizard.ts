@@ -1,6 +1,6 @@
 // mock 연결 도우미 — 단계 이동·공인 IP 조회·클립보드 자동 채우기·연결 확인 결과. 키는 그 칸(m.keys[slot])에 넣음.
 // 바이낸스는 실행 환경(테스트넷·데모·실거래)마다 단계가 다름(Rust `wizard::flow`와 같은 순서).
-import { FIELD_LABELS, SLOT_LABELS, type Model } from "./mockData";
+import { FIELD_LABELS, keyText, SLOT_LABELS, type Model } from "./mockData";
 import type { BinanceEnv, Exchange, KeyField, KeySlot, Market, WizardState } from "./types";
 import { flowOf } from "./wizard/steps";
 
@@ -175,7 +175,7 @@ export function createWizard(m: Model, { later, info, checkNow }: Deps) {
       const w = m.wizard;
       if (!w) return;
       const k = m.keys[w.slot];
-      k[field as KeyField] = (typeof value === "string" ? value : "").trim();
+      k[field as KeyField] = keyText(value);
       k.status = k.access && k.secret ? "unchecked" : "empty";
     },
     wizard_set_remember: ({ remember }) => {

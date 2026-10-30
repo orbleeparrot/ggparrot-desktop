@@ -314,6 +314,9 @@ export interface Model {
   imported: number;
 }
 
+/** 키 입력 칸 값 → 앞뒤 공백을 뺀 글자. 글자가 아니면 빈 글자(객체를 글자로 바꾸지 않음). */
+export const keyText = (value: unknown): string => (typeof value === "string" ? value : "").trim();
+
 export const emptyKey = (): MockKey => ({ access: "", secret: "", remembered: false, status: "empty", problem: "" });
 
 export function newRun(m: Model, macro: MacroInfo, fileName: string | null, webLinked = false): MockRun {
