@@ -134,7 +134,8 @@ describe("실전 확인 시트", () => {
     expect(within(sheet).getByText("투자 금액")).toBeTruthy();
     expect(within(sheet).getByText("한 번에 최대")).toBeTruthy();
     expect(within(sheet).queryByText("이 매크로는 바로 사지 않아요")).toBeNull();
-    expect(document.activeElement?.textContent).toBe("취소");
+    // 포커스는 대화상자가 그려진 뒤(useEffect)에 옮겨짐 — DOM이 보여도 아직 안 옮겨졌을 수 있어 기다림.
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("취소"));
     fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
     await waitFor(() =>
       expect(calledWith("start_run_confirmed")).toEqual([["start_run_confirmed", { runId: "run-1" }]]),
@@ -245,7 +246,8 @@ describe("목록에서 빼기", () => {
     fireEvent.click(await screen.findByRole("button", { name: "BTCUSDT 목록에서 빼기" }));
     const dlg = await screen.findByRole("dialog", { name: "목록에서 뺄까요?" });
     expect(dlg.textContent).toContain("매크로 파일은 지우지 않아요");
-    expect(document.activeElement?.textContent).toBe("취소");
+    // 포커스는 대화상자가 그려진 뒤(useEffect)에 옮겨짐 — DOM이 보여도 아직 안 옮겨졌을 수 있어 기다림.
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("취소"));
     fireEvent.click(within(dlg).getByRole("button", { name: "목록에서 빼기" }));
     await waitFor(() => expect(calledWith("remove_run")).toEqual([["remove_run", { runId: "run-1" }]]));
     expect(screen.queryByRole("dialog")).toBeNull();
