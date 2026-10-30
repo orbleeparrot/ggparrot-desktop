@@ -149,6 +149,15 @@ export interface LiveSettingField {
   value: number | null;
   /** money | pct | ratio | hours | minutes | days | "" */
   unit: string;
+  /** 칸 옆에 붙일 단위 글자 — "%" · "USDT" · "KRW" · "시간" · "봉". 없으면 빈 글자. */
+  unit_text: string;
+  /** 이 칸이 무슨 일을 하는지 한 줄. 서버가 준다. */
+  help: string;
+  /**
+   * 바꾸면 **지금 들고 있는 포지션**의 청산 조건이 바뀌는가.
+   * "next_entry" 면 다음에 살 때 쓰는 값이라 지금 포지션과 상관없다.
+   */
+  affects: "position" | "next_entry";
   /** 비울 수 있는 칸인가(손절 끄기 등). */
   clearable: boolean;
 }

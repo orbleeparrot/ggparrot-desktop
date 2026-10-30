@@ -3,6 +3,10 @@
 // **칸 목록은 서버가 준다**(run.liveSettings.fields). 앱이 따로 목록을 들면 두 벌이 되어,
 // 화면에는 보이는데 서버가 거절하는 칸이 생긴다 — 사용자는 그걸 고장으로 읽는다.
 //
+// 칸마다 한 줄 설명과 단위를 붙인다. 설명이 없으면 "지금 적용" 을 고를 때 **팔고 다시 사는
+// 건가** 하고 멈칫하게 된다 — 안 판다. 들고 있는 수량과 평단은 그대로 두고 청산 조건만
+// 갈아 끼운다. 설명 · 단위 글자도 전부 서버가 준다(두 벌이 되지 않게).
+//
 // **앱이 혼자 바꾸지 않는다.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
 // heartbeat 로 바뀐 값이 돌아온다. 여기서 바로 고치면 서버 전략과 실행기 설정이 갈라져
 // 어느 쪽이 진짜인지 알 수 없게 된다.
@@ -55,6 +59,17 @@ export function hasChanges(fields: LiveSettingField[], edits: Edits): boolean {
 }
 
 /** 숫자로 읽히지 않는 칸 — 보내기 전에 화면이 먼저 말해 준다. 손댄 칸만 본다. */
+/**
+ * 바꾼 값이 **지금 들고 있는 포지션의 청산 조건**을 건드리는가.
+ *
+ * 건드리지 않으면(금액 · 비율 · 재진입 대기) 적용 시점을 어느 쪽으로 고르든 결과가 같다.
+ * 무엇이 어느 쪽인지는 서버가 정한다(field.affects) — 여기서 또 정하면 두 벌이 된다.
+ */
+export function touchesPosition(fields: LiveSettingField[], edits: Edits): boolean {
+  const changes = buildChanges(fields, edits);
+  return fields.some((field) => changes[field.section]?.[field.key] !== undefined && field.affects !== "next_entry");
+}
+
 export function badFields(fields: LiveSettingField[], edits: Edits): LiveSettingField[] {
   return fields.filter((field) => {
     const raw = edits[field.path];
@@ -92,6 +107,8 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
 
   const bad = badFields(fields, edits);
   const ready = hasChanges(fields, edits) && bad.length === 0 && !busy;
+  // 금액·비율만 바꿨으면 어느 쪽을 골라도 같다 — 묻기는 하되 같다는 사실을 말해 준다.
+  const hitsPosition = touchesPosition(fields, edits);
 
   async function submit() {
     if (!ready) return;
@@ -130,16 +147,23 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
       <div className="live-settings-fields">
         {fields.map((field) => (
           <label key={field.path} className="live-settings-field">
-            <span>{field.label}</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={edits[field.path] ?? text(field)}
-              disabled={busy}
-              aria-invalid={bad.includes(field) || undefined}
-              placeholder={field.clearable ? "비우면 끔" : ""}
-              onChange={(e) => setEdits((prev) => ({ ...prev, [field.path]: e.target.value }))}
-            />
+            <span className="live-settings-name">
+              {field.label}
+              {field.help && <small className="live-settings-help">{field.help}</small>}
+            </span>
+            {/* 단위를 칸 옆에 붙인다 — 숫자만 있으면 2 가 2%인지 2시간인지 2봉인지 모른다. */}
+            <span className="live-settings-box">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={edits[field.path] ?? text(field)}
+                disabled={busy}
+                aria-invalid={bad.includes(field) || undefined}
+                placeholder={field.clearable ? "비우면 끔" : ""}
+                onChange={(e) => setEdits((prev) => ({ ...prev, [field.path]: e.target.value }))}
+              />
+              {field.unit_text && <span className="live-settings-unit">{field.unit_text}</span>}
+            </span>
           </label>
         ))}
       </div>
@@ -151,6 +175,10 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
       {run.inPosition && (
         <fieldset className="live-settings-apply">
           <legend>지금 포지션을 들고 있어요. 언제 적용할까요?</legend>
+          <p className="live-settings-help">
+            어느 쪽을 골라도 지금 들고 있는 건 팔지 않아요. 수량과 평단은 그대로예요.
+            {!hitsPosition && " 이번에 바꾼 값은 다음에 살 때 쓰는 것이라 두 쪽이 같아요."}
+          </p>
           <label>
             <input
               type="radio"
@@ -159,7 +187,12 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
               disabled={busy}
               onChange={() => setApplyMode("immediate")}
             />
-            지금 적용 — 들고 있는 포지션의 청산 조건도 바뀌어요
+            <span>
+              지금 적용: 들고 있는 포지션의 청산 조건도 바뀌어요
+              <small className="live-settings-help">
+                새 손절·익절이 지금 포지션에 바로 걸려요. 이미 그 선을 넘었으면 곧 정리될 수 있어요.
+              </small>
+            </span>
           </label>
           <label>
             <input
@@ -169,7 +202,10 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
               disabled={busy}
               onChange={() => setApplyMode("next_entry")}
             />
-            이 포지션 정리된 뒤부터
+            <span>
+              이 포지션 정리된 뒤부터: 지금 포지션은 살 때 조건 그대로 끝나요
+              <small className="live-settings-help">새 설정은 예약해 두고, 지금 포지션이 정리되면 그때부터 써요.</small>
+            </span>
           </label>
         </fieldset>
       )}
