@@ -2428,14 +2428,37 @@
 }
 .live-settings-fields {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 .live-settings-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 130px;
+  grid-template-columns: minmax(0, 1fr) 144px;
   align-items: center;
   gap: 8px;
   font-size: 13px;
+}
+.live-settings-name {
+  display: grid;
+  gap: 2px;
+}
+/* 칸이 무슨 일을 하는지 한 줄 — 이름만으로는 진입 때 쓰는 값인지 알 수 없음. */
+.live-settings-help {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* 입력 칸 + 단위. 단위는 칸 밖 오른쪽에 둠 — 안에 겹치면 긴 숫자가 밀고 들어옴. */
+.live-settings-box {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+}
+.live-settings-unit {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 .live-settings-field input {
   height: 32px;
@@ -2473,6 +2496,20 @@
   align-items: flex-start;
   font-size: 12px;
   line-height: 1.5;
+}
+.live-settings-apply label > span {
+  display: grid;
+  gap: 2px;
+}
+.live-settings-apply input[type="radio"] {
+  margin-top: 3px;
+  flex: none;
+}
+.live-settings-apply > .live-settings-help {
+  margin: 2px 0 6px;
+}
+.live-settings-apply label + label {
+  margin-top: 8px;
 }
 .live-settings-note {
   margin: 8px 0 0;

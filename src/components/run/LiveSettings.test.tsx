@@ -5,7 +5,7 @@
 // 비율이 0이 되거나, 손절을 끄려 했는데 그대로 남음.
 import { describe, expect, it } from "vitest";
 import type { LiveSettingField } from "../../types";
-import { badFields, buildChanges, hasChanges } from "./LiveSettings";
+import { badFields, buildChanges, hasChanges, touchesPosition } from "./LiveSettings";
 
 const money: LiveSettingField = {
   path: "params.initial_capital",
@@ -14,6 +14,9 @@ const money: LiveSettingField = {
   label: "투자 금액",
   value: 1_000_000,
   unit: "money",
+  unit_text: "USDT",
+  help: "다음에 살 때 쓸 금액이에요. 지금 들고 있는 건 그대로예요.",
+  affects: "next_entry",
   clearable: false,
 };
 const stop: LiveSettingField = {
@@ -23,6 +26,9 @@ const stop: LiveSettingField = {
   label: "손절",
   value: 3,
   unit: "pct",
+  unit_text: "%",
+  help: "이만큼 손해 나면 팔아요.",
+  affects: "position",
   clearable: true,
 };
 const ratio: LiveSettingField = {
@@ -32,6 +38,9 @@ const ratio: LiveSettingField = {
   label: "투자 비율",
   value: 1,
   unit: "ratio",
+  unit_text: "",
+  help: "한 번에 투자 금액의 얼마를 쓸지예요(1 = 전부). 다음에 살 때부터 적용돼요.",
+  affects: "next_entry",
   clearable: false,
 };
 const FIELDS = [money, stop, ratio];
@@ -89,5 +98,27 @@ describe("hasChanges", () => {
   it("보낼 게 있는지로 단추를 가른다", () => {
     expect(hasChanges(FIELDS, { "params.initial_capital": "1,000,000" })).toBe(false);
     expect(hasChanges(FIELDS, { "params.initial_capital": "2,000,000" })).toBe(true);
+  });
+});
+
+// 적용 시점을 묻는 자리가 '어느 쪽을 골라도 같다'고 말할 수 있어야 함. 무엇이 지금
+// 포지션을 건드리는지는 서버가 정함(affects) — 앱이 짐작하면 두 벌이 됨.
+describe("touchesPosition", () => {
+  it("손절을 바꾸면 들고 있는 포지션의 청산 조건이 바뀐다", () => {
+    expect(touchesPosition(FIELDS, { "risk.stop_loss_pct": "2" })).toBe(true);
+  });
+
+  it("금액·비율만 바꾸면 지금 포지션과 상관없다", () => {
+    expect(touchesPosition(FIELDS, { "params.initial_capital": "2,000,000" })).toBe(false);
+    expect(touchesPosition(FIELDS, { "risk.invest_ratio": "0.5" })).toBe(false);
+  });
+
+  it("손 안 댄 칸과 같은 값은 세지 않는다", () => {
+    expect(touchesPosition(FIELDS, {})).toBe(false);
+    expect(touchesPosition(FIELDS, { "risk.stop_loss_pct": "3" })).toBe(false);
+  });
+
+  it("둘을 같이 바꾸면 묻는다", () => {
+    expect(touchesPosition(FIELDS, { "params.initial_capital": "2,000,000", "risk.stop_loss_pct": "2" })).toBe(true);
   });
 });
