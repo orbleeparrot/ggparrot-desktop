@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfirmPayload } from "./ipc";
 import { appLogLine, createMockBackend, TICK_MS } from "./mock";
-import { MOCK_NEXT_VERSION, MOCK_VERSION, WEB_FILE_NAME } from "./mockData";
+import { keyText, MOCK_NEXT_VERSION, MOCK_VERSION, WEB_FILE_NAME } from "./mockData";
 import type { Activity, AppLogEntry, AppState, Notice, StartReply } from "./types";
 import { EV_ACTIVITY, EV_APP_LOG, EV_CONFIRM, EV_NOTICE } from "./types";
 
@@ -245,5 +245,15 @@ describe("mock 백엔드 — 앱 기록", () => {
       detail: "첫째\n둘째",
     });
     expect(line).toBe("2026-10-16 09:05:07  주의 [web] 웹 연결 요청을 확인하지 못했어요. — 첫째 / 둘째");
+  });
+});
+
+describe("keyText — 키 입력 칸 값", () => {
+  it("앞뒤 공백을 빼고, 숫자는 글자로, null·객체는 빈 글자로", () => {
+    expect(keyText("  abc  ")).toBe("abc");
+    expect(keyText(123456)).toBe("123456");
+    expect(keyText(null)).toBe("");
+    expect(keyText(undefined)).toBe("");
+    expect(keyText({ k: 1 })).toBe("");
   });
 });

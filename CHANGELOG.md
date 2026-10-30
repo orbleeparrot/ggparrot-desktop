@@ -16,7 +16,7 @@
 - 포맷을 Prettier에서 oxfmt(oxc 포맷터) 0.75로 바꿈 — 설정(`.oxfmtrc.json`)은 `oxfmt --migrate=prettier`로 옮김. 결과가 다른 곳은 긴 유니온 타입을 한 줄씩 나누는 2곳뿐. 0.x라 정확한 버전으로 고정.
 - oxlint 1.88 → 1.90, 타입 정보 검사(`options.typeAware`·`oxlint-tsgolint`)를 켬. 처음 돌려 나온 10건을 고침:
   - 흘려보낸 Promise 3건 — `useRunner`의 구독 시작·정보 화면의 공인 IP 조회는 `void`로 표시, `SecretField` 시험의 `act`는 값을 돌려주지 않게.
-  - Promise 아닌 값의 `await` 2건(`App.test`의 `pushState`), 객체를 글자로 바꿀 수 있는 곳 3건(모의 IPC의 키 입력 — 공통 함수 `keyText`로 묶음), 비교 함수 없는 `sort` 2건(`commands.test` — 정렬 대신 집합으로 비교, 중복은 따로 시험함).
+  - Promise 아닌 값의 `await` 2건(`App.test`의 `pushState`), 객체를 글자로 바꿀 수 있는 곳 3건(모의 IPC의 키 입력 — 공통 함수 `keyText`로 묶음 — 숫자는 글자로, null·객체는 빈 글자), 비교 함수 없는 `sort` 2건(`commands.test` — 정렬 대신 집합으로 비교, 중복은 따로 시험함).
   - `unbound-method`는 끔 — 훅이 돌려준 함수 묶음을 구조 분해하는 곳마다(70건) 걸려 소음뿐임.
 - 편집기 권장 확장을 Prettier에서 oxc(`oxc.oxc-vscode`)로. 이제 JS·TS 도구는 번들(Rolldown)·변환·압축(Vite 8)·린트·포맷 모두 oxc 기반.
 - README를 0.21에 맞춤 — 서버 연동 레벨 21, 앱 판단(`decides: "local"`)과 서버 판단을 나눈 동작·역할 표, 기능 표(차트·테마·알림·[에이전트(web)]), 구조(`bot/`·`engine/`·`candles.rs`). 화면 스크린샷을 실제 앱으로 다시 찍고 첫 화면·다크 테마를 더함.
@@ -33,11 +33,13 @@
   - 기준 시점도 현재 상태로 — "판단은 서버가 함"·"지금은 엔진이 아직 없음"처럼 지금 코드와 어긋난 주석, 날짜·"예전에는"·"한 번 겪은 일" 같은 이력을 걷어 냄.
   - 주석만 바뀜(주석을 걷어 낸 코드가 HEAD와 같음을 확인).
 - 개조식을 자동으로 검사 — `scripts/comment-style.test.mjs`(`npm test`)가 코드 주석·설정 파일 주석·마크다운의 끝맺음·가운뎃점·조사 띄어쓰기를 봄. CHANGELOG는 0.21.0부터의 `### 개발`만.
-  - 처음 돌려 나온 228곳(가운뎃점 159·끝맺음 46·조사 23)을 고침 — 0.22.0의 구동 중 설정 코드 주석 포함.
+  - 처음 돌려 나온 240곳(가운뎃점 162·끝맺음 54·조사 24)을 고침 — 0.22.0·0.22.1의 구동 중 설정 코드 주석 포함.
   - 화면 문구를 옮겨 적을 때는 따옴표·대괄호로 감쌈 — 그 안은 검사하지 않음(`docs/conventions.md` 1.1).
+  - 주석은 언어마다 제대로 읽음 — JS·TS는 `oxc-parser` 0.155.0(정규식 리터럴 안 따옴표에 밀려 주석을 놓치지 않게), Rust·Swift는 raw 문자열·문자 리터럴·중첩 블록 주석을 아는 토크나이저, CSS는 블록 주석만. 줄 번호는 글자 위치에서 셈.
+  - `## [Unreleased]` 칸은 가장 새 버전으로, 목록 안에 들여쓴 코드 블록은 코드로, 앞말에 붙은 "~보다"는 조사로 봄. 아직 add 안 한 새 파일도 보고, 지웠지만 git rm 안 한 파일은 건너뜀.
 - AI 도구 안내 `AGENTS.md`(Codex·Cursor·Copilot 등이 읽음)와 그걸 불러오는 `CLAUDE.md`를 둠 — 개조식·현재 상태 기준·해요체·PR 방식 요약. 원본은 `docs/conventions.md`.
 - README를 0.22에 맞춤(서버 연동 레벨 22, 기능 표에 구동 중 설정). `docs/conventions.md`·`CONTRIBUTING.md`의 지금 버전·Node 버전을 맞춤.
-- 동작 변경 없음 — 형식·린트·타입·vitest 324개·Rust 테스트 507개(판단 계약 포함)·clippy(macOS·Windows 대상)·e2e 114개 통과.
+- 동작 변경 없음 — 형식·린트·타입·vitest 331개·Rust 테스트 507개(판단 계약 포함)·clippy(macOS·Windows 대상)·e2e 114개 통과.
 
 ## [0.22.1]
 
