@@ -24,24 +24,24 @@
     "build:win": "LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 CARGO_TARGET_DIR=\"$PWD/src-tauri/target-win\" CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc tauri build --target x86_64-pc-windows-gnu --bundles nsis && node scripts/name-bundles.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.3",
+    "@tauri-apps/api": "^2.12.4",
     "lightweight-charts": "5.2.1",
-    "lucide-react": "^1.57.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "lucide-react": "^1.64.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
-    "@tauri-apps/cli": "^2.12.2",
+    "@tauri-apps/cli": "^2.12.4",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "jsdom": "^30.1.2",
+    "jsdom": "^30.1.3",
     "oxlint": "1.88.0",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4",
-    "vitest": "^5.0.4"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }
