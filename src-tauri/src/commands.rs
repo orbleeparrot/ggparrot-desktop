@@ -116,9 +116,8 @@ pub async fn change_run_settings(s: State<'_, S>, run_id: String, changes: Value
     if key.is_empty() {
         return Err("회원 키가 없어요.".into());
     }
-    runner_core::server::change_settings(&s.inner().http, &base, &key, session_id, &changes, &apply_mode)
-        .await
-        .map_err(Into::into)
+    // 오류가 이미 String 이라 변환하지 않음(R<T> = Result<T, String>).
+    runner_core::server::change_settings(&s.inner().http, &base, &key, session_id, &changes, &apply_mode).await
 }
 
 #[tauri::command]
