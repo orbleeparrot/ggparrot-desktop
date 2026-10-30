@@ -83,7 +83,7 @@ describe("키 칸 열고 닫기 · 잔고 · 안내 색", () => {
     const amount = document.querySelector<HTMLElement>(".slot-balance")!;
     expect(amount.title).toBe("사용 가능 잔고");
     expect(amount.textContent).toBe("잔고12,300KRW");
-    // 확인 시각 · 보유 코인은 이름 옆 상태 줄
+    // 확인 시각·보유 코인은 이름 옆 상태 줄
     const head = document.querySelector<HTMLElement>(".slot-head")!;
     expect(head.textContent).toMatch(/4:40 확인/);
     expect(head.textContent).toContain("보유 BTC 0.01");

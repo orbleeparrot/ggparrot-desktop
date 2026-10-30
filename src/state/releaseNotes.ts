@@ -6,7 +6,9 @@
 export const WEB_ONLY_MARKER = "<!-- web-only -->";
 
 export type NoteLine =
-  { kind: "heading"; text: string } | { kind: "item"; text: string; level: number } | { kind: "text"; text: string };
+  | { kind: "heading"; text: string }
+  | { kind: "item"; text: string; level: number }
+  | { kind: "text"; text: string };
 
 /** 인라인 마크다운을 읽기 좋은 글자로 — 링크는 글자만, 굵게·기울임 기호는 뺌. 코드 표기(`)는 남겨 화면이 가름. */
 function plainInline(text: string): string {

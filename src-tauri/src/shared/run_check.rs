@@ -183,9 +183,9 @@ mod tests {
     #[test]
     fn a_passing_check_starts_and_records_the_slot() {
         let mut c = core_with_run(RunMode::Live);
-        let gen = c.run("a").unwrap().generation;
+        let generation = c.run("a").unwrap().generation;
         let result = result_for(&c, true, "");
-        let (next, connected) = c.accept_run_check("a", gen, &result, true).unwrap();
+        let (next, connected) = c.accept_run_check("a", generation, &result, true).unwrap();
         assert_eq!(next, RunCheckNext::Start);
         assert!(connected.is_some_and(|k| k.slot == KeySlot::Upbit), "연결됨이면 키체인 일을 넘김");
         let r = c.run("a").unwrap();
@@ -196,23 +196,23 @@ mod tests {
     #[test]
     fn a_stale_check_is_dropped_and_a_failure_goes_to_the_wizard() {
         let mut c = core_with_run(RunMode::Live);
-        let gen = c.run("a").unwrap().generation;
+        let generation = c.run("a").unwrap().generation;
         let result = result_for(&c, true, "");
-        let (next, connected) = c.accept_run_check("a", gen + 1, &result, true).unwrap();
+        let (next, connected) = c.accept_run_check("a", generation + 1, &result, true).unwrap();
         assert_eq!((next, connected.is_none()), (RunCheckNext::Nothing, true), "판이 바뀐 결과는 버림");
         assert!(c.run("a").unwrap().preflight.is_none());
 
         let failed = result_for(&c, false, "invalid_key");
-        let (next, _) = c.accept_run_check("a", gen, &failed, true).unwrap();
+        let (next, _) = c.accept_run_check("a", generation, &failed, true).unwrap();
         assert!(matches!(next, RunCheckNext::Wizard(t) if t.slot == KeySlot::Upbit), "{next:?}");
-        let (next, _) = c.accept_run_check("a", gen, &failed, false).unwrap();
+        let (next, _) = c.accept_run_check("a", generation, &failed, false).unwrap();
         assert_eq!(next, RunCheckNext::Nothing, "[시작]을 누르지 않았으면 활동 기록만");
 
         // 잔고 부족(주문 내용 오류)은 알림으로 — 오류 코드는 알림 글이 아니라 따로(앱 기록 설명에 붙임).
         let mut funds = result_for(&c, false, "insufficient_funds_bid");
         funds.reason = "주문할 원화 잔고가 모자라요. 잔고를 채우거나 매크로 투자 금액을 줄이세요.".into();
         funds.error_code = "insufficient_funds_bid".into();
-        let (next, _) = c.accept_run_check("a", gen, &funds, true).unwrap();
+        let (next, _) = c.accept_run_check("a", generation, &funds, true).unwrap();
         match next {
             RunCheckNext::Warn { message, code } => {
                 assert!(
@@ -228,6 +228,6 @@ mod tests {
         assert!(act.raw.ends_with("\n오류 코드: insufficient_funds_bid"), "{}", act.raw);
 
         c.closed = true;
-        assert!(c.accept_run_check("a", gen, &failed, true).is_none(), "닫는 중에는 아무것도 하지 않음");
+        assert!(c.accept_run_check("a", generation, &failed, true).is_none(), "닫는 중에는 아무것도 하지 않음");
     }
 }

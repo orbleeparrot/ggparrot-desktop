@@ -7,8 +7,8 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::connection::valid_ip_observation;
 use crate::outbox::{py_float, py_str};
@@ -278,11 +278,7 @@ pub fn normalize(c: &Credentials) -> Credentials {
 
 fn number_text(v: f64) -> String {
     // 정수였던 관측 시각은 정수로 씀(읽은 타입을 그대로 다시 씀).
-    if v.fract() == 0.0 && v.abs() < 9_007_199_254_740_992.0 {
-        format!("{}", v as i64)
-    } else {
-        py_float(v)
-    }
+    if v.fract() == 0.0 && v.abs() < 9_007_199_254_740_992.0 { format!("{}", v as i64) } else { py_float(v) }
 }
 
 /// v2 JSON 문자열 — 키 순서 version·member_key·exchanges·connection_history, 거래소는 고정 순서.

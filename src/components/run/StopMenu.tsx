@@ -1,5 +1,5 @@
-// [■ 종료 ▾] — 끝내는 방법(stopChoices)을 고르는 메뉴. 고를 게 하나뿐이면 메뉴 없이 그 이름의 단추([■ 청산] · [■ 종료]). 고르면 확인 대화상자로 감.
-// iconOnly: 목록 카드의 작은 [■] — 글자 없이(이름은 aria-label · 풍선 도움말), 마우스를 올릴 때만 보이는 자리에 씀.
+// [■ 종료 ▾] — 끝내는 방법(stopChoices)을 고르는 메뉴. 고를 게 하나뿐이면 메뉴 없이 그 이름의 단추([■ 청산]·[■ 종료]). 고르면 확인 대화상자로 감.
+// iconOnly: 목록 카드의 작은 [■] — 글자 없이(이름은 aria-label·풍선 도움말), 마우스를 올릴 때만 보이는 자리에 씀.
 import { ChevronDown, Square } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { StopChoice } from "../../state/runs";

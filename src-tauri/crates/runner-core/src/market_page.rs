@@ -1,7 +1,7 @@
 //! 거래소의 종목 화면 주소(시세·차트) — 상세 머리줄의 '○○에서 보기'가 기본 브라우저로 엶.
 //! 주소는 거래소·종목·시장·모드로 여기서만 만듦. 웹뷰가 넘긴 주소는 열지 않음.
 
-use crate::types::{base_asset, Exchange, Market, RunMode};
+use crate::types::{Exchange, Market, RunMode, base_asset};
 
 /// 종목 화면 — 단추 글자와 주소.
 #[derive(Debug, Clone, PartialEq, Eq)]

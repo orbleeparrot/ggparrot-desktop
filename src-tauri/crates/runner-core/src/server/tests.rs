@@ -558,7 +558,7 @@ fn only_condition_rules_wait_for_entry() {
 //
 // 설정 변경은 `X-Runner-Key`(회원 키)를 헤더로 보냄. 평문 http면 같은 망에서 가로챌 수 있음.
 // 배포판은 `types::server_base`가 이미 https만 쓰게 하지만, `change_settings`는 주소를
-// **인자로 받으므로** 거기서 한 번 더 본다 — 호출하는 쪽이 어디서 왔는지 모르는 값을 넘길 수 있음.
+// **인자로 받으므로** 거기서 한 번 더 봄 — 호출하는 쪽이 어디서 왔는지 모르는 값을 넘길 수 있음.
 
 #[test]
 fn an_https_base_is_accepted_and_trimmed() {
@@ -575,7 +575,7 @@ fn a_plain_http_base_is_refused_with_a_reason() {
 
 #[test]
 fn a_local_dev_server_still_works() {
-    // 개발은 보통 이 주소다. 이 길은 기계 밖으로 나가지 않음.
+    // 개발은 보통 이 주소임. 이 길은 기계 밖으로 나가지 않음.
     for base in ["http://localhost:8000", "http://127.0.0.1:8000/", "http://[::1]:8000"] {
         assert!(super::secure_base(base).is_ok(), "{base}");
     }

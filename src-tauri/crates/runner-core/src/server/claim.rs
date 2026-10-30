@@ -36,11 +36,7 @@ pub enum ClaimError {
 
 /// 426 안내에서 화면에 보일 글자만 남김 — 주소·제어 문자가 섞이면 버리고 기본 안내를 씀.
 fn update_detail(detail: String) -> String {
-    if detail.contains("://") || detail.chars().any(char::is_control) {
-        String::new()
-    } else {
-        detail
-    }
+    if detail.contains("://") || detail.chars().any(char::is_control) { String::new() } else { detail }
 }
 
 /// 티켓 교환. 426(업데이트 필요)만 서버 안내를 돌려주고, 다른 실패는 이유를 숨김.
@@ -52,7 +48,7 @@ pub async fn claim_ticket(http: &reqwest::Client, base: &str, ticket: &str) -> R
             "ticket": ticket,
             "runner_version": SERVER_LINK_LEVEL,
             "engine_version": crate::engine::ENGINE_VERSION.to_string(),
-            // 실행기는 스스로 판단할 줄 안다고 말한다 — 적립식 · SAR 은 그때만 열린다.
+            // 실행기는 스스로 판단할 줄 안다고 말함 — 적립식·SAR은 그때만 열림.
             "decides": "local",
         }))
         .timeout(Duration::from_secs(15))

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use super::{exc_text, positive_f64, Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest};
+use super::{Broker, BrokerError, FeePaid, LogFn, Order, OrderRules, OrderSide, SubmitRequest, exc_text, positive_f64};
 use crate::types::{Market, Side};
 
 const MOCK_FALLBACK_RULES: OrderRules = OrderRules { step: 0.0, min_notional: 0.0 };
@@ -39,11 +39,7 @@ impl MockBroker {
         // 바이낸스 어댑터에는 수수료율이 없음. 읽지 못했거나 0이면 거래소·시장 기본값
         // (바이낸스 현물 0.1%·선물 0.05%·업비트 0.05%·빗썸 0.25%)으로 대신함.
         let rate = self.inner.bid_fee().map(positive_f64).unwrap_or(0.0);
-        if rate != 0.0 && crate::pnl::plausible_rate(rate) {
-            rate
-        } else {
-            self.inner.default_fee_rate()
-        }
+        if rate != 0.0 && crate::pnl::plausible_rate(rate) { rate } else { self.inner.default_fee_rate() }
     }
 }
 

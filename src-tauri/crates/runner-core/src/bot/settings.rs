@@ -6,9 +6,9 @@
 //! **들고 있는 포지션의 수량은 건드리지 않음.** 금액을 바꿔도 이미 산 것은 그대로고,
 //! 다음 진입부터 새 금액을 씀 — 포지션 크기를 바꾸는 건 추가 매수·부분 청산이라 다른 일임.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
-use super::{num, Bot};
+use super::{Bot, num};
 use crate::money::grouped;
 
 /// 서버가 바꿀 수 있는 위험 설정 — 이름이 그대로 매크로의 `risk` 칸임.
@@ -32,7 +32,7 @@ impl Bot {
         }
         self.settings_digest = digest.to_string();
         // 값이 같으면 아무 일도 없었던 것임 — 서버가 조건 값만 바꿔도 지문은 달라지는데,
-        // 그건 서버가 판단에 쓰는 값이라 실행기가 쓸 것은 그대로다.
+        // 그건 서버가 판단에 쓰는 값이라 실행기가 쓸 것은 그대로임.
         let mut changed = self.apply_capital(settings);
         changed |= self.apply_risk(settings);
         if changed {

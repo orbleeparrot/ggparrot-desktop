@@ -16,7 +16,7 @@ function renderSegment(slot: RunSlot) {
   );
 }
 
-/** aria-describedby 가 가리키는 글자. */
+/** aria-describedby가 가리키는 글자. */
 function description(el: HTMLElement): string {
   const ids = el.getAttribute("aria-describedby")?.split(" ") ?? [];
   return ids.map((id) => document.getElementById(id)?.textContent ?? "").join(" ");

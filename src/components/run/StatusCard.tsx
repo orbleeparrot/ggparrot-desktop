@@ -25,7 +25,7 @@ import { CandlePlot } from "./CandlePlot";
 import { PriceChart } from "./PriceChart";
 import { useRunClock } from "./useElapsed";
 
-// 현재가 · 평단 · 투입금 · 수량 · 수수료 · 실현손익 표는 처음엔 접어 둔다(웹 내 에이전트와 같게). 펼친 상태는 이 PC에만 기억.
+// 현재가·평단·투입금·수량·수수료·실현손익 표는 처음엔 접어 둠(웹 내 에이전트와 같게). 펼친 상태는 이 PC에만 기억.
 export const DETAILS_KEY = "ggp.runner.status.details";
 
 function useDetailsOpen(): [boolean, () => void] {
@@ -42,7 +42,7 @@ function useDetailsOpen(): [boolean, () => void] {
       try {
         window.localStorage.setItem(DETAILS_KEY, next ? "open" : "closed");
       } catch {
-        // 저장소를 못 쓰면 이 화면에서만 펼친다.
+        // 저장소를 못 쓰면 이 화면에서만 펼침.
       }
       return next;
     });
@@ -139,8 +139,8 @@ export function StatusCard({
             </div>
           )}
         </div>
-        {/* 서버가 판단하면 앱은 봉을 들고 있지 않다 — 지금까지처럼 현재가 흐름만 작게.
-            앱이 직접 판단하면 봉이 있으므로 아래에 **크게** 따로 그린다. */}
+        {/* 서버가 판단하면 앱은 봉을 들고 있지 않음 — 현재가 흐름만 작게.
+            앱이 직접 판단하면 봉이 있으므로 아래에 **크게** 따로 그림. */}
         {!run.chart && (
           <div className="pnl-chart">
             <PriceChart
@@ -155,7 +155,7 @@ export function StatusCard({
         )}
       </div>
 
-      {/* 조건을 보는 게 이 화면의 목적이라 차트가 손익 바로 아래, 카드 폭 전체를 쓴다. */}
+      {/* 조건을 보는 게 이 화면의 목적이라 차트가 손익 바로 아래, 카드 폭 전체를 씀. */}
       {run.chart && (
         <CandlePlot
           chart={run.chart}

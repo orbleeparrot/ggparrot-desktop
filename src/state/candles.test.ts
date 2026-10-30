@@ -31,7 +31,7 @@ const EMPTY: ChartLevels = {
 
 describe("가격선", () => {
   it("엔진이 낸 선만 그린다", () => {
-    // 없는 선을 추정으로 메우면 그 추정선이 실제 조건인 척한다 — 한 번 겪은 일이다.
+    // 없는 선을 추정으로 메우면 그 추정선이 실제 조건인 척함.
     expect(priceLines(EMPTY, 100)).toEqual([]);
     expect(priceLines(null, 100)).toEqual([]);
     expect(priceLines(undefined, 100)).toEqual([]);
@@ -51,7 +51,7 @@ describe("가격선", () => {
   });
 
   it("그리드 칸은 지금 가격에서 가까운 것만 그린다", () => {
-    // 칸을 전부 그리면 차트가 줄무늬가 되어 아무것도 읽을 수 없다.
+    // 칸을 전부 그리면 차트가 줄무늬가 되어 아무것도 읽을 수 없음.
     const levels = { ...EMPTY, buy_levels: [10, 50, 95, 99, 300], sell_levels: [101, 105, 500] };
     const lines = priceLines(levels, 100);
     expect(lines.filter((l) => l.key.startsWith("grid-buy")).map((l) => l.value)).toEqual([99, 95]);
@@ -59,7 +59,7 @@ describe("가격선", () => {
   });
 
   it("트레일 발동선은 발동 전에만 온다", () => {
-    // 켜진 뒤에는 엔진이 null 을 보낸다 — 화면이 임의로 지우지 않는다.
+    // 켜진 뒤에는 엔진이 null을 보냄 — 화면이 임의로 지우지 않음.
     const before = priceLines({ ...EMPTY, trail_activation: 105 }, 100);
     expect(before.map((l) => l.key)).toContain("arm");
     const after = priceLines({ ...EMPTY, trail_stop: 98, armed: true }, 100);
@@ -69,13 +69,13 @@ describe("가격선", () => {
 
 describe("눈금", () => {
   it("먼 가격선이 봉을 납작하게 만들지 않는다", () => {
-    // BTC 에서 익절 +5% · 손절 -3% 가 5시간치 봉 범위보다 훨씬 넓어 봉 300개가 한 줄이 됐다.
-    const rows = bars(20, 100); // 고가 102~121 · 저가 99~118 → 범위 22
+    // BTC에서 익절 +5%·손절 -3%가 5시간치 봉 범위보다 훨씬 넓어 봉 300개가 한 줄이 됨.
+    const rows = bars(20, 100); // 고가 102~121·저가 99~118 → 범위 22
     const lines = priceLines({ ...EMPTY, stop_loss: 10, exit_target: 1000 }, 110);
     const range = candleRange(rows, lines);
     const candleSpan = 121 - 99;
     expect(range.max - range.min).toBeLessThanOrEqual(candleSpan * (1 + LINE_ROOM * 2));
-    // 봉이 세로의 상당 부분을 차지한다.
+    // 봉이 세로의 상당 부분을 차지함.
     expect(candleSpan / (range.max - range.min)).toBeGreaterThan(0.2);
   });
 

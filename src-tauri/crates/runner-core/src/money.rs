@@ -6,7 +6,7 @@ use rust_decimal::{Decimal, RoundingStrategy};
 use serde_json::Value;
 use std::str::FromStr;
 
-use crate::types::{order_cap, order_cap_basis, Market, Side};
+use crate::types::{Market, Side, order_cap, order_cap_basis};
 
 /// 파이썬 `Decimal(str(x))` — 가장 짧은 십진 표기로 옮김.
 pub fn decimal_of(x: f64) -> Option<Decimal> {
@@ -38,21 +38,13 @@ pub fn positive(value: Option<&Value>) -> f64 {
         Some(Value::Bool(true)) => 1.0,
         _ => 0.0,
     };
-    if n.is_finite() && n > 0.0 {
-        n
-    } else {
-        0.0
-    }
+    if n.is_finite() && n > 0.0 { n } else { 0.0 }
 }
 
 /// 진입 예산에서 실제로 거래소에 나가는 주문 금액. 상한을 먼저 씌우고, 선물·증거금 기준이면 레버리지를 곱함.
 pub fn notional_for(budget: f64, leverage: u32, market: Market, quote: &str) -> f64 {
     let cap = budget.min(order_cap(quote));
-    if market == Market::Futures && order_cap_basis() == "margin" {
-        cap * leverage as f64
-    } else {
-        cap
-    }
+    if market == Market::Futures && order_cap_basis() == "margin" { cap * leverage as f64 } else { cap }
 }
 
 /// 이 매크로의 진입 한 건이 쓸 수 있는 가장 작은 주문 금액(규칙 D: 그리드 한 칸, H: 마틴게일 기본/추가 주문 중 작은 쪽).
@@ -140,11 +132,7 @@ pub fn rounds_to_zero(x: f64, dp: u32) -> bool {
 
 /// 돈의 표시 자릿수 — 원화는 정수, 그 밖은 소수 둘째 자리.
 pub fn money_dp(quote: &str) -> u32 {
-    if quote.eq_ignore_ascii_case("KRW") {
-        0
-    } else {
-        2
-    }
+    if quote.eq_ignore_ascii_case("KRW") { 0 } else { 2 }
 }
 
 /// 부호 붙은 천 단위 숫자 `+1,234.50`·`-20,000`. 표시 자릿수로 반올림해 0이면 부호 없이 `0.00`.
@@ -239,11 +227,7 @@ fn trim_zeros(s: String) -> String {
     match s.split_once('.') {
         Some((int, frac)) => {
             let frac = frac.trim_end_matches('0');
-            if frac.is_empty() {
-                int.to_string()
-            } else {
-                format!("{int}.{frac}")
-            }
+            if frac.is_empty() { int.to_string() } else { format!("{int}.{frac}") }
         }
         None => s,
     }
@@ -293,20 +277,12 @@ pub fn py_gp(x: f64, p: usize) -> String {
     }
     let decimals = (p as i32 - 1 - exp).max(0) as usize;
     let s = format!("{:.*}", decimals, x);
-    if s.contains('.') {
-        s.trim_end_matches('0').trim_end_matches('.').to_string()
-    } else {
-        s
-    }
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 /// 파이썬 str(float) 근사 — 정수면 "30.0", 아니면 가장 짧은 표기. 로그에 그대로 찍는 가격·수량.
 pub fn py_num(x: f64) -> String {
-    if x.is_finite() && x.fract() == 0.0 && x.abs() < 1e16 {
-        format!("{x:.1}")
-    } else {
-        format!("{x}")
-    }
+    if x.is_finite() && x.fract() == 0.0 && x.abs() < 1e16 { format!("{x:.1}") } else { format!("{x}") }
 }
 
 #[cfg(test)]

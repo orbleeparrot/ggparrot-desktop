@@ -3,17 +3,17 @@ use hmac::{Hmac, KeyInit, Mac};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::Sha256;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::brokers::domestic::error_names::{IP_REJECTED, KEY_REJECTED, ORDER_EVALUATED, SCOPE_REJECTED};
 use crate::brokers::Broker;
+use crate::brokers::domestic::error_names::{IP_REJECTED, KEY_REJECTED, ORDER_EVALUATED, SCOPE_REJECTED};
 use crate::clock::unix_secs;
 use crate::outbox::py_dumps;
-use crate::types::{exchange_name_of, Credentials, IpObservation, Market, RunMode};
+use crate::types::{Credentials, IpObservation, Market, RunMode, exchange_name_of};
 
 pub const PUBLIC_IPV4_URL: &str = "https://api4.ipify.org?format=json";
 pub const PUBLIC_IP_MAX_AGE_SECS: f64 = 120.0;
@@ -182,10 +182,10 @@ fn binance_view(ok: bool, name: &str) -> Option<CheckView> {
 pub fn check_view(exchange: &str, ok: bool, error_name: &str) -> CheckView {
     use Check::*;
     let name = error_name;
-    if exchange == "binance" {
-        if let Some(v) = binance_view(ok, name) {
-            return v;
-        }
+    if exchange == "binance"
+        && let Some(v) = binance_view(ok, name)
+    {
+        return v;
     }
     let order_ok = if exchange == "upbit" { Ok } else { Na };
     if ok || ORDER_EVALUATED.contains(&name) || name.starts_with("under_min_total") {
@@ -207,8 +207,8 @@ pub fn check_view(exchange: &str, ok: bool, error_name: &str) -> CheckView {
 /// 잘못 받지 않게.
 static UPBIT_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{30,100}$").unwrap());
 /// 빗썸(API 2.0) 키 모양 — 발급마다 길이가 조금씩 다름.
-/// Access Key는 영문·숫자 40~60자(46자 · 48자 소문자 16진을 확인).
-/// Secret Key는 base64 76~100자이고 길이가 4의 배수(82자 + "==" · 84자 패딩 없음을 확인).
+/// Access Key는 영문·숫자 40~60자(46자·48자 소문자 16진을 확인).
+/// Secret Key는 base64 76~100자이고 길이가 4의 배수(82자 + "=="·84자 패딩 없음을 확인).
 /// 두 범위가 겹치지 않아 모양으로 어느 칸인지 가림(시크릿을 먼저 복사해도 맞는 칸에).
 /// 짧은 비밀번호 같은 값은 받지 않음.
 static BITHUMB_ACCESS: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z0-9]{40,60}$").unwrap());
@@ -250,11 +250,7 @@ pub fn clipboard_key(exchange: &str, text: &str) -> String {
         _ => BITHUMB_ACCESS.is_match(value) || bithumb_secret_shaped(value),
     };
     let mixed = value.chars().any(|c| c.is_ascii_digit()) && value.chars().any(|c| c.is_ascii_alphabetic());
-    if shaped && mixed {
-        value.to_string()
-    } else {
-        String::new()
-    }
+    if shaped && mixed { value.to_string() } else { String::new() }
 }
 
 /// 공식 API 관리 주소. 바이낸스는 `env`(testnet·demo·live)가 있어야 찾음, 국내는 `env`를 보지 않음.

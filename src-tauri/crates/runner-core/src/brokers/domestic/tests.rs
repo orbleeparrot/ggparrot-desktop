@@ -953,7 +953,10 @@ async fn bithumb_checks_the_minimum_amount_itself() {
     let (_s, b) = bithumb(json!([{"currency": "KRW", "balance": "250000"}]), chance()).await;
     let (ok, reason) = b.rehearse(1_000.0, None).await;
     assert!(!ok);
-    assert_eq!(reason, "최소 주문 금액보다 적어요. 빗썸 최소 주문 금액은 5000원인데 이번 주문은 1000원이에요. 매크로 투자 금액을 올리세요.");
+    assert_eq!(
+        reason,
+        "최소 주문 금액보다 적어요. 빗썸 최소 주문 금액은 5000원인데 이번 주문은 1000원이에요. 매크로 투자 금액을 올리세요."
+    );
     assert_eq!(b.last_error_name(), "under_min_total");
 }
 

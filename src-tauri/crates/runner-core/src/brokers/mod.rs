@@ -10,8 +10,8 @@ pub mod binance;
 pub mod domestic;
 pub mod mock;
 
-pub use binance::{binance_rejection_parts, is_binance_no_funds, BinanceBroker, BinanceUrls};
-pub use domestic::{domestic_error_code, explain_domestic_error, is_no_funds_error, jwt_token, DomesticBroker};
+pub use binance::{BinanceBroker, BinanceUrls, binance_rejection_parts, is_binance_no_funds};
+pub use domestic::{DomesticBroker, domestic_error_code, explain_domestic_error, is_no_funds_error, jwt_token};
 pub use mock::MockBroker;
 
 pub type LogFn = Arc<dyn Fn(String) + Send + Sync>;
@@ -19,8 +19,8 @@ pub type LogFn = Arc<dyn Fn(String) + Send + Sync>;
 mod pacing;
 #[cfg(test)]
 pub(crate) mod test_keys;
+pub use pacing::{LOOKUP_ATTEMPTS, lookup_delay};
 pub(crate) use pacing::{cool, cool_key, cooling, retry_after_secs};
-pub use pacing::{lookup_delay, LOOKUP_ATTEMPTS};
 
 /// 아무것도 하지 않는 로그 — 연결 검사처럼 기록이 필요 없는 곳.
 pub fn null_log() -> LogFn {
@@ -40,11 +40,7 @@ pub fn is_terminal(status: &str) -> bool {
 
 /// 수수료까지 합쳐 budget 안에 들도록 줄인 주문 금액 — 20,000원·0.04%면 19,992원.
 pub fn fee_inclusive(budget: f64, rate: f64) -> f64 {
-    if budget > 0.0 {
-        budget / (1.0 + rate)
-    } else {
-        0.0
-    }
+    if budget > 0.0 { budget / (1.0 + rate) } else { 0.0 }
 }
 
 /// 숫자로 읽히지 않거나 0 이하·NaN·무한이면 0.
@@ -58,11 +54,7 @@ pub fn positive_number(value: &serde_json::Value) -> f64 {
 
 /// 0보다 큰 유한한 값만 그대로, 나머지(0·음수·-0.0·NaN·무한)는 0.
 pub fn positive_f64(x: f64) -> f64 {
-    if x.is_finite() && x > 0.0 {
-        x
-    } else {
-        0.0
-    }
+    if x.is_finite() && x > 0.0 { x } else { 0.0 }
 }
 
 /// 응답 객체의 한 칸을 [`positive_number`]로 읽음. 칸이 없으면 0.
@@ -261,11 +253,7 @@ pub fn exc_text(e: &BrokerError) -> String {
 /// 지원용 오류 코드 줄을 덧붙임 — "…\n오류 코드: insufficient_funds_bid". 코드가 없으면 그대로.
 /// 사람이 읽는 문장에는 코드를 넣지 않고 자세히 보기(활동 원문·앱 기록 설명)·원문 로그·복사 글에만 남김.
 pub fn with_error_code(text: &str, code: &str) -> String {
-    if code.is_empty() {
-        text.to_string()
-    } else {
-        format!("{text}\n오류 코드: {code}")
-    }
+    if code.is_empty() { text.to_string() } else { format!("{text}\n오류 코드: {code}") }
 }
 
 /// `math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)`.
@@ -309,11 +297,7 @@ pub fn py_float_repr(f: f64) -> String {
         let sign = if exp < 0 { '-' } else { '+' };
         return format!("{mantissa}e{sign}{:02}", exp.abs());
     }
-    if f.fract() == 0.0 {
-        format!("{f:.1}")
-    } else {
-        format!("{f}")
-    }
+    if f.fract() == 0.0 { format!("{f:.1}") } else { format!("{f}") }
 }
 
 /// 파이썬 `str(value)` — JSON 문자열은 따옴표 없이, 정수는 정수로, 실수는 repr로.

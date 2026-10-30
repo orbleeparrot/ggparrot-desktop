@@ -13,11 +13,7 @@ fn setting(v: Option<&Value>) -> Option<(f64, String)> {
     match v {
         Some(Value::Number(n)) => {
             let f = n.as_f64()?;
-            if f == 0.0 {
-                None
-            } else {
-                Some((f, n.to_string()))
-            }
+            if f == 0.0 { None } else { Some((f, n.to_string())) }
         }
         Some(Value::String(s)) if !s.is_empty() => s.trim().parse::<f64>().ok().map(|f| (f, s.clone())),
         _ => None,
@@ -81,11 +77,7 @@ impl RiskGuard {
         if self.cooldown_minutes != 0.0 {
             bits.push(format!("손절 뒤 재진입 대기 {}분", py_num(self.cooldown_minutes)));
         }
-        if bits.is_empty() {
-            "설정 없음".into()
-        } else {
-            bits.join(" · ")
-        }
+        if bits.is_empty() { "설정 없음".into() } else { bits.join(" · ") }
     }
 
     pub fn roll_day(&mut self) {
@@ -158,10 +150,10 @@ impl RiskGuard {
     }
 
     fn halt_if_needed(&mut self) {
-        if let Some((limit, _)) = &self.daily_max_loss {
-            if self.daily_loss_pct(0.0) <= -limit {
-                self.halted_day = self.day.clone();
-            }
+        if let Some((limit, _)) = &self.daily_max_loss
+            && self.daily_loss_pct(0.0) <= -limit
+        {
+            self.halted_day = self.day.clone();
         }
     }
 }
@@ -170,8 +162,8 @@ impl RiskGuard {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     fn guard(risk: Value, base: f64) -> (RiskGuard, Arc<AtomicU64>) {
         let t = Arc::new(AtomicU64::new(1_000_000));

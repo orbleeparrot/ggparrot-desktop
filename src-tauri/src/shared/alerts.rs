@@ -1,10 +1,10 @@
-//! OS 알림 — 체결 · 평가손익 구간 · 오류 · 위험 · 서버 끊김 · 실행 멈춤을 알림음과 함께 띄움(Windows 오른쪽 아래 토스트).
-//! 켜고 끄는 곳은 설정 › 창 · 화면 '알림' 하나(2026-10-20 — 예전엔 매수 체결만 따로 켜고, 나머지는 창이 뒤에 있을 때만 떴다).
+//! OS 알림 — 체결·평가손익 구간·오류·위험·서버 끊김·실행 멈춤을 알림음과 함께 띄움(Windows 오른쪽 아래 토스트).
+//! 켜고 끄는 곳은 설정 › 창·화면 '알림' 하나 — 종류마다 따로 켜지 않음.
 //! 같은 원인으로 여러 실행이 같은 알림을 띄우지 않게 묶음(서버 끊김처럼 원인이 하나인 것).
 
 use super::*;
 
-/// OS 알림 한 건. `group` 이면 1분 안에 다른 실행에서 온 같은 제목을 '외 N개' 한 번으로 묶음(체결 · 손익처럼 실행마다
+/// OS 알림 한 건. `group`이면 1분 안에 다른 실행에서 온 같은 제목을 '외 N개' 한 번으로 묶음(체결·손익처럼 실행마다
 /// 다른 소식은 묶지 않음).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Alert {
@@ -37,7 +37,7 @@ pub struct AlertSlot {
 /// 같은 제목의 OS 알림을 묶는 시간.
 const ALERT_WINDOW_MS: i64 = 60_000;
 
-/// 시스템 기본 알림음 이름 — Windows 토스트는 "Default"(ms-winsoundevent:Notification.Default), macOS 는
+/// 시스템 기본 알림음 이름 — Windows 토스트는 "Default"(ms-winsoundevent:Notification.Default), macOS는
 /// NSUserNotificationDefaultSoundName. 그 밖(리눅스 개발 빌드)은 소리 이름 힌트만 보냄.
 #[cfg(target_os = "macos")]
 const NOTIFY_SOUND: &str = "NSUserNotificationDefaultSoundName";
@@ -46,7 +46,7 @@ const NOTIFY_SOUND: &str = "Default";
 
 impl Shared {
     /// 알림을 띄움 — 설정 '알림'이 꺼져 있으면 아무것도 안 함. 창을 보고 있어도 띄움(소리 포함).
-    /// 묶는 알림은 같은 실행 · 같은 제목을 1분에 한 번, 다른 실행의 같은 제목은 1분 동안 모아 '외 N개' 한 번으로.
+    /// 묶는 알림은 같은 실행·같은 제목을 1분에 한 번, 다른 실행의 같은 제목은 1분 동안 모아 '외 N개' 한 번으로.
     pub(crate) fn alert_os(self: &S, run_id: &str, alert: Alert) {
         let symbol =
             {
@@ -54,7 +54,7 @@ impl Shared {
                 if !c.notify {
                     return;
                 }
-                // 모의 · 테스트넷이면 모드를 붙임(실전과 헷갈리지 않게).
+                // 모의·테스트넷이면 모드를 붙임(실전과 헷갈리지 않게).
                 c.run(run_id)
                     .map(|r| {
                         if r.mode == RunMode::Live {
@@ -112,7 +112,7 @@ impl Shared {
         }
     }
 
-    /// OS 알림. `sound` 면 시스템 기본 알림음(Windows 토스트 'Default' · macOS 기본 소리) — 아니면 Windows 토스트는 소리 없음.
+    /// OS 알림. `sound` 면 시스템 기본 알림음(Windows 토스트 'Default'·macOS 기본 소리) — 아니면 Windows 토스트는 소리 없음.
     fn show_os_notification(&self, title: &str, body: &str, sound: bool) {
         use tauri_plugin_notification::NotificationExt;
         let mut n = self.app.notification().builder().title(title).body(body);

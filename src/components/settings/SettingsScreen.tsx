@@ -56,7 +56,7 @@ export function SettingsScreen({
     setSeenSeq(slotTarget.seq);
     if (!opened.has(slotTarget.slot)) setOpened(new Set(opened).add(slotTarget.slot));
   }
-  // 쓰지 않는 연습 칸(바이낸스 테스트넷 · 데모)은 아래 '연습 칸'에 낮게.
+  // 쓰지 않는 연습 칸(바이낸스 테스트넷·데모)은 아래 '연습 칸'에 낮게.
   const main = slots.filter((s) => !isPractice(s) || slotInUse(s));
   const practice = slots.filter((s) => isPractice(s) && !slotInUse(s));
   const toggleSlot = (slot: SlotCard["slot"], open: boolean) => {

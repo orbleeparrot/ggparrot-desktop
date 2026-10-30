@@ -5,15 +5,17 @@
 
 ## 1. 공통
 
-- **포맷:** Prettier(TS·CSS·JSON·YAML, 마크다운 제외)·rustfmt, 줄 폭 120. `npm run format`으로 맞추고 CI가 `format:check`로 확인. 편집기 설정은 `.editorconfig`.
+- **포맷:** oxfmt(TS·CSS·JSON·YAML, 마크다운 제외, 설정 `.oxfmtrc.json`)·rustfmt, 줄 폭 120. `npm run format`으로 맞추고 CI가 `format:check`로 확인. 편집기 설정은 `.editorconfig`.
+  - oxfmt는 Prettier와 결과가 거의 같은 oxc 포맷터(Rust) — 0.x라 버전을 정확히 고정함(올릴 때 `npm run format` 결과를 함께 커밋).
 - **린트:** TS·React는 oxlint(`npm run lint`, 설정 `.oxlintrc.json`, 경고도 실패), Rust는 clippy(`npm run lint:rust`, `-D warnings`). CI가 둘 다 확인.
   - oxlint를 쓰는 까닭: 앱은 TypeScript 7(네이티브)이라 typescript-eslint가 쓰는 TypeScript JS API가 없음. oxlint는 자체 해석기라 TypeScript 버전과 무관하고 ESLint와 규칙 이름이 같음.
+  - 타입 정보 검사(`options.typeAware`, `oxlint-tsgolint` — TypeScript 7 기반): 흘려보낸 Promise(`void`로 표시), Promise 아닌 값의 `await`, 객체를 글자로 바꿈, 비교 함수 없는 `sort`. `unbound-method`는 끔 — 훅이 돌려준 함수 묶음을 구조 분해하는 곳마다 걸려 소음뿐임.
   - 잡는 규칙: 정확성(correctness) 전체 + `any` 금지, 버튼 `type` 빠짐, 훅 규칙·의존성 배열, React 컴파일러 규칙(렌더 중 ref 읽기·시계 읽기·effect 안 동기 setState 등), 안 쓰는 변수(`_`로 시작하면 예외), 잡은 오류를 다시 던질 때 `cause`.
   - 렌더 중에 바꿔야 하는 값은 ref가 아니라 상태로 두고 조건부로 갱신함(`if (prev !== x) setPrev(x)`). 최신 콜백을 담는 ref는 effect에서 갱신함.
 - **인코딩·줄 끝:** UTF-8, LF(Windows 스크립트만 CRLF). `.gitattributes`가 강제.
-- **이름:** 화면 이름은 `껄무새`/`GGParrot`(띄어쓰기 없음, Windows 화면은 '껄무새'). 설치 폴더·레지스트리 영문 이름은 `GGParrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`는 바꾸지 않음. 서버 연동 레벨(server link level, `SERVER_LINK_LEVEL`, 서버 필드 `runner_version`, 앱 버전 가운데 숫자 — 지금 "20")은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림(서버가 기능별 최소 레벨로 기능을 열고 닫음). '버전'·'계약'·'프로토콜'이라 부르지 않음.
+- **이름:** 화면 이름은 `껄무새`/`GGParrot`(띄어쓰기 없음, Windows 화면은 '껄무새'). 설치 폴더·레지스트리 영문 이름은 `GGParrot`. 기술 이름(패키지·실행 파일·키체인·데이터 폴더)은 `ggparrot-desktop`. 딥링크 `ggparrot://`는 바꾸지 않음. 서버 연동 레벨(server link level, `SERVER_LINK_LEVEL`, 서버 필드 `runner_version`, 앱 버전 가운데 숫자 — 지금 "22")은 그 레벨의 서버 연동 기능을 모두 갖춘 뒤에만 올림(서버가 기능별 최소 레벨로 기능을 열고 닫음). '버전'·'계약'·'프로토콜'이라 부르지 않음.
 - **버전:** `src-tauri/Cargo.toml`의 `[workspace.package] version` 한 곳에만 적음. 두 크레이트는 물려받고, `tauri.conf.json`·`package.json`에는 적지 않음(`npm run check:versions`가 확인). 태그는 `v{버전}`.
-- **버전 올리기:** 앱 버전은 `0.<서버 연동 레벨>.<패치>`(지금 `0.20.x`). PR 하나에 패치를 하나 올림(`0.20.0` → `0.20.1`) — 브랜치에서 작업하는 동안은 올리지 않고 PR 마지막 커밋에서 올림. 서버 연동 레벨을 올리면 마이너를 그 숫자로 바꾸고 패치는 0부터(`0.20.5` → `0.21.0`). 서버 연동 레벨은 따로 적지 않고 빌드 때 마이너를 그대로 씀(`env!("CARGO_PKG_VERSION_MINOR")`) — 버전 한 곳만 바꾸면 됨. `CHANGELOG.md`에 그 버전 칸(`## [0.20.2]`)을 만들어 그 PR의 변경을 적음.
+- **버전 올리기:** 앱 버전은 `0.<서버 연동 레벨>.<패치>`(지금 `0.22.x`). PR 하나에 패치를 하나 올림(`0.20.0` → `0.20.1`) — 브랜치에서 작업하는 동안은 올리지 않고 PR 마지막 커밋에서 올림. 서버 연동 레벨을 올리면 마이너를 그 숫자로 바꾸고 패치는 0부터(`0.20.5` → `0.21.0`). 서버 연동 레벨은 따로 적지 않고 빌드 때 마이너를 그대로 씀(`env!("CARGO_PKG_VERSION_MINOR")`) — 버전 한 곳만 바꾸면 됨. `CHANGELOG.md`에 그 버전 칸(`## [0.20.2]`)을 만들어 그 PR의 변경을 적음.
 - **변경 기록(`CHANGELOG.md`):** 버전 칸에서 릴리스 본문과 앱의 '바뀐 점'을 만듦. 지난 배포 뒤의 칸은 분류별로 합쳐지고, `### 개발`은 빠짐.
   - 배포 여부·날짜는 적지 않음(칸 머리는 `## [버전]`만). 지난 배포는 공개한 릴리스의 태그 `v<버전>`으로 앎 — 태그는 [Publish release] 때만 생기고 `release-tags` 규칙으로 바꿀 수 없음.
   - 사용자용 분류(`추가`·`변경`·`수정`·`삭제`·`보안`)에는 사용자가 알 말로, 화면·동작이 바뀐 것만 적음. 파일 이름·함수 이름·테스트 이야기는 쓰지 않음.
@@ -38,6 +40,13 @@
   - 조사는 앞말에 붙임. 코드 표기·영문·숫자 뒤도 같음(`exit_id`를, README에, 18임).
   - 조사는 읽는 소리의 받침에 맞춤(`in_position`이, `acks`를, `_RollbackJob`으로). 애매하면 문장을 바꿔 조사를 피함.
   - 가운뎃점(·)은 앞뒤를 붙임(그리드·마틴게일).
+- **끝맺음 물음꼴:** "~는가·~인가"도 쓰지 않음 — "~는지·~인지"("트레일이 켜졌는지.").
+- **화면 문구 옮겨 적기:** 주석·문서에 화면 문구(해요체)나 단추 이름을 적을 때는 따옴표·대괄호로 감쌈('되돌릴 수 없어요', [시작]). 감싼 안쪽은 검사하지 않음.
+- **자동 검사:** `npm test`의 `scripts/comment-style.test.mjs`가 끝맺음·가운뎃점·조사 띄어쓰기를 확인함.
+  - 대상: 코드 주석(`//`·블록 주석), 설정 파일 `#` 주석, 마크다운. CHANGELOG는 머리말과 0.21.0부터의 `### 개발`만(사용자 분류는 해요체).
+  - 주석은 언어마다 제대로 읽음 — JS·TS는 oxc 파서(`oxc-parser`, 정규식 리터럴·JSX 포함), Rust·Swift는 문자열 종류(raw·문자 리터럴·여러 줄)를 아는 토크나이저, CSS는 블록 주석만. 아직 add 안 한 새 파일도 봄.
+  - 기준 시점·한 줄 한 내용은 기계로 가릴 수 없어 리뷰가 봄.
+  - 사람·AI 도구 모두 같은 기준 — AI 도구용 안내는 `AGENTS.md`.
 
 ## 2. 사용자 문구(한국어)
 

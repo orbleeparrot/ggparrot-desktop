@@ -1,17 +1,17 @@
-//! 매크로 하나를 엔진으로 세우고 봉을 흘려보낸다.
+//! 매크로 하나를 엔진으로 세우고 봉을 흘려보냄.
 //!
 //! 서버(파이썬 `engine/live_session.build_driver` + `command_from_fill`)가 하는 일을
-//! 그대로 한다 — 매크로를 읽어 규칙과 장부를 만들고, 체결 의도를 주문 명령으로 바꾼다.
+//! 그대로 함 — 매크로를 읽어 규칙과 장부를 만들고, 체결 의도를 주문 명령으로 바꿈.
 //!
-//! 아직 전부는 아니다. [`build`] 가 모르는 규칙에는 [`BuildError::NotPorted`] 를 주고,
-//! 판단 계약(`tests/engine_golden.rs`)이 어느 규칙까지 켜졌는지 보여 준다.
+//! 아직 전부는 아님. [`build`]가 모르는 규칙에는 [`BuildError::NotPorted`]를 주고,
+//! 판단 계약(`tests/engine_golden.rs`)이 어느 규칙까지 켜졌는지 보여 줌.
 
 use serde_json::Value;
 
 use super::candle_sim::{Bar, CandleSim, Risk};
 use super::indicators::MaType;
-use super::ledger::{is_exit, Costs, Fill, Ledger, Side};
-use super::levels::{price, Levels};
+use super::ledger::{Costs, Fill, Ledger, Side, is_exit};
+use super::levels::{Levels, price};
 use super::rules::breakout::{Breakout, ExitMode};
 use super::rules::grid::{BandExit, Grid, GridMode};
 use super::rules::indicator::{IndicatorRule, Signal};
@@ -24,10 +24,10 @@ use super::tick_sim::{DcaSim, TickRule, TickSim};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BuildError {
-    /// 아직 Rust 로 옮기지 않은 규칙. 서버가 판단하던 때처럼 돌릴 수는 있어도
-    /// **로컬 판단으로는 못 연다** — 조용히 다르게 사는 것보다 안 여는 쪽이 낫다.
+    /// 아직 Rust로 옮기지 않은 규칙. 서버가 판단하던 때처럼 돌릴 수는 있어도
+    /// **로컬 판단으로는 못 엶** — 조용히 다르게 사는 것보다 안 여는 쪽이 나음.
     NotPorted(String),
-    /// 매크로를 읽을 수 없다.
+    /// 매크로를 읽을 수 없음.
     BadMacro(String),
 }
 
@@ -69,7 +69,7 @@ fn flag(macro_: &Value, path: &[&str], default: bool) -> bool {
     node.as_bool().unwrap_or(default)
 }
 
-/// 매크로가 쓰는 자본. 서버 `session_capital` 과 같다.
+/// 매크로가 쓰는 자본. 서버 `session_capital`과 같음.
 pub const FALLBACK_CAPITAL: f64 = 100.0;
 
 pub fn session_capital(macro_: &Value) -> f64 {
@@ -96,11 +96,7 @@ fn risk_of(macro_: &Value) -> Risk {
 }
 
 fn side_of(macro_: &Value) -> Side {
-    if text(macro_, "position_side").eq_ignore_ascii_case("short") {
-        Side::Short
-    } else {
-        Side::Long
-    }
+    if text(macro_, "position_side").eq_ignore_ascii_case("short") { Side::Short } else { Side::Long }
 }
 
 /// 봉 기반 규칙 하나를 돌리는 엔진.
@@ -113,17 +109,17 @@ pub enum Engine {
     MaCross(CandleSim<IndicatorRule<MaCrossSignal>>),
     Martingale(CandleSim<Martingale>),
     Sar(CandleSim<Sar>),
-    /// A · B — 틱 기계. 봉을 넣어도 시계만 맞추고, 판단은 틱에서 한다.
+    /// A·B — 틱 기계. 봉을 넣어도 시계만 맞추고, 판단은 틱에서 함.
     Tick(TickSim),
-    /// C — 적립식. 달력이 기준이다.
+    /// C — 적립식. 달력이 기준임.
     Dca(DcaSim),
 }
 
 impl Engine {
-    /// 마감봉 하나. 돌려주는 값은 대기 중인 체결 수 — 주문은 [`Engine::tick`] 에서 나온다.
+    /// 마감봉 하나. 돌려주는 값은 대기 중인 체결 수 — 주문은 [`Engine::tick`]에서 나옴.
     ///
-    /// 틱 기반 규칙(A · B · C)은 봉을 보지 않는다. 다만 **봉의 시각**은 받아 둔다 —
-    /// 쿨다운 · 보유시간 · 적립식 달력이 그 시계를 본다.
+    /// 틱 기반 규칙(A·B·C)는 봉을 보지 않음. 다만 **봉의 시각**은 받아 둠 —
+    /// 쿨다운·보유시간·적립식 달력이 그 시계를 봄.
     pub fn on_bar(&mut self, bar: &Bar) -> usize {
         match self {
             Engine::Grid(sim) => sim.on_bar(bar),
@@ -145,7 +141,7 @@ impl Engine {
         }
     }
 
-    /// 틱 기계의 시계를 지금으로 맞춘다. 실행기가 매 바퀴 부른다.
+    /// 틱 기계의 시계를 지금으로 맞춤. 실행기가 매 바퀴 부름.
     pub fn set_clock(&mut self, now_ms: i64) {
         match self {
             Engine::Tick(sim) => sim.clock_ms = now_ms,
@@ -176,7 +172,7 @@ impl Engine {
         }
     }
 
-    /// 웜업이 끝났다 — 지표는 두고 장부만 되돌린다.
+    /// 웜업이 끝남 — 지표는 두고 장부만 되돌림.
     pub fn warmup_done(&mut self) {
         match self {
             Engine::Grid(sim) => sim.warmup_done(),
@@ -192,7 +188,7 @@ impl Engine {
         }
     }
 
-    /// 지금 가격 기준 자산. 명령이 같아도 이 값이 다르면 장부 식이 어긋난 것이다.
+    /// 지금 가격 기준 자산. 명령이 같아도 이 값이 다르면 장부 식이 어긋난 것임.
     pub fn equity(&self, price: f64) -> f64 {
         match self {
             Engine::Grid(sim) => sim.ledger.equity(price),
@@ -210,8 +206,8 @@ impl Engine {
 
     /// 차트에 봉과 겹쳐 그릴 지표선과, 아래 보조창에 그릴 값(RSI).
     ///
-    /// 엔진이 판단에 쓰는 그 지표로 만든다 — 화면이 따로 계산하면 산수가 두 벌이 되고,
-    /// 그중 하나는 엔진이 보는 것과 다르다. 지표를 쓰지 않는 규칙은 빈 목록이다.
+    /// 엔진이 판단에 쓰는 그 지표로 만듦 — 화면이 따로 계산하면 산수가 두 벌이 되고,
+    /// 그중 하나는 엔진이 보는 것과 다름. 지표를 쓰지 않는 규칙은 빈 목록임.
     pub fn chart_series(&self, bars: &[Bar]) -> (Vec<Series>, Option<Oscillator>) {
         match self {
             Engine::Rsi(sim) => (Vec::new(), sim.strategy().signal.oscillator(bars)),
@@ -222,9 +218,9 @@ impl Engine {
         }
     }
 
-    /// 지금 그려야 할 가격선. 실행기 차트와 웹 화면이 **같은 값**을 쓴다.
+    /// 지금 그려야 할 가격선. 실행기 차트와 웹 화면이 **같은 값**을 씀.
     ///
-    /// `last_bar` 는 마지막으로 본 마감봉 — 돌파선처럼 그 봉의 시가가 필요한 규칙이 있다.
+    /// `last_bar`는 마지막으로 본 마감봉 — 돌파선처럼 그 봉의 시가가 필요한 규칙이 있음.
     pub fn levels(&self, last_bar: Option<&Bar>) -> Levels {
         match self {
             Engine::Grid(sim) => sim.levels(last_bar),
@@ -237,8 +233,8 @@ impl Engine {
             Engine::Sar(sim) => sim.levels(last_bar),
             Engine::Tick(sim) => tick_levels(sim),
             Engine::Dca(sim) => Levels {
-                // 적립식은 가격이 아니라 **달력**이 기준이다 — 그릴 가격선이 없고,
-                // 대신 다음 매수 예정 시각을 보여 준다.
+                // 적립식은 가격이 아니라 **달력**이 기준임 — 그릴 가격선이 없고,
+                // 대신 다음 매수 예정 시각을 보여 줌.
                 stop_loss: sim
                     .stop_loss_pct
                     .filter(|v| *v > 0.0 && sim.qty > 0.0)
@@ -249,7 +245,7 @@ impl Engine {
         }
     }
 
-    /// 지금 보유 중인가.
+    /// 지금 보유 중인지.
     pub fn in_position(&self) -> bool {
         match self {
             Engine::Grid(sim) => sim.ledger.in_position(),
@@ -266,7 +262,7 @@ impl Engine {
     }
 }
 
-/// 매크로에서 엔진을 세운다. 모르는 규칙이면 [`BuildError::NotPorted`].
+/// 매크로에서 엔진을 세움. 모르는 규칙이면 [`BuildError::NotPorted`].
 pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
     let rule = text(macro_, "rule_type").to_ascii_uppercase();
     if rule.is_empty() {
@@ -334,7 +330,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
             Ok(Engine::Breakout(CandleSim::new(ledger, risk, strategy)))
         }
         "F" => {
-            // exit_mode: indicator | take_profit | both — 지표로 파는 것은 앞뒤 둘뿐이다.
+            // exit_mode: indicator | take_profit | both — 지표로 파는 것은 앞뒤 둘뿐임.
             let exit_mode = macro_.pointer("/params/exit_mode").and_then(Value::as_str).unwrap_or("indicator");
             let signal = RsiSignal::new(
                 p("rsi_period").unwrap_or(14.0) as usize,
@@ -343,7 +339,7 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 p("confirm_candles").unwrap_or(1.0) as u32,
                 matches!(exit_mode, "indicator" | "both"),
             );
-            // 익절은 exit_mode 가 take_profit · both 일 때만 쓴다.
+            // 익절은 exit_mode가 take_profit·both일 때만 씀.
             let tp = p("take_profit").filter(|_| matches!(exit_mode, "take_profit" | "both"));
             Ok(Engine::Rsi(CandleSim::new(ledger, risk, IndicatorRule::new(signal, tp, risk.invest_ratio))))
         }
@@ -407,8 +403,8 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
                 flag(macro_, &["params", "reenter_long_after"], true),
                 risk.invest_ratio,
             );
-            // 공통 손절선은 끈다 — 방어 발동이 롱 구간의 손절이고, 숏 구간은 자기 손절선을
-            // 따로 갖는다. 둘을 같이 걸면 방어가 뜨기 전에 손절이 먼저 나가 전환이 안 일어난다.
+            // 공통 손절선은 끔 — 방어 발동이 롱 구간의 손절이고, 숏 구간은 자기 손절선을
+            // 따로 가짐. 둘을 같이 걸면 방어가 뜨기 전에 손절이 먼저 나가 전환이 안 일어남.
             let mut risk = risk;
             risk.stop_loss_pct = None;
             Ok(Engine::Sar(CandleSim::new(ledger, risk, strategy)))
@@ -438,11 +434,11 @@ pub fn build(macro_: &Value) -> Result<Engine, BuildError> {
     }
 }
 
-/// 체결 의도 하나를 주문 명령으로. 서버 `command_from_fill` 과 **식까지 같다**.
+/// 체결 의도 하나를 주문 명령으로. 서버 `command_from_fill`과 **식까지 같음**.
 ///
 /// 진입은 **초기자본 대비 금액 비율**, 청산은 **직전 보유 수량 대비 비율**(모르면 전량).
 /// 기준이 다른 이유: 진입 때는 실제 보유가 없고, 청산 때는 실계좌 수량이 장부와 조금씩
-/// 다를 수 있어 비율로 말해야 실행기가 자기 수량으로 환산할 수 있다.
+/// 다를 수 있어 비율로 말해야 실행기가 자기 수량으로 환산할 수 있음.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Command {
     pub action: &'static str,
@@ -476,7 +472,7 @@ pub fn command_from_fill(fill: &Fill, initial: f64) -> Command {
     }
 }
 
-/// A · B 의 가격선. 틱 기계는 평단이 아니라 **진입 체결가**를 기준으로 본다.
+/// A·B의 가격선. 틱 기계는 평단이 아니라 **진입 체결가**를 기준으로 봄.
 fn tick_levels(sim: &TickSim) -> Levels {
     let mut out = Levels::default();
     if sim.in_position {
@@ -493,12 +489,12 @@ fn tick_levels(sim: &TickSim) -> Levels {
             } else {
                 sim.entry_fill * (1.0 + sim.take_profit_pct / 100.0)
             }),
-            // B 는 정해 둔 가격이다 — 평단과 무관하다.
+            // B는 정해 둔 가격임 — 평단과 무관함.
             TickRule::Band => price(if sim.side == Side::Short { sim.buy_price } else { sim.sell_price }),
         };
         return out;
     }
-    // 비어 있다 — A 는 다음 틱에 바로 사므로 그릴 선이 없고, B 는 정해 둔 가격을 기다린다.
+    // 비어 있음 — A는 다음 틱에 바로 사므로 그릴 선이 없고, B는 정해 둔 가격을 기다림.
     if sim.rule == TickRule::Band {
         out.entry_target = price(if sim.side == Side::Short { sim.sell_price } else { sim.buy_price });
     }

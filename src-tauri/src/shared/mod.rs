@@ -3,21 +3,21 @@
 //! bot_events·run_check·deep_link·updates·lifecycle·app_log)의 `impl Shared`에 둠.
 //! 락은 await를 넘어 들고 있지 않음. 바뀐 상태는 `emit()`으로 웹뷰에 스냅샷을 보냄.
 
-use runner_core::bot::{spawn_bot, BotEvent, BotHandle, StopMode};
+use runner_core::APP_TITLE;
+use runner_core::bot::{BotEvent, BotHandle, StopMode, spawn_bot};
 use runner_core::check::{check_http_client, mock_check, perform_connection_check};
-use runner_core::connection::{self, check_view, BeginOutcome, PreflightResult};
+use runner_core::connection::{self, BeginOutcome, PreflightResult, check_view};
 use runner_core::credentials::{self, LoadStatus, SecretStore};
 use runner_core::library;
 use runner_core::outbox::EventOutbox;
-use runner_core::protocol::{parse_protocol_url, Environment};
+use runner_core::protocol::{Environment, parse_protocol_url};
 use runner_core::server::{self, ServerClient, StartError};
 use runner_core::setup_progress::SetupProgressReporter;
 use runner_core::types::{
-    exchange_label, macro_side, server_base, session_payload, Credentials, Exchange, KeyPair, KeySlot, RunMode,
-    LOCAL_SERVER_BASE,
+    Credentials, Exchange, KeyPair, KeySlot, LOCAL_SERVER_BASE, RunMode, exchange_label, macro_side, server_base,
+    session_payload,
 };
-use runner_core::APP_TITLE;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -29,8 +29,8 @@ use tauri_plugin_opener::OpenerExt;
 pub const WEB_URL: &str = "https://gg-parrot.vercel.app/";
 
 use crate::state::{
-    now_ms, Core, GuideStep, KeyCheckRecord, Notice, Run, RunData, SavedRun, SlotStatus, StartReply, WizardTarget,
-    CAPITAL_LOCKED, CLAIM_BUSY_WAIT, MEMBER_KEY_NEEDED,
+    CAPITAL_LOCKED, CLAIM_BUSY_WAIT, Core, GuideStep, KeyCheckRecord, MEMBER_KEY_NEEDED, Notice, Run, RunData,
+    SavedRun, SlotStatus, StartReply, WizardTarget, now_ms,
 };
 
 pub const EV_STATE: &str = "runner:state";
@@ -130,11 +130,7 @@ impl Shared {
 
     /// 클립보드에 씀. 못 쓰면 `fail` 글을 오류로 돌려줌(화면이 토스트로 보임).
     pub fn copy_text(&self, text: &str, fail: &str) -> Result<(), String> {
-        if self.write_clipboard(text) {
-            Ok(())
-        } else {
-            Err(fail.into())
-        }
+        if self.write_clipboard(text) { Ok(()) } else { Err(fail.into()) }
     }
 
     pub fn open_url(&self, url: &str) -> bool {

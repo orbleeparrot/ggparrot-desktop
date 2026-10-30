@@ -1,15 +1,15 @@
 // 구동 중 설정 바꾸기 — 금액과 조건만, 돌고 있는 그대로.
 //
-// **칸 목록은 서버가 준다**(run.liveSettings.fields). 앱이 따로 목록을 들면 두 벌이 되어,
-// 화면에는 보이는데 서버가 거절하는 칸이 생긴다 — 사용자는 그걸 고장으로 읽는다.
+// **칸 목록은 서버가 줌**(run.liveSettings.fields). 앱이 따로 목록을 들면 두 벌이 되어,
+// 화면에는 보이는데 서버가 거절하는 칸이 생김 — 사용자는 그걸 고장으로 읽음.
 //
-// 칸마다 한 줄 설명과 단위를 붙인다. 설명이 없으면 "지금 적용" 을 고를 때 **팔고 다시 사는
-// 건가** 하고 멈칫하게 된다 — 안 판다. 들고 있는 수량과 평단은 그대로 두고 청산 조건만
-// 갈아 끼운다. 설명 · 단위 글자도 전부 서버가 준다(두 벌이 되지 않게).
+// 칸마다 한 줄 설명과 단위를 붙임. 설명이 없으면 '지금 적용'을 고를 때 **팔고 다시 사는
+// 건지** 멈칫하게 됨 — 팔지 않음. 들고 있는 수량과 평단은 그대로 두고 청산 조건만
+// 갈아 끼움. 설명·단위 글자도 전부 서버가 줌(두 벌이 되지 않게).
 //
-// **앱이 혼자 바꾸지 않는다.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
-// heartbeat 로 바뀐 값이 돌아온다. 여기서 바로 고치면 서버 전략과 실행기 설정이 갈라져
-// 어느 쪽이 진짜인지 알 수 없게 된다.
+// **앱이 혼자 바꾸지 않음.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
+// heartbeat로 바뀐 값이 돌아옴. 여기서 바로 고치면 서버 전략과 실행기 설정이 갈라져
+// 어느 쪽이 진짜인지 알 수 없게 됨.
 import { useMemo, useState } from "react";
 import { call } from "../../ipc";
 import type { LiveSettingField, RunSlot } from "../../types";
@@ -17,13 +17,13 @@ import type { LiveSettingField, RunSlot } from "../../types";
 type Edits = Record<string, string>;
 type ApplyMode = "immediate" | "next_entry";
 
-/** 입력 칸에 넣을 글자. 없는 값(꺼 둔 규칙)은 빈 칸이다. */
+/** 입력 칸에 넣을 글자. 없는 값(꺼 둔 규칙)은 빈 칸. */
 function text(field: LiveSettingField): string {
   if (field.value == null) return "";
   return field.unit === "money" ? field.value.toLocaleString() : String(field.value);
 }
 
-/** 사람이 친 숫자 — "1,000,000" 처럼 쉼표가 있어도 받는다. 숫자가 아니면 null. */
+/** 사람이 친 숫자 — "1,000,000"처럼 쉼표가 있어도 받음. 숫자가 아니면 null. */
 function parse(raw: string): number | null {
   const cleaned = raw.replace(/,/g, "").trim();
   if (!cleaned) return null;
@@ -32,8 +32,8 @@ function parse(raw: string): number | null {
 }
 
 /**
- * 바뀐 칸만 담는다(부분 수정). 빈 칸의 뜻은 칸마다 다르다 — 끌 수 있는 칸을 비우면 **끄는
- * 것**이고, 끌 수 없는 칸을 비운 것은 아직 덜 친 것이라 보내지 않는다.
+ * 바뀐 칸만 담음(부분 수정). 빈 칸의 뜻은 칸마다 다름 — 끌 수 있는 칸을 비우면 **끄는
+ * 것**이고, 끌 수 없는 칸을 비운 것은 아직 덜 친 것이라 보내지 않음.
  */
 export function buildChanges(fields: LiveSettingField[], edits: Edits) {
   const out: Record<string, Record<string, number | null>> = {};
@@ -58,18 +58,18 @@ export function hasChanges(fields: LiveSettingField[], edits: Edits): boolean {
   return Object.values(buildChanges(fields, edits)).some((s) => Object.keys(s).length > 0);
 }
 
-/** 숫자로 읽히지 않는 칸 — 보내기 전에 화면이 먼저 말해 준다. 손댄 칸만 본다. */
 /**
- * 바꾼 값이 **지금 들고 있는 포지션의 청산 조건**을 건드리는가.
+ * 바꾼 값이 **지금 들고 있는 포지션의 청산 조건**을 건드리는지.
  *
- * 건드리지 않으면(금액 · 비율 · 재진입 대기) 적용 시점을 어느 쪽으로 고르든 결과가 같다.
- * 무엇이 어느 쪽인지는 서버가 정한다(field.affects) — 여기서 또 정하면 두 벌이 된다.
+ * 건드리지 않으면(금액·비율·재진입 대기) 적용 시점을 어느 쪽으로 고르든 결과가 같음.
+ * 무엇이 어느 쪽인지는 서버가 정함(field.affects) — 여기서 또 정하면 두 벌이 됨.
  */
 export function touchesPosition(fields: LiveSettingField[], edits: Edits): boolean {
   const changes = buildChanges(fields, edits);
   return fields.some((field) => changes[field.section]?.[field.key] !== undefined && field.affects !== "next_entry");
 }
 
+/** 숫자로 읽히지 않는 칸 — 보내기 전에 화면이 먼저 말해 줌. 손댄 칸만 봄. */
 export function badFields(fields: LiveSettingField[], edits: Edits): LiveSettingField[] {
   return fields.filter((field) => {
     const raw = edits[field.path];
@@ -90,11 +90,11 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
 
-  // `edits` 는 **사람이 손댄 칸만** 담는다. 안 담긴 칸은 그릴 때 지금 값으로 채운다.
+  // `edits`는 **사람이 손댄 칸만** 담음. 안 담긴 칸은 그릴 때 지금 값으로 채움.
   //
-  // 열 때 모든 칸을 미리 채워 두면 안 된다 — 그러려면 effect 가 필요한데, 그 effect 는
-  // `fields` 가 바뀔 때마다 돈다. `fields` 는 heartbeat(5초)마다 새 배열이라 **치고 있는
-  // 중에 입력이 초기화된다.** 손댄 칸만 담으면 effect 자체가 사라진다.
+  // 열 때 모든 칸을 미리 채워 두면 안 됨 — 그러려면 effect가 필요한데, 그 effect는
+  // `fields`가 바뀔 때마다 돎. `fields`는 heartbeat(5초)마다 새 배열이라 **치고 있는
+  // 중에 입력이 초기화됨.** 손댄 칸만 담으면 effect 자체가 사라짐.
   function openPanel() {
     setEdits({});
     setApplyMode("immediate");
@@ -107,7 +107,7 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
 
   const bad = badFields(fields, edits);
   const ready = hasChanges(fields, edits) && bad.length === 0 && !busy;
-  // 금액·비율만 바꿨으면 어느 쪽을 골라도 같다 — 묻기는 하되 같다는 사실을 말해 준다.
+  // 금액·비율만 바꿨으면 어느 쪽을 골라도 같음 — 묻기는 하되 같다는 사실을 말해 줌.
   const hitsPosition = touchesPosition(fields, edits);
 
   async function submit() {
@@ -151,7 +151,7 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
               {field.label}
               {field.help && <small className="live-settings-help">{field.help}</small>}
             </span>
-            {/* 단위를 칸 옆에 붙인다 — 숫자만 있으면 2 가 2%인지 2시간인지 2봉인지 모른다. */}
+            {/* 단위를 칸 옆에 붙임 — 숫자만 있으면 2가 2%인지 2시간인지 2봉인지 모름. */}
             <span className="live-settings-box">
               <input
                 type="text"
@@ -209,7 +209,7 @@ export function LiveSettings({ slot }: { slot: RunSlot }) {
           </label>
         </fieldset>
       )}
-      {/* 기록이 남는다는 사실을 숨기지 않는다 — 나중에 통보하면 그게 더 나쁘다. */}
+      {/* 기록이 남는다는 사실을 숨기지 않음 — 나중에 알리면 그게 더 나쁨. */}
       <p className="live-settings-note">바꾼 내용은 기록으로 남아요.</p>
       {error && (
         <p className="live-settings-bad" role="alert">

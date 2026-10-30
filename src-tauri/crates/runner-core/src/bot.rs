@@ -2,20 +2,21 @@
 //!
 //! 종료 경로는 두 가지 — 로컬(화면의 종료 버튼) → `BotHandle::command`, 원격(웹의 [내 에이전트]) → heartbeat 응답의 action.
 //! 두 경우 모두 stop_only(포지션 유지) / close_and_stop(청산 후)을 지원함.
-//! 진입/청산 판단은 서버가 함. 로컬에 남은 판단은 안전망(손절 %, 일일 손실, 최대 보유시간)뿐임.
+//! 진입·청산 판단은 서버가 시작 응답으로 정함 — 실행기가 직접 하거나(`bot/local.rs`) 서버 명령을 따름.
+//! 안전망(손절 %, 일일 손실, 최대 보유시간)은 어느 쪽이든 이 루프가 봄.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::{mpsc, Notify};
+use tokio::sync::{Notify, mpsc};
 
 use crate::brokers::{
-    fee_inclusive, with_error_code, BinanceBroker, Broker, BrokerError, DomesticBroker, FeePaid, LogFn, MockBroker,
-    OrderSide, SubmitRequest, DOMESTIC_BID_FEE_FALLBACK, VOLUME_DECIMALS,
+    BinanceBroker, Broker, BrokerError, DOMESTIC_BID_FEE_FALLBACK, DomesticBroker, FeePaid, LogFn, MockBroker,
+    OrderSide, SubmitRequest, VOLUME_DECIMALS, fee_inclusive, with_error_code,
 };
 use crate::clock::unix_ms;
-use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
+use crate::connection::{PreflightResult, preflight_fingerprint, safe_preflight_reason};
 use crate::log_kind::event_kind;
 use crate::money::{
     grouped, money, order_qty, pnl_amount, pnl_pct, price_text, py_g, py_gp, py_num, qty_full, qty_text, round_step,
@@ -24,8 +25,8 @@ use crate::money::{
 use crate::risk::RiskGuard;
 use crate::server::ServerClient;
 use crate::types::{
-    base_asset, exchange_label, exchange_name_of, macro_leverage, macro_side, market_of, order_cap, quote_of,
-    Credentials, Exchange, KeyPair, Market, RunMode, Side,
+    Credentials, Exchange, KeyPair, Market, RunMode, Side, base_asset, exchange_label, exchange_name_of,
+    macro_leverage, macro_side, market_of, order_cap, quote_of,
 };
 
 /// 손절·강제 청산 주문이 이만큼 연달아 실패하면 실행을 멈추고 사용자에게 넘김.
@@ -93,17 +94,17 @@ pub enum BotEvent {
     /// 사람이 읽는 활동 한 줄(활동 기록). 서버로 가는 실행 기록과는 별개임.
     Activity(ActivityEvent),
     /// 구동 중 바꿀 수 있는 설정(서버 하트비트의 settings) — 실행기 화면이 수정 칸을 그릴 재료.
-    /// 칸 목록은 **서버가 정한다** — 실행기가 따로 들면 두 벌이 되어, 화면에는 보이는데
-    /// 서버가 거절하는 칸이 생김. 이 기능을 모르는 서버·옛 세션이면 None.
+    /// 칸 목록은 **서버가 정함** — 실행기가 따로 들면 두 벌이 되어, 화면에는 보이는데
+    /// 서버가 거절하는 칸이 생김. 이 기능을 모르는 서버·세션이면 None.
     Settings(Option<Value>),
-    /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None 이면 대기 아님(샀거나 해당 없음).
+    /// 진입 대기(서버 하트비트의 entry_wait). 서버가 답한 틱마다 보냄 — None이면 대기 아님(샀거나 해당 없음).
     /// 서버와 끊긴 틱에는 보내지 않아 마지막 값이 남음.
     EntryWait(Option<Value>),
     /// 실행기가 직접 판단하는 세션의 **차트 재료** — 받은 마감봉과 지표선, 지금 그릴 가격선.
-    /// 봉이 새로 마감됐을 때만 보냄(매 틱 보내면 300개 배열이 5초마다 화면으로 간다).
+    /// 봉이 새로 마감됐을 때만 보냄(매 틱 보내면 300개 배열이 5초마다 화면으로 감).
     Chart(Value),
     /// 그 사이의 **움직이는 부분** — 만들어지는 중인 봉과 지금 가격선. 매 바퀴 보냄.
-    /// 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춰 보인다.
+    /// 작은 값이라 자주 보내도 되고, 이것이 없으면 차트가 봉 마감 사이에 멈춰 보임.
     ChartLive(Value),
     Finished {
         status: String,
@@ -157,7 +158,7 @@ pub struct ClosePnl {
     pub fees_known: bool,
 }
 
-/// 지금 유닉스 ms. 봉 마감 판정 · 쿨다운 · 적립식 달력이 이 값을 본다.
+/// 지금 유닉스 ms. 봉 마감 판정·쿨다운·적립식 달력이 이 값을 봄.
 fn now_ms() -> i64 {
     crate::clock::unix_ms() as i64
 }
@@ -236,16 +237,12 @@ pub fn rehearsal_amounts(m: &Value, exchange_name: &str, broker: Option<&Arc<dyn
     let quote = quote_of(&crate::types::macro_symbol(m));
     let budget = smallest_entry_notional(m, leverage, market, quote);
     let domestic = Exchange::parse(exchange_name).is_some_and(Exchange::is_domestic);
-    if domestic {
-        (fee_inclusive(budget, bid_fee_rate(broker)), Some(budget))
-    } else {
-        (budget, None)
-    }
+    if domestic { (fee_inclusive(budget, bid_fee_rate(broker)), Some(budget)) } else { (budget, None) }
 }
 
 /// 마틴게일(H)이 국내 거래소 최소 주문 금액에 걸린 리허설 문구 — 투자 금액이 아니라 어느 칸이 작은지 말함.
-/// 거래소 문구("매크로 투자 금액을 … 올리세요")는 투자 금액이 충분해도 그렇게 말해 엉뚱한 칸을 가리켰다(2026-10-17 업비트
-/// 47,000원 · 처음 살 금액 4,700원). 마틴게일이 아니거나 최소 금액 미달이 아니거나 바이낸스면 None(거래소 문구 그대로 —
+/// 거래소 문구("매크로 투자 금액을 … 올리세요")는 투자 금액이 충분해도 그렇게 말해 엉뚱한 칸을 가리킴(예: 업비트
+/// 47,000원·처음 살 금액 4,700원). 마틴게일이 아니거나 최소 금액 미달이 아니거나 바이낸스면 None(거래소 문구 그대로 —
 /// 바이낸스는 종목마다 최소 금액이 달라 거래소 문구가 정확함).
 pub fn martingale_min_order_reason(m: &Value, exchange_name: &str, error_name: &str) -> Option<String> {
     if !error_name.starts_with("under_min_total") || !Exchange::parse(exchange_name).is_some_and(Exchange::is_domestic)
@@ -429,11 +426,7 @@ impl Bot {
         let exchange_name = exchange_name_of(&macro_);
         let symbol = {
             let s = crate::types::macro_symbol(&macro_);
-            if s.is_empty() && macro_.get("symbol").is_none() {
-                "BTCUSDT".to_string()
-            } else {
-                s
-            }
+            if s.is_empty() && macro_.get("symbol").is_none() { "BTCUSDT".to_string() } else { s }
         };
         let quote = quote_of(&symbol);
         let side = macro_side(&macro_);
@@ -444,25 +437,25 @@ impl Bot {
             _ => order_cap(quote),
         };
         let logger = Logger::new(tx.clone(), server.clone(), credentials.clone());
-        if let Some(server) = &server {
-            if !server.has_event_warning() {
-                // 서버 → 봇 송신자를 약하게만 붙잡음. Logger를 담으면 서버 ↔ Logger 참조 순환이 생겨
-                // 봇 작업이 죽어도 채널이 닫히지 않고, 앱이 '예기치 않게 끝났어요' 정리를 하지 못함.
-                let weak = tx.downgrade();
-                let creds = credentials.clone();
-                server.set_event_warning(Arc::new(move |m: String| {
-                    let Some(tx) = weak.upgrade() else { return };
-                    let msg = crate::connection::mask_secrets(&m, &creds);
-                    let _ = tx.send(BotEvent::Log(msg.clone()));
-                    let _ = tx.send(BotEvent::Activity(ActivityEvent {
-                        kind: "connection",
-                        title: "실행 기록 보관에 문제가 생겼어요".into(),
-                        detail: msg.clone(),
-                        raw: msg,
-                        tone: "warn",
-                    }));
+        if let Some(server) = &server
+            && !server.has_event_warning()
+        {
+            // 서버 → 봇 송신자를 약하게만 붙잡음. Logger를 담으면 서버 ↔ Logger 참조 순환이 생겨
+            // 봇 작업이 죽어도 채널이 닫히지 않고, 앱이 '예기치 않게 끝났어요' 정리를 하지 못함.
+            let weak = tx.downgrade();
+            let creds = credentials.clone();
+            server.set_event_warning(Arc::new(move |m: String| {
+                let Some(tx) = weak.upgrade() else { return };
+                let msg = crate::connection::mask_secrets(&m, &creds);
+                let _ = tx.send(BotEvent::Log(msg.clone()));
+                let _ = tx.send(BotEvent::Activity(ActivityEvent {
+                    kind: "connection",
+                    title: "실행 기록 보관에 문제가 생겼어요".into(),
+                    detail: msg.clone(),
+                    raw: msg,
+                    tone: "warn",
                 }));
-            }
+            }));
         }
         Bot {
             macro_,
@@ -638,7 +631,7 @@ impl Bot {
         snap
     }
 
-    /// 수수료 반영 손익 — 화면과 서버(웹)가 같은 숫자를 보이게 둘 다에 실음(2026-10-18: 실행기 +1.23% · 웹 +1.33%).
+    /// 수수료 반영 손익 — 화면과 서버(웹)가 같은 숫자를 보이게 둘 다에 실음.
     /// 실현손익은 수수료를 다 알 때만, 평가손익은 진입 수수료를 알 때만 — 모르면 null(웹은 수수료 전 값으로 표시).
     fn put_net(&self, snap: &mut Value) {
         snap["realized_net"] = if self.fees_complete { json!(self.realized_net) } else { Value::Null };

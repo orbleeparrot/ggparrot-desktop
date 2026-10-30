@@ -58,11 +58,7 @@ pub fn invested(qty: f64, entry: f64, entry_fee: f64) -> f64 {
 
 /// 평가손익 % — 금액 ÷ 투입금 × 100. 투입금이 없으면 0.
 pub fn pct_of(amount: f64, invested: f64) -> f64 {
-    if invested > 0.0 {
-        amount / invested * 100.0
-    } else {
-        0.0
-    }
+    if invested > 0.0 { amount / invested * 100.0 } else { 0.0 }
 }
 
 #[cfg(test)]

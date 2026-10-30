@@ -23,7 +23,7 @@ export function span(ms: number): string {
   return h % 24 ? `${d}일 ${h % 24}시간` : `${d}일`;
 }
 
-/** 대략값 — "약 9시간" · "약 2일". */
+/** 대략값 — "약 9시간"·"약 2일". */
 export function rough(ms: number): string {
   const h = ms / 3_600_000;
   if (h < 1) return `약 ${Math.max(1, Math.round(ms / 60_000))}분`;
@@ -31,7 +31,7 @@ export function rough(ms: number): string {
   return `약 ${Math.round(h / 24)}일`;
 }
 
-/** 봉 간격 → ms("15m" · "1h" · "4h" · "1d" · "1w"). 모르는 꼴이면 null(막대 없이 글자만). */
+/** 봉 간격 → ms("15m"·"1h"·"4h"·"1d"·"1w"). 모르는 꼴이면 null(막대 없이 글자만). */
 export function intervalMs(interval: string): number | null {
   const m = /^(\d+)([mhdw])$/.exec(interval.trim());
   if (!m) return null;
@@ -39,7 +39,7 @@ export function intervalMs(interval: string): number | null {
   return Number(m[1]) * unit;
 }
 
-/** 봉 마감 칩 글자 — "03:15 판정 · 12분 남음" · 1분 안이면 "03:15 판정 · 곧". 지정가는 "실시간 확인". */
+/** 봉 마감 칩 글자 — "03:15 판정 · 12분 남음"·1분 안이면 "03:15 판정 · 곧". 지정가는 "실시간 확인". */
 export function closeChipText(wait: EntryWait, now: number): { at: string; left: string } | null {
   if (wait.realtime) return { at: "실시간 확인", left: "" };
   const at = wait.next_check_ms;
@@ -47,7 +47,7 @@ export function closeChipText(wait: EntryWait, now: number): { at: string; left:
   return { at: `${clock(at)} 판정`, left: at - now >= 60_000 ? `${span(at - now)} 남음` : "곧" };
 }
 
-/** '15분 봉' 옆 칩 — 이번 봉이 얼마나 지났는지 작은 막대 + 판정 시각 · 남은 시간. */
+/** '15분 봉' 옆 칩 — 이번 봉이 얼마나 지났는지 작은 막대 + 판정 시각·남은 시간. */
 export function CloseChip({ wait }: { wait: EntryWait }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -75,11 +75,11 @@ export function CloseChip({ wait }: { wait: EntryWait }) {
 }
 
 const pct = (x: number) => `${Math.round(Math.min(1, Math.max(0, x)) * 1000) / 10}%`;
-/** 위치는 --at 하나 — 꼬리표는 끝에 가까울수록 안쪽으로 당김(left X% · translateX(-X%)). */
+/** 위치는 --at 하나 — 꼬리표는 끝에 가까울수록 안쪽으로 당김(left X%·translateX(-X%)). */
 const place = (x: number) => ({ "--at": pct(x) }) as CSSProperties;
 
-/** 값 막대 — 선들(사는 선 · 평균선 · 청산 기준)을 같은 눈금(왼쪽이 작은 값)에 놓고 지금 점을 찍음.
- *  사는 구역은 초록 — 올라가야 사면 선 오른쪽, 내려가야 사면(RSI · 지정가 · 눌림) 선 왼쪽. */
+/** 값 막대 — 선들(사는 선·평균선·청산 기준)을 같은 눈금(왼쪽이 작은 값)에 놓고 지금 점을 찍음.
+ *  사는 구역은 초록 — 올라가야 사면 선 오른쪽, 내려가야 사면(RSI·지정가·눌림) 선 왼쪽. */
 function Ladder({ ladder }: { ladder: NonNullable<EntryWait["ladder"]> }) {
   const marks = [...ladder.marks].sort((a, b) => a.pos - b.pos);
   const close = marks.length > 1 && marks[1].pos - marks[0].pos < 0.3; // 이름표가 겹치면 둘째 줄로
@@ -114,7 +114,7 @@ function Ladder({ ladder }: { ladder: NonNullable<EntryWait["ladder"]> }) {
   );
 }
 
-/** 평가손익 자리(오른쪽은 가격 그래프) — 지금 상태 한 줄 · 짧은 설명. */
+/** 평가손익 자리(오른쪽은 가격 그래프) — 지금 상태 한 줄·짧은 설명. */
 export function EntryWaitHead({ wait }: { wait: EntryWait }) {
   return (
     <div className={`entry-wait ${wait.reached ? "is-reached" : ""}`}>
@@ -124,7 +124,7 @@ export function EntryWaitHead({ wait }: { wait: EntryWait }) {
   );
 }
 
-/** 그 아래 카드 전체 폭 — 막대 · 조건 체크. 왼쪽 칸에 넣으면 오른쪽 그래프(46px) 위가 통째로 빈다. */
+/** 그 아래 카드 전체 폭 — 막대·조건 체크. 왼쪽 칸에 넣으면 오른쪽 그래프(46px) 위가 통째로 빔. */
 export function EntryWaitDetail({ wait }: { wait: EntryWait }) {
   const at = pct(wait.meter?.progress ?? 0);
   const conds = wait.conditions ?? [];

@@ -4,8 +4,8 @@
 /// 모양은 `0.<서버 연동 레벨>.<패치>` — 원본은 `src-tauri/Cargo.toml`의 `[workspace.package] version` 한 곳.
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// 서버 연동 레벨(server link level) — 시작·웹 연결 때 서버가 정한 필드 `runner_version`에 담아 보냄.
-/// - 서버는 기능마다 최소 레벨(연결 6·서버 신호 8·국내 거래소 10·바이낸스 연결 도우미 19)과 이상인지만 비교해
-///   그 기능을 열거나 426('실행기 vN 이상으로 업데이트')으로 막음.
+/// - 서버는 기능마다 정한 최소 레벨과 이상인지만 비교해 그 기능을 열거나 426('실행기 vN 이상으로 업데이트')으로 막음.
+///   기능별 최소 레벨은 서버가 정함.
 /// - 번호의 출처는 Python 실행기(Windows exe, 배포 태그 `runner-vN`)의 배포 번호. 이 앱에서는 '그 레벨의 서버 연동
 ///   기능을 모두 갖춤'이라는 신고라서 기능을 갖춘 뒤에만 올림.
 /// - 숫자로만 보냄. `0.20.0`·`v20`을 보내면 426으로 막힘.
@@ -58,7 +58,7 @@ mod tests {
         assert_eq!(parts.len(), 3, "앱 버전 모양: {}", super::APP_VERSION);
         assert_eq!(parts[0], "0", "앱 버전은 0.<서버 연동 레벨>.<패치>: {}", super::APP_VERSION);
         assert_eq!(parts[1], super::SERVER_LINK_LEVEL);
-        // 레벨을 실수로 낮추면(예 0.2.0) 서버가 기능을 막음 — 이 앱이 갖춘 바이낸스 연결 도우미 레벨(19) 아래로 내려가지 않게.
+        // 레벨을 실수로 낮추면(예 0.2.0) 서버가 기능을 막음 — 이 앱이 이미 갖춘 기능이 요구하는 레벨(19) 아래로 내려가지 않게.
         assert!(super::SERVER_LINK_LEVEL.parse::<u32>().unwrap() >= 19);
     }
 }

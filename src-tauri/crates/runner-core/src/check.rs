@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use crate::bot::{build_broker, martingale_min_order_reason, rehearsal_amounts};
 use crate::brokers::null_log;
-use crate::connection::{preflight_fingerprint, safe_preflight_reason, PreflightResult};
-use crate::types::{exchange_name_of, macro_leverage, macro_side, macro_symbol, Credentials, Exchange, RunMode, Side};
+use crate::connection::{PreflightResult, preflight_fingerprint, safe_preflight_reason};
+use crate::types::{Credentials, Exchange, RunMode, Side, exchange_name_of, macro_leverage, macro_side, macro_symbol};
 
 /// 연결 검사에 쓰는 HTTP 클라이언트 — 연결 3초·전체 8초.
 pub fn check_http_client() -> reqwest::Client {
@@ -54,7 +54,7 @@ pub async fn perform_connection_check(
                 true,
                 "모의 준비 완료 · 키 없이 연습하고 실제 주문은 보내지 않아요. 실전 연결은 확인하지 않았어요.",
                 fingerprint,
-            )
+            );
         }
         Ok(Some(v)) => v,
     };
@@ -65,7 +65,7 @@ pub async fn perform_connection_check(
                 false,
                 "연결 검사에 실패했어요. 인터넷 연결·거래소 키·허용 IP를 확인하고 다시 눌러 주세요.",
                 fingerprint,
-            )
+            );
         }
     };
     let (notional, spend) = rehearsal_amounts(m, exchange.as_str(), Some(&broker));

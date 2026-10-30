@@ -1,5 +1,5 @@
 // 화면 배치 검사 — 가짜 백엔드 견본(?demo=…)을 창 크기별로 띄워 겹침·넘침·높이·정렬을 잼.
-// - 픽셀 비교 없음. 위반은 "무엇이 · 어디서 · 몇 px"로 모아 빈 배열인지만 확인함.
+// - 픽셀 비교 없음. 위반은 "무엇이·어디서·몇 px"로 모아 빈 배열인지만 확인함.
 // - 창 크기: 넓은 두 칸(1100), 좁은 격자(800·720 — 640~899px). 앱의 최소 창 너비가 720이라 그보다 좁게는 보지 않음.
 //   상세 두 칸(상태 | 활동 기록, 1360px~)은 맨 아래 1440×900에서 따로 봄.
 // - 화면마다 스크린샷을 결과(test-results·HTML 보고서)에 붙임 — 사람이 훑어보는 용도.
@@ -17,7 +17,7 @@ const NO_MOTION =
   "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}";
 
 async function open(page: Page, query: string, { details = "open" }: { details?: "open" | "closed" } = {}) {
-  // 상태 카드의 세부 표는 기본으로 접혀 있다 — 표 정렬을 재는 검사는 펼친 상태로, 높이 예산은 접힌 기본 상태로 본다.
+  // 상태 카드의 세부 표는 기본으로 접혀 있음 — 표 정렬을 재는 검사는 펼친 상태로, 높이 예산은 접힌 기본 상태로 봄.
   await page.addInitScript((value) => window.localStorage.setItem("ggp.runner.status.details", value), details);
   await page.goto(`/${query}`, { waitUntil: "networkidle" });
   await page.addStyleTag({ content: NO_MOTION });
@@ -69,7 +69,7 @@ for (const vp of VIEWPORTS) {
         const g = window.__geo;
         const out: string[] = [];
         const cards = Array.from(document.querySelectorAll<HTMLElement>(".run-card"));
-        // 두 줄 카드(확인 필요 · 실행 중)끼리, 한 줄 행(대기)끼리 높이가 같음.
+        // 두 줄 카드(확인 필요·실행 중)끼리, 한 줄 행(대기)끼리 높이가 같음.
         for (const [what, sel] of [
           ["두 줄 카드", ".run-card:not(.is-compact)"],
           ["한 줄 행", ".run-card.is-compact"],
@@ -84,7 +84,7 @@ for (const vp of VIEWPORTS) {
         cards.forEach((card, i) => {
           const name = `카드 ${i + 1}(${card.querySelector(".run-card-symbol")?.textContent})`;
           const cb = g.box(card);
-          // 한 줄 행의 [▶] · [×]는 가리킬 때 글자 끝 위에 겹쳐 뜨는 게 설계 — 두 줄 카드만 비켜 감을 잼.
+          // 한 줄 행의 [▶]·[×]는 가리킬 때 글자 끝 위에 겹쳐 뜨는 게 설계 — 두 줄 카드만 비켜 감을 잼.
           const blockers = (card.classList.contains("is-compact") ? [] : [".run-card-action", ".run-card-remove-slot"])
             .map((s) => card.querySelector(s))
             .filter((el): el is Element => !!el && g.shown(el))
@@ -112,7 +112,7 @@ for (const vp of VIEWPORTS) {
                 if (g.overlaps(els[a].box, els[b].box))
                   out.push(`${name}: ${els[a].cls} ${g.fmt(els[a].box)} ↔ ${els[b].cls} ${g.fmt(els[b].box)} 겹침`);
           }
-          // 코인 표시는 줄지 않음(두 줄 카드 32px · 한 줄 행 20px). 거래소 작은 로고는 오른쪽 아래 모서리에 3px 걸치고 카드 안.
+          // 코인 표시는 줄지 않음(두 줄 카드 32px·한 줄 행 20px). 거래소 작은 로고는 오른쪽 아래 모서리에 3px 걸치고 카드 안.
           const size = card.classList.contains("is-compact") ? 20 : 32;
           const mark = card.querySelector(".coin-mark");
           if (!mark) out.push(`${name}: 코인 표시 없음`);
@@ -128,13 +128,13 @@ for (const vp of VIEWPORTS) {
               if (!g.inside(eb, cb, 0.5)) out.push(`${name}: 거래소 작은 로고 ${g.fmt(eb)}가 카드 밖`);
             }
           }
-          // 종목 글자는 기초 자산만(시장 쌍 KRW-BTC · BTCUSDT 없이), 바이낸스 선물의 '선물 N배'는 잘리지 않음.
+          // 종목 글자는 기초 자산만(시장 쌍 KRW-BTC·BTCUSDT 없이), 바이낸스 선물의 '선물 N배'는 잘리지 않음.
           const ticker = card.querySelector(".run-card-symbol")?.textContent ?? "";
           if (/USDT$|^KRW|[-_]/.test(ticker)) out.push(`${name}: 종목 글자에 시장 쌍`);
           const tag = card.querySelector<HTMLElement>(".run-card-tag");
           if (tag && (!g.shown(tag) || tag.scrollWidth > tag.clientWidth + 0.5))
             out.push(`${name}: '${tag.textContent}'가 잘리거나 가려짐`);
-          // 1줄 오른쪽 칸(손익 % · 진입 대기 거리)은 한 줄 — 둘째 줄로 떨어지지 않음.
+          // 1줄 오른쪽 칸(손익 %·진입 대기 거리)은 한 줄 — 둘째 줄로 떨어지지 않음.
           const end = card.querySelector(".run-card-top > :last-child:not(.run-card-head)");
           if (end && g.shown(end)) {
             const lines = new Set(g.textBoxes(end).map((t) => Math.round(t.box.t)));
@@ -425,14 +425,14 @@ for (const vp of VIEWPORTS) {
       page,
     }) => {
       // update=0 — 새 버전이 없는 견본. 기본 견본은 열자마자 자동 확인이 '새 버전 있음'으로 끝나 [업데이트 확인]이
-      // [내려받기]로 바뀌므로(빠르면 처음부터 없음) 단추를 못 찾는 경쟁이 생겼다(WebKit 좁은 창, 2026-10-18).
+      // [내려받기]로 바뀌므로(빠르면 처음부터 없음) 단추를 못 찾는 경쟁이 생김(WebKit 좁은 창).
       await open(page, "?demo=settings&update=0");
       await page.evaluate(() =>
         Array.from(document.querySelectorAll<HTMLElement>(".settings-nav button"))
           .find((b) => b.textContent?.trim() === "정보")
           ?.click(),
       );
-      // 자동 확인이 끝나 지금 글자가 [업데이트 확인]일 때부터 잰다.
+      // 자동 확인이 끝나 지금 글자가 [업데이트 확인]일 때부터 잼.
       await page.waitForFunction(() =>
         Array.from(document.querySelectorAll(".settings-body .swap-label > span:not(.is-off)")).some(
           (e) => e.textContent?.trim() === "업데이트 확인",
@@ -596,8 +596,8 @@ for (const vp of VIEWPORTS) {
         await page.locator(".run-card.is-live .run-card-select").nth(i).click();
         await page.locator(".status-card").waitFor();
         // 그래프는 시세 점이 둘 이상 쌓여야 꼬리표가 생김. 앱이 직접 판단하는 세션은
-        // 현재가 그래프 대신 봉 차트가 뜨므로 둘 중 먼저 오는 것을 기다린다 —
-        // 아래 꼬리표 검사는 `.price-chart` 가 있을 때만 돈다.
+        // 현재가 그래프 대신 봉 차트가 뜨므로 둘 중 먼저 오는 것을 기다림 —
+        // 아래 꼬리표 검사는 `.price-chart`가 있을 때만 돎.
         await page
           .locator(".price-chart:not(.is-empty), .candle-plot:not(.is-empty)")
           .first()
@@ -699,9 +699,9 @@ for (const vp of VIEWPORTS) {
         const title = btn.closest(".act-line");
         if (!title) return { inTitle: false, problems: ["펼치기 단추가 .act-line 밖에 있음"] };
         const lines = g.textBoxes(title).map((t) => t.box);
-        // 접힌 줄은 한 줄 — 제목 · 둘째 말이 다음 줄로 꺾이지 않음.
-        // 줄은 세로 가운데로 셈: 제목(13px) · 둘째 말(12px) 칸은 높이가 달라 위 끝이 1px 안쪽으로 어긋나고,
-        // 위 끝을 반올림하면 창 안 위치에 따라 같은 줄이 두 값으로 갈림(CI 글꼴 · WebKit). 반 줄(6px) 넘게 벌어질 때만 다른 줄.
+        // 접힌 줄은 한 줄 — 제목·둘째 말이 다음 줄로 꺾이지 않음.
+        // 줄은 세로 가운데로 셈: 제목(13px)·둘째 말(12px) 칸은 높이가 달라 위 끝이 1px 안쪽으로 어긋나고,
+        // 위 끝을 반올림하면 창 안 위치에 따라 같은 줄이 두 값으로 갈림(CI 글꼴·WebKit). 반 줄(6px) 넘게 벌어질 때만 다른 줄.
         const mids = lines.map((b) => (b.t + b.b) / 2).sort((a, b) => a - b);
         const rows = mids.filter((m, i) => i === 0 || m - mids[i - 1] > 6).length;
         const last = lines.reduce((a, b) => (b.b > a.b || (b.b === a.b && b.r > a.r) ? b : a));
@@ -770,7 +770,7 @@ for (const vp of VIEWPORTS) {
             h: r.height,
             fullWidth: Math.abs(r.width - list.width) <= 2,
             midSpread: Math.max(...mids) - Math.min(...mids),
-            // 잔고 · [연결 도우미] 칸은 ▾ 바로 왼쪽(오른쪽 끝)에 붙음.
+            // 잔고·[연결 도우미] 칸은 ▾ 바로 왼쪽(오른쪽 끝)에 붙음.
             sideGap: toggle.left - side.right,
           };
         }),
@@ -942,7 +942,7 @@ test.describe("1040x720 — 상태 카드 높이", () => {
       await page.locator(".status-card .exit-bar").waitFor();
       await page.locator(".feed .act").first().waitFor();
       const where = (await page.locator(".detail-title").innerText()).replace(/\s+/g, " ");
-      // 높이 · 활동 기록은 기본(세부 표 접힘) 상태로 잰다.
+      // 높이·활동 기록은 기본(세부 표 접힘) 상태로 잼.
       const fold = await page.evaluate(() => {
         const g = window.__geo;
         const acts = document.querySelectorAll(".feed .act");
@@ -953,7 +953,7 @@ test.describe("1040x720 — 상태 카드 높이", () => {
           chartBottom: chart ? g.box(chart).b : null,
         };
       });
-      // 보유 수량 값은 표를 펼쳐서 보고, 다음 실행을 위해 다시 접는다.
+      // 보유 수량 값은 표를 펼쳐서 보고, 다음 실행을 위해 다시 접음.
       await page.getByRole("button", { name: "현재가 · 평단 · 수량 자세히" }).click();
       const r = await page.evaluate(() => {
         const qty = Array.from(document.querySelectorAll<HTMLElement>(".run-table > div")).find(
@@ -968,14 +968,14 @@ test.describe("1040x720 — 상태 카드 높이", () => {
         };
       });
       await page.getByRole("button", { name: "자세히 접기" }).click();
-      // 예전 높이(약 400px)의 70% 남짓. 앱이 직접 판단하는 세션은 조건 차트가 손익 아래
-      // 붙어 그 높이만큼 더 쓴다 — 조건을 보는 게 이 화면의 목적이라 자리를 준 것이고,
-      // 대신 차트 높이가 창 높이를 따라간다(run.css 의 clamp).
+      // 차트가 없으면 292px까지. 앱이 직접 판단하는 세션은 조건 차트가 손익 아래
+      // 붙어 그 높이만큼 더 씀 — 조건을 보는 게 이 화면의 목적이라 자리를 준 것이고,
+      // 대신 차트 높이가 창 높이를 따라감(run.css의 clamp).
       const budget = fold.chartBottom === null ? 292 : 600;
       if (fold.cardH > budget) problems.push(`${where}: 상태 카드 높이 ${fold.cardH}px > ${budget}px`);
       if (fold.chartBottom !== null) {
-        // 차트가 있으면 활동 기록은 그만큼 아래로 밀린다. 대신 **차트가** 창 안에 다
-        // 들어오는지를 본다 — 차트가 잘리면 자리를 준 뜻이 없다.
+        // 차트가 있으면 활동 기록은 그만큼 아래로 밀림. 대신 **차트가** 창 안에 다
+        // 들어오는지를 봄 — 차트가 잘리면 자리를 준 뜻이 없음.
         if (fold.chartBottom > r.bottom)
           problems.push(`${where}: 조건 차트 아래 ${fold.chartBottom}px가 창 아래 ${r.bottom}px 밖`);
       } else if (fold.thirdBottom !== null) {
@@ -1005,7 +1005,7 @@ test.describe("1040x720 — 상태 카드 높이", () => {
 });
 
 // 넓은 창(1360px~) — 상세가 '상태 | 활동 기록' 두 칸. 활동 기록이 오른쪽 칸을 위아래로 다 차지하고,
-// 활동 기록 머리줄은 일부러 두 줄(제목 · [기록 복사] / 거르기 칩), 돈 칸 넷은 한 줄에 글자가 잘리지 않음.
+// 활동 기록 머리줄은 일부러 두 줄(제목·[기록 복사] / 거르기 칩), 돈 칸 넷은 한 줄에 글자가 잘리지 않음.
 test.describe("1440x900 — 넓은 창 두 칸", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 

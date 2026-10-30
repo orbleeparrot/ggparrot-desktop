@@ -41,7 +41,7 @@ export interface MacroInfo {
   orderCap: number;
   /** 이 앱이 로컬에서 지키는 안전 설정(예: "손절 평단 대비 가격 -3%"). 서버 연결이 끊겨도 지킴. */
   risk: string[];
-  /** 같은 안전 설정을 이름 · 값 두 칸으로 — ("손절", "평단 대비 가격 -3%")·("하루 최대 손실", "5%(수수료 포함)"). */
+  /** 같은 안전 설정을 이름·값 두 칸으로 — ("손절", "평단 대비 가격 -3%")·("하루 최대 손실", "5%(수수료 포함)"). */
   riskItems: { label: string; value: string }[];
   /** 봉 간격 이름("4시간"). 매크로에 없으면 "". */
   interval: string;
@@ -119,7 +119,7 @@ export interface RunStatus {
    * 봉은 거래소에서 받은 그대로, 선은 엔진이 낸 그대로. 화면은 겹쳐 그리기만 함.
    */
   chart: ChartData | null;
-  /** 봉 마감 사이에 움직이는 부분(만들어지는 중인 봉 · 지금 가격선). 매 바퀴 바뀐다. */
+  /** 봉 마감 사이에 움직이는 부분(만들어지는 중인 봉·지금 가격선). 매 바퀴 바뀜. */
   chartLive: ChartLive | null;
   note: string;
   /** 끝났으면 종료 결과. 실행 중이면 null. */
@@ -129,11 +129,11 @@ export interface RunStatus {
 /**
  * 구동 중 바꿀 수 있는 설정 — 서버 하트비트의 settings 그대로(키는 서버 모양 snake_case).
  *
- * 칸 목록(`fields`)을 서버가 주는 이유: 무엇을 바꿀 수 있는지는 서버가 정한다. 앱이 따로
- * 목록을 들면 두 벌이 되어, 화면에는 보이는데 서버가 거절하는 칸이 생긴다.
+ * 칸 목록(`fields`)을 서버가 주는 이유: 무엇을 바꿀 수 있는지는 서버가 정함. 앱이 따로
+ * 목록을 들면 두 벌이 되어, 화면에는 보이는데 서버가 거절하는 칸이 생김.
  */
 export interface LiveSettings {
-  /** 지금 설정의 지문. 서버가 "실행기가 반영했다"를 이걸로 확인한다. */
+  /** 지금 설정의 지문. 서버가 "실행기가 반영했다"를 이걸로 확인함. */
   digest: string;
   /** 구동 중 설정을 바꾼 횟수. */
   changed_count: number;
@@ -141,7 +141,7 @@ export interface LiveSettings {
 }
 
 export interface LiveSettingField {
-  /** "params.initial_capital" 꼴. 서버에 보낼 때 그대로 쓴다. */
+  /** "params.initial_capital" 꼴. 서버에 보낼 때 그대로 씀. */
   path: string;
   section: "params" | "risk";
   key: string;
@@ -149,13 +149,13 @@ export interface LiveSettingField {
   value: number | null;
   /** money | pct | ratio | hours | minutes | days | "" */
   unit: string;
-  /** 칸 옆에 붙일 단위 글자 — "%" · "USDT" · "KRW" · "시간" · "봉". 없으면 빈 글자. */
+  /** 칸 옆에 붙일 단위 글자 — "%"·"USDT"·"KRW"·"시간"·"봉". 없으면 빈 글자. */
   unit_text: string;
-  /** 이 칸이 무슨 일을 하는지 한 줄. 서버가 준다. */
+  /** 이 칸이 무슨 일을 하는지 한 줄. 서버가 줌. */
   help: string;
   /**
-   * 바꾸면 **지금 들고 있는 포지션**의 청산 조건이 바뀌는가.
-   * "next_entry" 면 다음에 살 때 쓰는 값이라 지금 포지션과 상관없다.
+   * 바꾸면 **지금 들고 있는 포지션**의 청산 조건이 바뀌는지.
+   * "next_entry"면 다음에 살 때 쓰는 값이라 지금 포지션과 상관없음.
    */
   affects: "position" | "next_entry";
   /** 비울 수 있는 칸인가(손절 끄기 등). */
@@ -164,7 +164,7 @@ export interface LiveSettingField {
 
 /**
  * 진입 대기 — 서버 하트비트의 entry_wait 그대로(키는 서버 모양 snake_case, 웹 내 에이전트와 같은 값).
- * 문장 · 거리는 서버가 해요체로 만들어 보냄. 시각은 epoch ms.
+ * 문장·거리는 서버가 해요체로 만들어 보냄. 시각은 epoch ms.
  */
 export interface EntryWait {
   rule: string;
@@ -174,32 +174,32 @@ export interface EntryWait {
   realtime: boolean;
   /** "가격이 209.52 위로 올라가면 사요." */
   sentence: string;
-  /** 맨 위 큰 글씨 — 지금 상태 한 줄("26.523 위에서 끝나면 사요" · "이대로 끝나면 사요"). (옛 서버엔 없음 — sentence 로 대신) */
+  /** 맨 위 큰 글씨 — 지금 상태 한 줄("26.523 위에서 끝나면 사요"·"이대로 끝나면 사요"). (서버가 안 보낼 수 있음 — sentence로 대신) */
   headline?: string;
-  /** 가격 막대 하나에 선 여럿(사는 선 · 20봉 평균) — 두 조건이 다 있는 매크로만. pos 는 0~1. (옛 서버엔 없음) */
+  /** 가격 막대 하나에 선 여럿(사는 선·20봉 평균) — 두 조건이 다 있는 매크로만. pos는 0~1. (서버가 안 보낼 수 있음) */
   ladder?: {
     marks: { key: string; label: string; value: string; pos: number; main: boolean }[];
     now: { label: string; value: string; pos: number };
     /** 사는 구역이 시작하는 곳 0~1. */
     zone: number;
-    /** 사는 구역이 선 위(올라가야 삼)인지 아래(내려가야 삼)인지. ladder 는 늘 위. */
+    /** 사는 구역이 선 위(올라가야 삼)인지 아래(내려가야 삼)인지. ladder는 늘 위. */
     zone_side?: "above" | "below";
   } | null;
-  /** ladder 와 같은 모양의 값 눈금(RSI · 밴드 · 지정가 · 눌림) — 왼쪽이 작은 값, 사는 구역 방향은 zone_side. (옛 서버엔 없음) */
+  /** ladder와 같은 모양의 값 눈금(RSI·밴드·지정가·눌림) — 왼쪽이 작은 값, 사는 구역 방향은 zone_side. (서버가 안 보낼 수 있음) */
   scale?: EntryWait["ladder"];
   /** "지금 207.46 · +1.0% 더 오르면" */
   distance: string;
-  /** 목록 카드 오른쪽 칸용 짧은 거리 — "+1.0%" · "RSI 13.7" · "곧 사요". */
+  /** 목록 카드 오른쪽 칸용 짧은 거리 — "+1.0%"·"RSI 13.7"·"곧 사요". */
   gap: string;
-  /** 숫자 칸 '남은 거리' — "+1.0%" · RSI 점수 차 "8.0". 주 조건이 맞았으면 빈 문자열. (옛 서버엔 없음) */
+  /** 숫자 칸 '남은 거리' — "+1.0%"·RSI 점수 차 "8.0". 주 조건이 맞았으면 빈 문자열. (서버가 안 보낼 수 있음) */
   remain?: string;
-  /** 주 조건(사는 선 · RSI · 밴드 …)이 지금 맞았는지. (옛 서버엔 없음 — reached 로 대신) */
+  /** 주 조건(사는 선·RSI·밴드 …)이 지금 맞았는지. (서버가 안 보낼 수 있음 — reached로 대신) */
   touched?: boolean;
-  /** 이대로 봉이 마감되면 사는지 — 주 조건과 함께 맞아야 하는 조건(이평선 필터 · 연속 봉 · 진입 필터)까지 맞음. */
+  /** 이대로 봉이 마감되면 사는지 — 주 조건과 함께 맞아야 하는 조건(이평선 필터·연속 봉·진입 필터)까지 맞음. */
   reached: boolean;
-  /** 함께 맞아야 하는 조건 — 첫 줄은 주 조건. 두 줄 이상일 때만 체크 목록으로 보임. (옛 서버엔 없음) */
+  /** 함께 맞아야 하는 조건 — 첫 줄은 주 조건. 두 줄 이상일 때만 체크 목록으로 보임. (서버가 안 보낼 수 있음) */
   conditions?: { key: string; label: string; now: string; ok: boolean | null; at_close: boolean; wait?: string }[];
-  /** 방금 마감된 봉 — 샀는지와 안 샀으면 이유. (옛 서버엔 없음) */
+  /** 방금 마감된 봉 — 샀는지와 안 샀으면 이유. (서버가 안 보낼 수 있음) */
   last_bar?: { at_ms: number; entered: boolean; why: string } | null;
   meter: {
     from: { label: string; value: string };
@@ -292,7 +292,7 @@ export interface SettingsState {
   showDevLog: boolean;
   /** 창을 닫으면 트레이(메뉴 막대·알림 영역)로 숨기고 매크로는 계속 실행함. */
   closeToTray: boolean;
-  /** 알림(기본 켬, 소리 포함) — 체결 · 평가손익 구간 · 오류 · 서버 끊김 · 실행 멈춤 OS 알림을 한 스위치로. */
+  /** 알림(기본 켬, 소리 포함) — 체결·평가손익 구간·오류·서버 끊김·실행 멈춤 OS 알림을 한 스위치로. */
   notify: boolean;
   serverBase: string;
   /** 기본 운영 서버가 아닌 곳에 연결됨 — 정보 화면에 서버 주소를 보여 줌. */
@@ -404,7 +404,16 @@ export interface AppState {
 }
 
 export type ActivityKind =
-  "start" | "signal" | "buy" | "sell" | "stop_loss" | "blocked" | "connection" | "error" | "stop" | "info";
+  | "start"
+  | "signal"
+  | "buy"
+  | "sell"
+  | "stop_loss"
+  | "blocked"
+  | "connection"
+  | "error"
+  | "stop"
+  | "info";
 
 export interface Activity {
   id: number;

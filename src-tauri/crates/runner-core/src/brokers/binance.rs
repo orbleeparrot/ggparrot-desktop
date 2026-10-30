@@ -10,11 +10,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::{
-    exc_text, lookup_delay, positive_f64, py_float_repr, py_str, Broker, BrokerError, LogFn, Order, OrderRules,
-    SubmitRequest, LOOKUP_ATTEMPTS,
+    Broker, BrokerError, LOOKUP_ATTEMPTS, LogFn, Order, OrderRules, SubmitRequest, exc_text, lookup_delay,
+    positive_f64, py_float_repr, py_str,
 };
 use crate::money::{plain_number, price_text, py_g, qty_text};
-use crate::types::{split_symbol, Market, Side};
+use crate::types::{Market, Side, split_symbol};
 
 pub const SPOT_BASE: &str = "https://api.binance.com";
 pub const FUTURES_BASE: &str = "https://fapi.binance.com";
@@ -112,11 +112,7 @@ pub(crate) fn binance_error_parts(e: &BrokerError) -> (String, String) {
 /// 코드 모양이 아니면 코드 없이 글 전체가 설명임.
 pub fn binance_rejection_parts(raw: &str) -> (&str, &str) {
     let (head, rest) = raw.split_once(' ').unwrap_or((raw, ""));
-    if is_code(head) {
-        (head, rest.trim())
-    } else {
-        ("", raw.trim())
-    }
+    if is_code(head) { (head, rest.trim()) } else { ("", raw.trim()) }
 }
 
 /// 잔고(증거금)가 모자라 거절된 주문인지 여부 — 선물 -2019(Margin is insufficient), 현물 -2010 중 잔고 부족 설명.
@@ -456,16 +452,14 @@ impl Broker for BinanceBroker {
         }
         // 잔고는 키 권한을 확인한 뒤에 봄 — 모자라도 허용 IP·주문 권한 결과는 남기려고.
         let (ok, reason) = self.check_live_restrictions().await;
-        if ok {
-            if let Some(short) = self.funds_shortfall(amount) {
-                let name = match self.last_error_name().as_str() {
-                    "binance_verified" => "binance_funds",
-                    "binance_verified_open" => "binance_funds_open",
-                    _ => "insufficient_funds",
-                };
-                self.set_error_name(name);
-                return (false, short);
-            }
+        if ok && let Some(short) = self.funds_shortfall(amount) {
+            let name = match self.last_error_name().as_str() {
+                "binance_verified" => "binance_funds",
+                "binance_verified_open" => "binance_funds_open",
+                _ => "insufficient_funds",
+            };
+            self.set_error_name(name);
+            return (false, short);
         }
         (ok, reason)
     }
@@ -512,10 +506,10 @@ impl Broker for BinanceBroker {
         let lookup = [("symbol", self.symbol.clone()), ("origClientOrderId", req.client_id.clone())];
         if let Some(reason) = rejection {
             // 거절이면 한 번만 조회해 정말 없는지 확인함(있으면 그 상태를 따름).
-            if let Ok(found) = self.get(futures, path, &lookup, true).await {
-                if found.as_object().is_some_and(|o| !o.is_empty()) {
-                    return Ok(self.normalize(&found, closing).await);
-                }
+            if let Ok(found) = self.get(futures, path, &lookup, true).await
+                && found.as_object().is_some_and(|o| !o.is_empty())
+            {
+                return Ok(self.normalize(&found, closing).await);
             }
             self.log(format!("바이낸스에서 주문을 거절했어요({reason})."));
             return Ok(Order::rejected(reason));

@@ -1,4 +1,4 @@
-// 설정 › 창 · 화면 — 화면 테마(시스템 · 라이트 · 다크) · 백그라운드 실행 · 알림 · 개발자 로그 보기.
+// 설정 › 창·화면 — 화면 테마(시스템·라이트·다크)·백그라운드 실행·알림·개발자 로그 보기.
 import { useRunnerContext } from "../../state/context";
 import { THEME_LABELS, useThemePref, type ThemePref } from "../../state/theme";
 import { Section } from "./Section";

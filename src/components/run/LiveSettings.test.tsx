@@ -1,8 +1,8 @@
 // 구동 중 설정 바꾸기 — 입력란의 글자를 서버가 받는 모양으로 바꾸는 규칙.
 //
-// 가장 조심할 것은 **빈 칸의 뜻**이다. 끌 수 있는 칸(손절)을 비우면 '끄는 것'이고, 끌 수
-// 없는 칸을 비운 것은 '아직 덜 친 것'이다. 둘을 같게 다루면 사용자가 칸을 지웠다가 투자
-// 비율이 0 이 되거나, 손절을 끄려 했는데 그대로 남는다.
+// 가장 조심할 것은 **빈 칸의 뜻**임. 끌 수 있는 칸(손절)을 비우면 '끄는 것'이고, 끌 수
+// 없는 칸을 비운 것은 '아직 덜 친 것'임. 둘을 같게 다루면 사용자가 칸을 지웠다가 투자
+// 비율이 0이 되거나, 손절을 끄려 했는데 그대로 남음.
 import { describe, expect, it } from "vitest";
 import type { LiveSettingField } from "../../types";
 import { badFields, buildChanges, hasChanges, touchesPosition } from "./LiveSettings";
@@ -101,8 +101,8 @@ describe("hasChanges", () => {
   });
 });
 
-// 적용 시점을 묻는 자리가 '어느 쪽을 골라도 같다' 고 말할 수 있어야 한다. 무엇이 지금
-// 포지션을 건드리는지는 서버가 정한다(affects) — 앱이 짐작하면 두 벌이 된다.
+// 적용 시점을 묻는 자리가 '어느 쪽을 골라도 같다'고 말할 수 있어야 함. 무엇이 지금
+// 포지션을 건드리는지는 서버가 정함(affects) — 앱이 짐작하면 두 벌이 됨.
 describe("touchesPosition", () => {
   it("손절을 바꾸면 들고 있는 포지션의 청산 조건이 바뀐다", () => {
     expect(touchesPosition(FIELDS, { "risk.stop_loss_pct": "2" })).toBe(true);

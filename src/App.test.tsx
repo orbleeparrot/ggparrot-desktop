@@ -98,11 +98,11 @@ describe("매크로 추가", () => {
       expect(calledWith("add_run_from_library")).toEqual([["add_run_from_library", { fileName: "업비트.ggm.json" }]]),
     );
     await ready();
-    await pushState(
+    pushState(
       makeState({ runs: [makeSlot(), makeSlot({ id: "run-2", macro: upbitMacro, modeChoices: ["mock", "live"] })] }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // 카드 · 제목은 기초 자산(BTC)과 거래소(코인 로고 모서리 · 제목 안 가려진 글자)로 알아봄 — 시장 쌍은 보이지 않음.
+    // 카드·제목은 기초 자산(BTC)과 거래소(코인 로고 모서리·제목 안 가려진 글자)로 알아봄 — 시장 쌍은 보이지 않음.
     const selected = document.querySelector<HTMLElement>('[aria-current="true"]')!;
     expect(within(selected).getByRole("img", { name: "업비트" })).toBeTruthy();
     expect(selected.querySelector(".run-card-symbol")?.textContent).toBe("BTC");
@@ -167,7 +167,7 @@ describe("실전 확인 시트", () => {
     const box = within(sheet).getByRole("region", { name: "이 매크로는 바로 사지 않아요" });
     expect(box.textContent).toContain("RSI(14)가 30 아래로 내려가면 사요. 조건이 맞을 때만 사요.");
     expect(within(box).getByText("21번 진입")).toBeTruthy();
-    // 알림은 설정 › 창 · 화면 '알림' 하나로 — 실행마다 고르는 체크는 없음
+    // 알림은 설정 › 창·화면 '알림' 하나로 — 실행마다 고르는 체크는 없음
     expect(within(sheet).queryByRole("checkbox")).toBeNull();
     fireEvent.click(within(sheet).getByRole("button", { name: "실전으로 시작" }));
     await waitFor(() => expect(calledWith("start_run_confirmed")).toHaveLength(1));
@@ -284,14 +284,14 @@ describe("활동 기록 · 개발자 로그", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(toggle.getAttribute("aria-label")).toBe("접기");
-    // 펼친 칸(둘째 말 전체 · 원문)이 단추가 가리키는 칸 안에 있음.
+    // 펼친 칸(둘째 말 전체·원문)이 단추가 가리키는 칸 안에 있음.
     const more = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
     expect(more?.contains(screen.getByText("BUY 체결: id=abc 수량=0.00122"))).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "설정" }));
     fireEvent.click(await screen.findByRole("switch", { name: "개발자 로그 보기" }));
     await waitFor(() => expect(calledWith("set_show_dev_log")).toEqual([["set_show_dev_log", { show: true }]]));
-    await pushState(makeState({ settings: makeSettings({ showDevLog: true }) }));
+    pushState(makeState({ settings: makeSettings({ showDevLog: true }) }));
     expect((screen.getByRole("switch", { name: "개발자 로그 보기" }) as HTMLElement).getAttribute("aria-checked")).toBe(
       "true",
     );
@@ -309,7 +309,7 @@ describe("종료 · 이동", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "청산 후 종료" }));
     const dlg = await screen.findByRole("dialog", { name: "청산 후 종료할까요?" });
     expect(dlg.textContent).toContain("보유 포지션을 시장가로 정리한 뒤 종료해요.");
-    // 제목 바로 아래 칸 — 지금 정리하면 얼마인지 · 정리할 수량 · 되돌릴 수 없음.
+    // 제목 바로 아래 칸 — 지금 정리하면 얼마인지·정리할 수량·되돌릴 수 없음.
     expect(within(dlg).getByText("평가손익 · 지금 정리하면")).toBeTruthy();
     expect(within(dlg).getByText("정리할 수량").nextElementSibling?.textContent).toBe("1 BTC · 시장가");
     expect(within(dlg).getByText("되돌릴 수 없어요")).toBeTruthy();

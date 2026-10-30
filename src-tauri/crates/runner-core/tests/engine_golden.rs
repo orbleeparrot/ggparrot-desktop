@@ -1,20 +1,18 @@
-//! 판단 계약 — 실행기 엔진이 **서버와 같은 답**을 내는가.
+//! 판단 계약 — 실행기 엔진이 **서버와 같은 답**을 내는지.
 //!
-//! 판단이 실행기로 내려오면 엔진이 두 언어로 존재한다(서버는 파이썬 `backend/engine/`,
-//! 여기는 Rust). "같은 코드를 쓴다" 는 말이 성립하지 않으므로, 할 수 있는 것은 하나다 —
+//! 엔진은 두 언어로 존재함(서버는 파이썬 `backend/engine/`,
+//! 여기는 Rust). "같은 코드를 쓴다"는 말이 성립하지 않으므로, 할 수 있는 것은 하나임 —
 //! **같은 입력에 같은 답**을 글로 박아 두고 양쪽을 재는 것.
 //!
-//! `tests/fixtures/engine_golden.json` 이 그 계약이다. 서버 쪽에서
-//! `gg_parrot/backend/tests/test_engine_golden.py --regolden` 으로 만들고 여기로 복사한다.
-//! 고정된 90개 봉에 여섯 규칙(D · E · F · G · H · I)을 돌려 나온 주문 명령 · 거래 수 ·
-//! 끝 자산이 들어 있다.
+//! `tests/fixtures/engine_golden.json`이 그 계약임. 서버 쪽에서
+//! `gg_parrot/backend/tests/test_engine_golden.py --regolden`으로 만들고 여기로 복사함.
+//! 고정된 90개 봉에 여섯 규칙(D·E·F·G·H·I)를 돌려 나온 주문 명령·거래 수·
+//! 끝 자산이 들어 있음.
 //!
-//! **복사본이 낡아도 조용히 돌지 않는다.** 계약에는 `engine_version` 이 함께 들어 있고,
-//! 실행기는 그 세대를 세션 시작에 서버로 보낸다. 서버가 그보다 높은 세대를 요구하면
-//! 426 으로 막는다(서버 `engine/version.py`). 그래서 세대만 맞춰 두면 낡은 복사본으로
-//! 실거래가 도는 일은 없다.
-//!
-//! 지금은 엔진이 아직 없다 — 각 규칙을 구현할 때마다 그 규칙의 시험이 하나씩 켜진다.
+//! **복사본이 낡아도 조용히 돌지 않음.** 계약에는 `engine_version`이 함께 들어 있고,
+//! 실행기는 그 세대를 세션 시작에 서버로 보냄. 서버가 그보다 높은 세대를 요구하면
+//! 426으로 막음(서버 `engine/version.py`). 그래서 세대만 맞춰 두면 낡은 복사본으로
+//! 실거래가 도는 일은 없음.
 
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -54,8 +52,8 @@ fn load() -> Golden {
     serde_json::from_str(&raw).expect("판단 계약 모양이 예상과 다르다")
 }
 
-/// 실행기가 서버에 알리는 엔진 세대. 계약과 **같아야** 한다 — 계약을 새로 받아 왔는데
-/// 세대를 안 올리면 서버가 막지 못하고, 세대만 올리고 계약을 안 받아 오면 여기서 깨진다.
+/// 실행기가 서버에 알리는 엔진 세대. 계약과 **같아야** 함 — 계약을 새로 받아 왔는데
+/// 세대를 안 올리면 서버가 막지 못하고, 세대만 올리고 계약을 안 받아 오면 여기서 깨짐.
 const IMPLEMENTED_ENGINE_VERSION: u32 = 1;
 
 #[test]
@@ -70,9 +68,9 @@ fn 계약과_실행기_엔진_세대가_같다() {
 
 #[test]
 fn 계약이_실제로_사고파는_것을_담고_있다() {
-    // 아무것도 안 사는 계약은 아무것도 보장하지 않는다.
+    // 아무것도 안 사는 계약은 아무것도 보장하지 않음.
     let golden = load();
-    // 이름이 `_blocked` 로 끝나는 경우는 거래가 **없는 것**이 요점이다(필터가 막았다).
+    // 이름이 `_blocked`로 끝나는 경우는 거래가 **없는 것**이 요점임(필터가 막음).
     let empty: Vec<&String> = golden
         .cases
         .iter()
@@ -97,7 +95,7 @@ fn 계약의_봉이_실행기가_읽을_수_있는_모양이다() {
     assert_eq!(golden.interval, "1h");
     assert!(golden.candles.len() > golden.warmup_count);
     let step = runner_core::intervals::step_ms(&golden.interval).expect("간격");
-    // 봉은 (t, o, h, l, c, v) 이고 간격만큼 떨어져 있어야 한다 — 아니면 계약을 잘못 읽은 것이다.
+    // 봉은 (t, o, h, l, c, v)이고 간격만큼 떨어져 있어야 함 — 아니면 계약을 잘못 읽은 것임.
     for pair in golden.candles.windows(2) {
         assert_eq!(pair[1][0] as i64 - pair[0][0] as i64, step);
     }
@@ -109,7 +107,7 @@ fn 계약의_봉이_실행기가_읽을_수_있는_모양이다() {
 
 #[test]
 fn 계약의_매크로를_실행기가_알아본다() {
-    // 규칙 · 간격 · 거래소를 못 읽으면 엔진을 붙여도 그 매크로는 못 돈다.
+    // 규칙·간격·거래소를 못 읽으면 엔진을 붙여도 그 매크로는 못 돎.
     let golden = load();
     for (name, case) in &golden.cases {
         let rule = case.macro_.get("rule_type").and_then(|v| v.as_str()).unwrap_or("");
@@ -124,13 +122,13 @@ fn 계약의_매크로를_실행기가_알아본다() {
     }
 }
 
-// --- 엔진이 계약대로 판단하는가 ------------------------------------------
+// --- 엔진이 계약대로 판단하는지 ------------------------------------------
 //
-// 규칙을 하나 포팅할 때마다 그 규칙이 `포팅됨` 으로 넘어간다. 열하나가 전부 넘어가면
+// 규칙을 하나 포팅할 때마다 그 규칙이 `포팅됨`으로 넘어감. 열하나가 전부 넘어가면
 // 실행기가 서버와 같은 자리에서 사고판다는 뜻이고, 그때 서버의
-// `RUNNER_LOCAL_DECISIONS` 를 켤 수 있다.
+// `RUNNER_LOCAL_DECISIONS`를 켤 수 있음.
 
-/// 계약의 봉을 서버와 **같은 순서로** 흘려보낸다 — 봉을 넣고, 그 봉의 종가로 체결을 다 꺼낸다.
+/// 계약의 봉을 서버와 **같은 순서로** 흘려보냄 — 봉을 넣고, 그 봉의 종가로 체결을 다 꺼냄.
 fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<(Vec<Command>, f64), String> {
     let mut engine = runner_core::engine::runner::build(macro_).map_err(|e| e.to_string())?;
     let initial = runner_core::engine::runner::session_capital(macro_);
@@ -143,7 +141,7 @@ fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<(Vec<Command>
         v: Some(row[5]),
     };
     for row in &golden.candles[..golden.warmup_count] {
-        // 웜업은 지표만 세우고 장부는 건드리지 않는다 — 체결을 꺼내지 않는다.
+        // 웜업은 지표만 세우고 장부는 건드리지 않음 — 체결을 꺼내지 않음.
         engine.on_bar(&to_bar(row));
     }
     engine.warmup_done();
@@ -166,13 +164,13 @@ fn run_case(macro_: &serde_json::Value, golden: &Golden) -> Result<(Vec<Command>
             }
         }
     }
-    // 마지막 봉 종가 기준 자산. 명령이 같아도 장부 식이 틀리면 여기서 갈린다.
+    // 마지막 봉 종가 기준 자산. 명령이 같아도 장부 식이 틀리면 여기서 갈림.
     let last_close = golden.candles.last().map(|row| row[4]).unwrap_or(0.0);
     Ok((out, round10(engine.equity(last_close))))
 }
 
-/// 계약 파일은 **유효숫자 10자리**로 적혀 있다(파이썬 `f"{v:.10g}"`). 견주기 전에 같은
-/// 자리로 맞춘다 — 지수 표기에서 소수점 아래 9자리가 유효숫자 10자리다.
+/// 계약 파일은 **유효숫자 10자리**로 적혀 있음(파이썬 `f"{v:.10g}"`). 견주기 전에 같은
+/// 자리로 맞춤 — 지수 표기에서 소수점 아래 9자리가 유효숫자 10자리임.
 fn round10(v: f64) -> f64 {
     format!("{v:.9e}").parse().unwrap_or(v)
 }
@@ -196,7 +194,7 @@ fn 포팅한_규칙은_계약대로_판단한다() {
                         case.commands, got
                     ));
                 } else if (equity - case.equity).abs() > 1e-9 * case.equity.abs().max(1.0) {
-                    // 명령이 같아도 장부가 다르면 다음 봉부터 갈린다.
+                    // 명령이 같아도 장부가 다르면 다음 봉부터 갈림.
                     wrong.push(format!(
                         "{name}: 명령은 같은데 끝 자산이 다르다 — 서버 {}, 실행기 {equity}",
                         case.equity
@@ -222,7 +220,7 @@ fn 포팅한_규칙은_계약대로_판단한다() {
 
 #[test]
 fn 열한_규칙이_모두_포팅됐다() {
-    // 하나라도 빠지면 그 매크로는 로컬 판단으로 못 돈다. 계약의 규칙 수와 맞춘다.
+    // 하나라도 빠지면 그 매크로는 로컬 판단으로 못 돎. 계약의 규칙 수와 맞춤.
     let golden = load();
     let missing: Vec<&String> = golden
         .cases
@@ -238,7 +236,7 @@ fn 열한_규칙이_모두_포팅됐다() {
 
 #[test]
 fn 모르는_규칙은_로컬_판단을_열지_않는다() {
-    // 조용히 다르게 사는 것보다 안 여는 쪽이 낫다.
+    // 조용히 다르게 사는 것보다 안 여는 쪽이 나음.
     let golden = load();
     let mut unknown = golden.cases["E_trailing"].macro_.clone();
     unknown["rule_type"] = serde_json::json!("Z");
@@ -251,7 +249,7 @@ fn 모르는_규칙은_로컬_판단을_열지_않는다() {
 
 #[test]
 fn 필수_설정이_없으면_세우지_않는다() {
-    // 기본값으로 때우면 사용자가 안 정한 값으로 실제 주문이 나간다.
+    // 기본값으로 때우면 사용자가 안 정한 값으로 실제 주문이 나감.
     let golden = load();
     for (name, key) in [
         ("E_trailing", "trail_percent"),

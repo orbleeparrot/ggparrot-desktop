@@ -1,32 +1,28 @@
-//! 지표 판정 셋 — **F**(RSI) · **G**(볼린저) · **J**(이동평균 교차).
+//! 지표 판정 셋 — **F**(RSI)·**G**(볼린저)·**J**(이동평균 교차).
 //!
-//! 셋 다 [`super::indicator::Signal`] 하나만 구현한다. "이 종가를 보니 다음 봉에서
-//! 무엇을 할까" 뿐이고, 실행 · 익절 · 공통 위험은 [`super::indicator::IndicatorRule`] 이 맡는다.
+//! 셋 다 [`super::indicator::Signal`] 하나만 구현함. "이 종가를 보니 다음 봉에서
+//! 무엇을 할까"뿐이고, 실행·익절·공통 위험은 [`super::indicator::IndicatorRule`]이 맡음.
 //!
-//! 숏 매크로에서는 조건이 **거울처럼 뒤집힌다** — F 는 과매수에서 들어가고 과매도에서
-//! 나오며, J 는 데드크로스에서 들어간다.
+//! 숏 매크로에서는 조건이 **거울처럼 뒤집힘** — F는 과매수에서 들어가고 과매도에서
+//! 나오며, J는 데드크로스에서 들어감.
 
 use crate::engine::candle_sim::Bar;
 use crate::engine::indicators::{Bollinger, Ma, MaType, Rsi};
 use crate::engine::ledger::Side;
-use crate::engine::series::{bollinger_series, ma_series, rsi_oscillator, Oscillator, Series};
+use crate::engine::series::{Oscillator, Series, bollinger_series, ma_series, rsi_oscillator};
 use crate::money::{py_g, py_gp};
 
 use super::indicator::{Intent, Pending, Signal};
-use crate::engine::levels::{price, Indicator, Levels};
+use crate::engine::levels::{Indicator, Levels, price};
 
-/// 몇 봉 연속으로 조건이 맞아야 믿을 것인가. 1 이면 한 봉만 맞아도 된다.
+/// 몇 봉 연속으로 조건이 맞아야 믿을지. 1이면 한 봉만 맞아도 됨.
 fn streak(hit: bool, current: u32) -> u32 {
-    if hit {
-        current + 1
-    } else {
-        0
-    }
+    if hit { current + 1 } else { 0 }
 }
 
 // --- F: RSI 문턱 ------------------------------------------------------------
 
-/// **F — RSI.** 과매도에서 사고 과매수에서 판다(숏은 반대).
+/// **F — RSI.** 과매도에서 사고 과매수에서 팖(숏은 반대).
 #[derive(Debug, Clone)]
 pub struct RsiSignal {
     rsi: Rsi,
@@ -34,9 +30,9 @@ pub struct RsiSignal {
     pub entry_threshold: f64,
     /// 롱이 파는 문턱(위로 올라가면).
     pub exit_threshold: f64,
-    /// 몇 봉 연속이어야 믿을 것인가.
+    /// 몇 봉 연속이어야 믿을지.
     pub confirm: u32,
-    /// 지표로 팔 것인가 — `indicator` · `both` 만 지표 청산을 쓴다.
+    /// 지표로 팔지 — `indicator`·`both`만 지표 청산을 씀.
     pub exit_by_indicator: bool,
     entry_streak: u32,
     exit_streak: u32,
@@ -63,7 +59,7 @@ impl RsiSignal {
         }
     }
 
-    /// 마지막 RSI 값 — 화면에 보여 준다.
+    /// 마지막 RSI 값 — 화면에 보여 줌.
     pub fn value(&self) -> Option<f64> {
         self.last
     }
@@ -95,9 +91,9 @@ impl Signal for RsiSignal {
     fn on_warmup_reset(&mut self) {}
 
     fn levels(&self) -> Levels {
-        // RSI 는 0~100 지표라 그릴 **가격** 선이 없다 — 가격축에 섞으면 축이 망가진다.
+        // RSI는 0~100 지표라 그릴 **가격** 선이 없음 — 가격축에 섞으면 축이 망가짐.
         // 대신 값과 두 문턱을 따로 실어, 화면이 아래 칸에 그리고 "지금 조건에 얼마나
-        // 가까운가" 를 보여 줄 수 있게 한다.
+        // 가까운가"를 보여 줄 수 있게 함.
         match self.last {
             Some(value) => Levels {
                 indicator: Some(Indicator {
@@ -113,7 +109,7 @@ impl Signal for RsiSignal {
     }
 
     fn oscillator(&self, bars: &[Bar]) -> Option<Oscillator> {
-        // RSI 는 0~100 이라 가격축에 섞으면 축이 망가진다 — 아래 칸에 따로 그린다.
+        // RSI는 0~100이라 가격축에 섞으면 축이 망가짐 — 아래 칸에 따로 그림.
         Some(rsi_oscillator(&self.rsi, bars, Some(self.entry_threshold), Some(self.exit_threshold)))
     }
 }
@@ -122,17 +118,17 @@ impl Signal for RsiSignal {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BandStrategy {
-    /// 밴드 밖으로 벗어나면 **되돌아올 것**으로 보고 산다.
+    /// 밴드 밖으로 벗어나면 **되돌아올 것**으로 보고 삼.
     Reversion,
-    /// 밴드를 뚫으면 **그 방향으로 갈 것**으로 보고 산다.
+    /// 밴드를 뚫으면 **그 방향으로 갈 것**으로 보고 삼.
     Breakout,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BandExitTarget {
-    /// 중심선에 닿으면 판다.
+    /// 중심선에 닿으면 팖.
     Mid,
-    /// 반대쪽 밴드에 닿으면 판다.
+    /// 반대쪽 밴드에 닿으면 팖.
     Opposite,
 }
 
@@ -142,7 +138,7 @@ pub struct BollingerSignal {
     bands: Bollinger,
     pub strategy: BandStrategy,
     pub exit_target: BandExitTarget,
-    /// 밴드가 **좁아져 있을 때만** 사는가(변동성 수축 뒤의 움직임을 노린다).
+    /// 밴드가 **좁아져 있을 때만** 사는가(변동성 수축 뒤의 움직임을 노림).
     pub squeeze_filter: bool,
     squeeze_window: std::collections::VecDeque<f64>,
     squeeze_lookback: usize,
@@ -169,7 +165,7 @@ impl BollingerSignal {
         }
     }
 
-    /// 마지막 `(중심, 위, 아래)` — 화면에 그리는 선이다.
+    /// 마지막 `(중심, 위, 아래)` — 화면에 그리는 선임.
     pub fn value(&self) -> Option<(f64, f64, f64)> {
         self.last
     }
@@ -226,7 +222,7 @@ impl Signal for BollingerSignal {
     }
 
     fn levels(&self) -> Levels {
-        // 밴드 셋을 그대로 그린다 — 중심 · 위 · 아래.
+        // 밴드 셋을 그대로 그림 — 중심·위·아래.
         match self.value() {
             Some((mid, upper, lower)) => Levels {
                 reference: price(mid),
@@ -245,12 +241,12 @@ impl Signal for BollingerSignal {
 
 // --- J: 이동평균 교차 -------------------------------------------------------
 
-/// **J — 이동평균 교차.** 짧은 평균이 긴 평균을 위로 뚫으면(골든크로스) 산다.
+/// **J — 이동평균 교차.** 짧은 평균이 긴 평균을 위로 뚫으면(골든크로스) 삼.
 #[derive(Debug, Clone)]
 pub struct MaCrossSignal {
     fast: Ma,
     slow: Ma,
-    /// 지표로 팔 것인가 — `dead_cross` · `both` 만 지표 청산을 쓴다.
+    /// 지표로 팔지 — `dead_cross`·`both`만 지표 청산을 씀.
     pub exit_by_indicator: bool,
     pub confirm: u32,
     golden_streak: u32,
@@ -271,7 +267,7 @@ impl MaCrossSignal {
         }
     }
 
-    /// 마지막 `(짧은 평균, 긴 평균)` — 화면에 그리는 두 선이다.
+    /// 마지막 `(짧은 평균, 긴 평균)` — 화면에 그리는 두 선임.
     pub fn value(&self) -> Option<(f64, f64)> {
         self.last
     }
@@ -284,7 +280,7 @@ impl Signal for MaCrossSignal {
         let (Some(fast), Some(slow)) = (fast, slow) else { return };
         self.last = Some((fast, slow));
         let diff = fast - slow;
-        // 교차한 **순간**이 아니라 '짧은 평균이 위에 있는 상태' 가 몇 봉 이어졌는지를 센다.
+        // 교차한 **순간**이 아니라 '짧은 평균이 위에 있는 상태'가 몇 봉 이어졌는지를 셈.
         self.golden_streak = streak(diff > 0.0, self.golden_streak);
         self.dead_streak = streak(diff < 0.0, self.dead_streak);
         let short = side == Side::Short;
@@ -303,7 +299,7 @@ impl Signal for MaCrossSignal {
     }
 
     fn levels(&self) -> Levels {
-        // 두 이동평균을 그린다. 교차가 신호이므로 둘이 같이 보여야 뜻이 있다.
+        // 두 이동평균을 그림. 교차가 신호이므로 둘이 같이 보여야 뜻이 있음.
         match self.value() {
             Some((fast, slow)) => Levels { reference: price(fast), band_upper: price(slow), ..Default::default() },
             None => Levels::pending(),

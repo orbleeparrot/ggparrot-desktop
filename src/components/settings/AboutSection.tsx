@@ -13,7 +13,7 @@ function PublicIp() {
   const ip = state.settings.publicIp;
   // 정보 화면을 열 때 한 번 조회(120초 안의 결과가 있으면 Rust가 다시 묻지 않음).
   useEffect(() => {
-    act("refresh_public_ip", { force: false });
+    void act("refresh_public_ip", { force: false });
   }, [act]);
   const text =
     ip.status === "ok"

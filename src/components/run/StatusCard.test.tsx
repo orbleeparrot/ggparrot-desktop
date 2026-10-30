@@ -6,7 +6,7 @@ import { RunCard } from "./RunCard";
 import { DETAILS_KEY, StatusCard } from "./StatusCard";
 
 afterEach(cleanup);
-// 세부 표(현재가 · 평단 · 투입금 …)는 기본으로 접혀 있다 — 표를 읽는 검사들은 펼친 상태로 본다.
+// 세부 표(현재가·평단·투입금 …)는 기본으로 접혀 있음 — 표를 읽는 검사들은 펼친 상태로 봄.
 beforeEach(() => window.localStorage.setItem(DETAILS_KEY, "open"));
 
 const ok = { text: "실행 중", tone: "ok" as const };
@@ -189,7 +189,7 @@ describe("실행 상태 카드", () => {
     expect(container.querySelector(".exit-head")?.textContent).toBe("청산 기준 · 평단 대비 가격");
     const ends = [...container.querySelectorAll(".exit-end")].map((e) => e.textContent);
     expect(ends).toEqual(["손절 -3%97.00", "익절 +5%105.00"]);
-    // 평단은 막대 아래 작은 눈금 이름(가격은 풍선 도움말), 꼬리표는 '지금'만(가격 · %는 풍선 도움말 — 그래프 · 큰 숫자에 이미 있음).
+    // 평단은 막대 아래 작은 눈금 이름(가격은 풍선 도움말), 꼬리표는 '지금'만(가격·%는 풍선 도움말 — 그래프·큰 숫자에 이미 있음).
     const entry = container.querySelector(".exit-entry") as HTMLElement;
     expect(entry.textContent).toBe("평단");
     expect(entry.title).toBe("평단 100.00 USDT");

@@ -153,7 +153,7 @@
   margin-top: 4px;
   border-top-color: color-mix(in srgb, var(--brand) 45%, var(--border));
 }
-/* 종료 확인 칸 — 평가손익 · 정리할 수량 · 할 일 · 되돌릴 수 없어요 */
+/* 종료 확인 칸 — 평가손익·정리할 수량·할 일·'되돌릴 수 없어요' */
 .sheet-box {
   display: flex;
   flex-direction: column;

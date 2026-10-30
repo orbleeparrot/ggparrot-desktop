@@ -40,7 +40,7 @@
   font-weight: var(--fw-bold);
   letter-spacing: -0.02em;
 }
-/* 위 단추 둘 — [파일에서 추가] · [웹에서 고르기]. 노랑은 줄의 [+ 추가]에만 쓰므로 여기는 중립색. */
+/* 위 단추 둘 — [파일에서 추가]·[웹에서 고르기]. 노랑은 줄의 [+ 추가]에만 쓰므로 여기는 중립색. */
 .lib-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -65,7 +65,7 @@
   flex-direction: column;
   gap: 10px;
 }
-/* 묶음 머리 — 이름 · 개수 · 선(내 매크로 목록과 같은 모양) */
+/* 묶음 머리 — 이름·개수·선(내 매크로 목록과 같은 모양) */
 .lib-group {
   display: flex;
   align-items: center;

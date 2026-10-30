@@ -4,7 +4,7 @@
 //! 보관 한도 때문에 잃은 수는 서버 확인과 따로 셈. 주문 대기열이 아님.
 use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
-use rusqlite::{params, params_from_iter, Connection, OptionalExtension, TransactionBehavior};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -414,19 +414,18 @@ impl EventOutbox {
 
     fn connect(&self) -> Result<Connection, String> {
         let memory = self.path.as_os_str() == ":memory:";
-        if !memory {
-            if let Some(parent) = self.path.parent() {
-                if !parent.as_os_str().is_empty() {
-                    let mut builder = std::fs::DirBuilder::new();
-                    builder.recursive(true);
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::DirBuilderExt;
-                        builder.mode(0o700);
-                    }
-                    builder.create(parent).map_err(|e| e.to_string())?;
-                }
+        if !memory
+            && let Some(parent) = self.path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            let mut builder = std::fs::DirBuilder::new();
+            builder.recursive(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
             }
+            builder.create(parent).map_err(|e| e.to_string())?;
         }
         let mut conn =
             if memory { Connection::open_in_memory() } else { Connection::open(&self.path) }.map_err(db_err)?;

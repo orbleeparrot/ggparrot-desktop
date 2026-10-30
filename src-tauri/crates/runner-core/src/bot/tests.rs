@@ -1614,19 +1614,23 @@ async fn entry_checks_reach_the_screen_and_new_checks_become_one_line() {
 
 #[test]
 fn martingale_min_order_reason_names_the_small_field_not_the_budget() {
-    // 2026-10-17 업비트 47,000원 · 처음 살 금액 4,700원 — 거래소 문구는 '매크로 투자 금액을 올리세요'라고 했다.
+    // 업비트 47,000원·처음 살 금액 4,700원 — 거래소 문구는 '매크로 투자 금액을 올리세요'라고 엉뚱한 칸을 가리킴.
     let h = serde_json::json!({"rule_type": "H", "symbol": "KRW-GTC", "params": {
         "initial_capital": 47000, "base_order_size": 4700, "safety_order_size": 4700,
         "safety_order_volume_scale": 1.0, "max_safety_orders": 5}});
     assert_eq!(
         super::martingale_min_order_reason(&h, "upbit", "under_min_total_bid").as_deref(),
-        Some("처음 살 금액 4,700원이 업비트 최소 주문 금액 5,000원보다 적어요. 웹 직접 만들기에서 처음 살 금액 · 첫 추가매수 금액을 5,000원 이상으로 올리세요.")
+        Some(
+            "처음 살 금액 4,700원이 업비트 최소 주문 금액 5,000원보다 적어요. 웹 직접 만들기에서 처음 살 금액 · 첫 추가매수 금액을 5,000원 이상으로 올리세요."
+        )
     );
     let small_safety = serde_json::json!({"rule_type": "H", "params": {
         "base_order_size": 9000, "safety_order_size": 3000, "max_safety_orders": 3}});
-    assert!(super::martingale_min_order_reason(&small_safety, "bithumb", "under_min_total")
-        .unwrap()
-        .starts_with("추가매수 금액 3,000원이 빗썸 최소 주문 금액 5,000원보다 적어요."));
+    assert!(
+        super::martingale_min_order_reason(&small_safety, "bithumb", "under_min_total")
+            .unwrap()
+            .starts_with("추가매수 금액 3,000원이 빗썸 최소 주문 금액 5,000원보다 적어요.")
+    );
     // 마틴게일이 아니거나 다른 오류거나 바이낸스면 거래소 문구 그대로.
     let a = serde_json::json!({"rule_type": "A", "params": {"initial_capital": 3000}});
     assert_eq!(super::martingale_min_order_reason(&a, "upbit", "under_min_total_bid"), None);

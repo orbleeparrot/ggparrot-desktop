@@ -1,14 +1,14 @@
-//! **D — 그리드.** 정해진 가격대를 칸으로 나눠, 내려오면 사고 한 칸 오르면 판다.
+//! **D — 그리드.** 정해진 가격대를 칸으로 나눠, 내려오면 사고 한 칸 오르면 팖.
 //!
-//! 칸마다 **독립**이다 — 2번 칸에서 산 물량은 3번 칸에 닿으면 그것만 팔고, 다른 칸은
-//! 그대로 둔다. 그래서 장부도 칸별 묶음으로 들고 있는다(번호로 기억한다 — 자리로 기억하면
-//! 앞 묶음이 팔릴 때마다 가리키는 곳이 밀린다).
+//! 칸마다 **독립**임 — 2번 칸에서 산 물량은 3번 칸에 닿으면 그것만 팔고, 다른 칸은
+//! 그대로 둠. 그래서 장부도 칸별 묶음으로 들고 있음(번호로 기억함 — 자리로 기억하면
+//! 앞 묶음이 팔릴 때마다 가리키는 곳이 밀림).
 //!
 //! 가격대를 벗어나면(`band_exit_action`):
-//! * `stop` — 전부 팔고 규칙을 멈춘다. 가격대를 벗어난 그리드는 더 이상 그 가격대가 아니다.
-//! * `hold` — 새로 사지 않고 들고 있는다.
+//! * `stop` — 전부 팔고 규칙을 멈춤. 가격대를 벗어난 그리드는 더 이상 그 가격대가 아님.
+//! * `hold` — 새로 사지 않고 들고 있음.
 //!
-//! 한 봉이 여러 칸을 지나는 일은 실제로 있다(급락). 그때는 그 봉에서 여러 칸을 한꺼번에 산다.
+//! 한 봉이 여러 칸을 지나는 일은 실제로 있음(급락). 그때는 그 봉에서 여러 칸을 한꺼번에 삼.
 
 use std::collections::BTreeMap;
 
@@ -17,9 +17,9 @@ use crate::engine::levels::Levels;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BandExit {
-    /// 가격대를 벗어나면 전부 팔고 멈춘다.
+    /// 가격대를 벗어나면 전부 팔고 멈춤.
     Stop,
-    /// 가격대를 벗어나면 새로 사지 않고 들고 있는다.
+    /// 가격대를 벗어나면 새로 사지 않고 들고 있음.
     Hold,
 }
 
@@ -27,7 +27,7 @@ pub enum BandExit {
 pub enum GridMode {
     /// 같은 **금액** 간격.
     Arithmetic,
-    /// 같은 **비율** 간격 — 낮은 쪽이 촘촘해진다.
+    /// 같은 **비율** 간격 — 낮은 쪽이 촘촘해짐.
     Geometric,
 }
 
@@ -35,12 +35,12 @@ pub enum GridMode {
 pub struct Grid {
     pub lower: f64,
     pub upper: f64,
-    /// 칸 경계들. 칸이 `n` 개면 경계는 `n + 1` 개다.
+    /// 칸 경계들. 칸이 `n`개면 경계는 `n + 1`개임.
     pub levels: Vec<f64>,
     pub band_exit: BandExit,
     /// 칸 하나에 넣는 자기 돈.
     pub per_grid: f64,
-    /// 칸 번호 → 그 칸에서 산 묶음의 번호. 한 칸 위에 닿으면 그 묶음만 판다.
+    /// 칸 번호 → 그 칸에서 산 묶음의 번호. 한 칸 위에 닿으면 그 묶음만 팖.
     holdings: BTreeMap<usize, u64>,
 }
 
@@ -72,7 +72,7 @@ impl Grid {
         Self { lower, upper, levels, band_exit, per_grid, holdings: BTreeMap::new() }
     }
 
-    /// 지금 사려고 기다리는 칸들의 가격. 화면에 그리는 선이다.
+    /// 지금 사려고 기다리는 칸들의 가격. 화면에 그리는 선임.
     pub fn open_buy_levels(&self) -> Vec<f64> {
         (0..self.levels.len().saturating_sub(1))
             .filter(|i| !self.holdings.contains_key(i))
@@ -92,20 +92,20 @@ impl Grid {
 
 impl Strategy for Grid {
     fn on_bar(&mut self, ctx: &mut SimContext<'_>, bar: &Bar) {
-        // 손절 · 보유시간 · 한도는 **장부 전체**를 비울 수 있다 — 그러면 칸 기억도 함께 버린다.
+        // 손절·보유시간·한도는 **장부 전체**를 비울 수 있음 — 그러면 칸 기억도 함께 버림.
         if ctx.common_risk(bar) {
             self.holdings.clear();
             return;
         }
 
-        // 가격대를 벗어났는가.
+        // 가격대를 벗어났는지.
         if bar.c > self.upper || bar.c < self.lower {
             if self.band_exit == BandExit::Stop {
                 ctx.close_all(bar.c, bar.c, false, "");
                 self.holdings.clear();
                 ctx.stop_rule();
             }
-            // hold: 새로 사지 않고 들고 있는다.
+            // hold: 새로 사지 않고 들고 있음.
             return;
         }
         if ctx.is_stopped() {
@@ -113,7 +113,7 @@ impl Strategy for Grid {
         }
 
         // 팔기 — 들고 있는 칸 중 **한 칸 위**에 고가가 닿은 것.
-        // 낮은 칸부터 본다(서버와 같은 순서 — 체결 순서가 기록에 그대로 남는다).
+        // 낮은 칸부터 봄(서버와 같은 순서 — 체결 순서가 기록에 그대로 남음).
         let ready: Vec<usize> = self.holdings.keys().copied().filter(|i| bar.h >= self.levels[i + 1]).collect();
         for level in ready {
             let sell_price = self.levels[level + 1];
@@ -132,16 +132,18 @@ impl Strategy for Grid {
                 continue;
             }
             let buy_price = self.levels[level];
-            if bar.l <= buy_price && buy_price <= self.upper && ctx.cash() >= self.per_grid {
-                if let Some(lot_id) = ctx.open_lot(self.per_grid, buy_price, bar.c, "진입") {
-                    self.holdings.insert(level, lot_id);
-                }
+            if bar.l <= buy_price
+                && buy_price <= self.upper
+                && ctx.cash() >= self.per_grid
+                && let Some(lot_id) = ctx.open_lot(self.per_grid, buy_price, bar.c, "진입")
+            {
+                self.holdings.insert(level, lot_id);
             }
         }
     }
 
     fn levels(&self, _avg_entry: f64, _last_bar: Option<&Bar>) -> Levels {
-        // 칸마다 독립이라 선이 여러 개다 — 사려고 기다리는 칸과 팔려고 기다리는 칸.
+        // 칸마다 독립이라 선이 여러 개임 — 사려고 기다리는 칸과 팔려고 기다리는 칸.
         Levels { buy_levels: self.open_buy_levels(), sell_levels: self.open_sell_levels(), ..Default::default() }
     }
 

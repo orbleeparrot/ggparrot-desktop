@@ -8,6 +8,7 @@ import {
   EXCHANGE_LABELS,
   initialModel,
   IMPORT_SAMPLES,
+  keyText,
   MOCK_NEXT_VERSION,
   MOCK_VERSION,
   newRun,
@@ -241,7 +242,7 @@ export function createMockBackend(
   }
 
   /** 설정 카드에서 연 도우미의 대상 — 칸이 곧 사이트(Rust `KeySlot::binance_env`).
-   *  연습 칸은 시장도 칸이 정하고, 실거래 칸은 그 칸을 쓰는 맨 앞 실행(실전 · 모의)의 시장. */
+   *  연습 칸은 시장도 칸이 정하고, 실거래 칸은 그 칸을 쓰는 맨 앞 실행(실전·모의)의 시장. */
   function slotTarget(exchange: Exchange, slot: KeySlot, market?: Market): WizardTarget {
     if (exchange !== "binance") return { exchange, slot, env: "", market: "spot" };
     if (slot === "binance_testnet") return { exchange, slot, env: "testnet", market: "spot" };
@@ -442,7 +443,7 @@ export function createMockBackend(
       const w = mockEntryWait(Date.now(), 0);
       return { waiting: true, sentence: w.sentence, typical: w.typical, interval_label: w.interval_label };
     },
-    // 모의 모드에서는 서버가 없다 — 요청을 받아 '바꾼 것처럼' 답만 한다(실제 반영은 서버 몫).
+    // 모의 모드에서는 서버가 없음 — 요청을 받아 '바꾼 것처럼' 답만 함(실제 반영은 서버 몫).
     change_run_settings: ({ runId, applyMode }) => {
       const run = findRun(runId).run;
       const applied = applyMode === "immediate" || !run?.inPosition;
@@ -496,7 +497,7 @@ export function createMockBackend(
     },
     set_slot_key: ({ slot, field, value }) => {
       const s = slot as KeySlot;
-      m.keys[s][field as KeyField] = String(value ?? "").trim();
+      m.keys[s][field as KeyField] = keyText(value);
       scheduleCheck(s);
     },
     reveal_slot_key: ({ slot, field }) => m.keys[slot as KeySlot][field as KeyField],
@@ -515,7 +516,7 @@ export function createMockBackend(
       window.open(site[slot as KeySlot], "_blank", "noopener");
     },
     set_member_key: ({ value }) => {
-      m.member = String(value ?? "").trim();
+      m.member = keyText(value);
     },
     reveal_member_key: () => m.member,
     resolve_member_key: ({ accept }) => {
@@ -649,7 +650,7 @@ export function createMockBackend(
     }
   }
 
-  /** ?demo=wait — 진입 대기 검토용. 2026-10-17 빗썸 KRW-FORT 변동성 돌파(15분 · 20봉 평균 필터) 10:40 그대로:
+  /** ?demo=wait — 진입 대기 검토용. 2026-10-17 빗썸 KRW-FORT 변동성 돌파(15분·20봉 평균 필터) 10:40 그대로:
    *  고가가 사는 선을 넘었지만 마감가가 20봉 평균 아래라 아직 안 삼(서버 entry_wait.py 계산 값). */
   function seedWait(kind: "breakout" | "rsi" = "breakout") {
     const now = Date.now();
@@ -724,7 +725,7 @@ export function createMockBackend(
       log: [],
     };
     if (kind === "rsi") {
-      // 2026-10-17 업비트 KRW-GTC RSI(14) 40/70 · 15분 봉(서버 entry_wait.py 계산 값) — 내려가야 사는 값 눈금.
+      // 2026-10-17 업비트 KRW-GTC RSI(14) 40/70·15분 봉(서버 entry_wait.py 계산 값) — 내려가야 사는 값 눈금.
       Object.assign(fort.macro, {
         title: "GTC RSI",
         symbol: "KRW-GTC",
@@ -770,8 +771,8 @@ export function createMockBackend(
   }
 
   /** ?demo=pnl — 손익·청산 기준 막대 검토용. 정해진 평단·현재가로 보유 중인 매크로 여섯 개(신호 없이 시세만 흔듦).
-   *  업비트 원화 현물(실전·수수료 반영, 수량 0.00127) · 바이낸스 선물 롱 트레일링(실전·수수료 모름) · 선물 숏(모의) ·
-   *  바이낸스 현물 USDT 익절만(+0.15% — 수수료 반영하면 손실) · 빗썸 손절만(익절은 신호) ·
+   *  업비트 원화 현물(실전·수수료 반영, 수량 0.00127)·바이낸스 선물 롱 트레일링(실전·수수료 모름)·선물 숏(모의) ·
+   *  바이낸스 현물 USDT 익절만(+0.15% — 수수료 반영하면 손실)·빗썸 손절만(익절은 신호) ·
    *  업비트 싼 코인(KRW-ZAMA, 수량 499.75012494 — 긴 수량이 잘리지 않는지). */
   function seedPnl() {
     const now = Date.now();
@@ -818,7 +819,7 @@ export function createMockBackend(
   }
 
   /** ?demo=settings — 설정 검토용. 업비트는 연결됐지만 원화 잔고가 모자란 상태(주의 안내),
-   *  바이낸스 테스트넷 · 데모는 비어 있어 한 줄로 접힘. */
+   *  바이낸스 테스트넷·데모는 비어 있어 한 줄로 접힘. */
   function seedSettings() {
     m.keys.upbit = {
       access: "upAccessDemo0000",

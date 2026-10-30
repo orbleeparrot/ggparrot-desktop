@@ -1,5 +1,5 @@
-// 끝난 실행 결과 — 종료 이유 · 이번 실행 실현손익(수수료 반영) 큰 숫자 · 투자 금액 대비 % · 거래 · 낸 수수료 · 실행 시간 · 마지막 가격.
-// - 모두 실행기가 이미 가진 값(Rust 봇이 보낸 실현손익 · 수수료, 활동 기록의 체결 줄).
+// 끝난 실행 결과 — 종료 이유·이번 실행 실현손익(수수료 반영) 큰 숫자·투자 금액 대비 %·거래·낸 수수료·실행 시간·마지막 가격.
+// - 모두 실행기가 이미 가진 값(Rust 봇이 보낸 실현손익·수수료, 활동 기록의 체결 줄).
 // - 다시 시작은 위 조작 줄의 [시작]이 같은 설정으로 함 — 여기 단추를 또 두지 않음.
 import {
   formatElapsed,
@@ -13,7 +13,7 @@ import {
 import type { Activity, MacroInfo, RunMode, RunStatus } from "../../types";
 import { WEB_GROSS_NOTE } from "./StatusCard";
 
-/** 이번 실행의 진입 · 정리 체결 수 — 이번 시작 줄부터 셈. 시작 줄이 기록에서 밀려났으면 모름(null). */
+/** 이번 실행의 진입·정리 체결 수 — 이번 시작 줄부터 셈. 시작 줄이 기록에서 밀려났으면 모름(null). */
 export function tradeCounts(items: Activity[], startedAt: number): { buys: number; sells: number } | null {
   // 시작 줄은 실행 시작 시각 무렵에 남음 — 몇 초 앞서 남을 수 있어 여유를 둠.
   let from = -1;

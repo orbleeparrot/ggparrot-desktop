@@ -28,7 +28,7 @@ describe("투자 금액", () => {
   it("금액과 1회 주문 상한을 보이고, 바꾸면 set_run_capital 을 보낸다", async () => {
     const ctx = withContext(<CapitalRow slot={makeSlot({ macro: binanceMacro })} />);
     expect(screen.getByText("500 USDT")).toBeTruthy();
-    // 줄글 대신 칸 — 이름 · 값.
+    // 줄글 대신 칸 — 이름·값.
     expect(screen.getByText("한 번에 최대").nextElementSibling?.textContent).toBe("100 USDT");
     expect(screen.getByText("손절").nextElementSibling?.textContent).toBe("평단 대비 가격 -3%");
     fireEvent.click(screen.getByRole("button", { name: "바꾸기" }));

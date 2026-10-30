@@ -69,7 +69,7 @@ function macro(over: Partial<MacroInfo> & Pick<MacroInfo, "title" | "exchange" |
   };
 }
 
-/** 안전 설정 한 줄 → 이름 · 값 — Rust macro_info::risk_items와 같은 낱말로 나눔(미리보기용). */
+/** 안전 설정 한 줄 → 이름·값 — Rust macro_info::risk_items와 같은 낱말로 나눔(미리보기용). */
 function riskItemsOf(risk: string[]): MacroInfo["riskItems"] {
   const names = ["하루 최대 손실", "최대 보유", "손절"];
   return risk.map((r) => {
@@ -283,7 +283,7 @@ export interface MockRun {
   holdPrice?: number;
   /** 미리보기 스크린샷용(?demo=many) — 서버 연결이 계속 끊긴 상태('실행 중 · 서버 재시도 중'). */
   offline?: boolean;
-  /** 미리보기 스크린샷용(?demo=wait) — 서버가 보낸 것처럼 고정한 진입 대기 값(신호 · 매수 없이). */
+  /** 미리보기 스크린샷용(?demo=wait) — 서버가 보낸 것처럼 고정한 진입 대기 값(신호·매수 없이). */
   fixedWait?: EntryWait;
 }
 
@@ -313,6 +313,10 @@ export interface Model {
   nextRun: number;
   imported: number;
 }
+
+/** 키 입력 칸 값 → 앞뒤 공백을 뺀 글자. 숫자는 글자로, 그 밖(null·객체)은 빈 글자(객체를 "[object Object]"로 바꾸지 않음). */
+export const keyText = (value: unknown): string =>
+  (typeof value === "string" ? value : typeof value === "number" ? String(value) : "").trim();
 
 export const emptyKey = (): MockKey => ({ access: "", secret: "", remembered: false, status: "empty", problem: "" });
 

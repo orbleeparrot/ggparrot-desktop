@@ -141,7 +141,7 @@ fn pnl_band(pct: f64) -> f64 {
 }
 
 impl Core {
-    /// 상태 스냅샷을 반영함. 보유 중 평가손익이 새 구간(±2 · 5 · 10 …%)에 처음 들어가면 알림을 돌려줌 —
+    /// 상태 스냅샷을 반영함. 보유 중 평가손익이 새 구간(±2·5·10 …%)에 처음 들어가면 알림을 돌려줌 —
     /// 같은 쪽 더 깊은 구간이거나 반대쪽 구간일 때만(경계에서 오르내려도 반복하지 않음). 무포지션이면 처음부터 셈.
     /// 실행기 화면과 같은 수수료 반영 값을 쓰고, 모르면 평단 대비 가격(수수료 전)이라고 밝힘.
     pub(crate) fn apply_snapshot(&mut self, id: &str, snap: Value) -> Option<Alert> {
@@ -171,7 +171,7 @@ impl Core {
         Some(Alert::once(&title, &format!("지금 평가손익 {}{basis}", runner_core::money::signed_pct(pct))))
     }
 
-    /// 활동 한 줄을 OS 알림으로 띄울지 — 체결(매수 · 매도)은 늘, 오류 · 위험(빨강) · 서버가 실행을 끝냄도.
+    /// 활동 한 줄을 OS 알림으로 띄울지 — 체결(매수·매도)은 늘, 오류·위험(빨강)·서버가 실행을 끝냄도.
     /// 판 체결의 빨강은 손실 색일 뿐이라 체결 알림으로 한 번만 띄움. 서버 연결이 돌아온 소식은 끊겼다고
     /// 알렸을 때만(배포로 잠깐 끊겼다 붙는 건 알리지 않음).
     pub(crate) fn activity_alert(
@@ -195,7 +195,7 @@ impl Core {
         }
     }
 
-    /// 서버와 5분 넘게 끊겼으면(실전 · 테스트넷) 한 번 알림. 연결이 돌아온 활동에서 다시 켬.
+    /// 서버와 5분 넘게 끊겼으면(실전·테스트넷) 한 번 알림. 연결이 돌아온 활동에서 다시 켬.
     pub(crate) fn offline_alert(&mut self, id: &str) -> Option<Alert> {
         let r = self.run_mut(id)?;
         let (what, tone) = r.degraded()?;
@@ -301,9 +301,10 @@ mod tests {
         assert_eq!(a.body, "지금 평가손익 +2.20% (수수료 전)");
         // 수수료 반영 값이 있으면 그 값으로 — 가격은 +2% 를 넘었어도 수수료를 빼면 아직이면 조용함
         let mut c = core_running();
-        assert!(c
-            .apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 2.1, "unrealized_net_pct": 1.9}))
-            .is_none());
+        assert!(
+            c.apply_snapshot("a", json!({"in_position": true, "unrealized_pct": 2.1, "unrealized_net_pct": 1.9}))
+                .is_none()
+        );
     }
 
     #[tokio::test]

@@ -8,7 +8,7 @@ import { mergeAppLog } from "./appLog";
 export interface AppLog {
   /** 오래된 것 → 최근 순서. 최근 500줄. */
   entries: AppLogEntry[];
-  /** loading: 처음 읽는 중 · ready: 읽음 · error: get_app_log 실패(이벤트로 온 줄은 그대로 보임). */
+  /** loading: 처음 읽는 중·ready: 읽음·error: get_app_log 실패(이벤트로 온 줄은 그대로 보임). */
   status: "loading" | "ready" | "error";
   /** 실패했을 때 [다시 불러오기]. */
   reload(): void;

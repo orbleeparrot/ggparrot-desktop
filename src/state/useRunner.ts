@@ -90,7 +90,7 @@ export function useRunner(onNotice: (n: Notice) => void): Runner {
   useEffect(() => {
     let alive = true;
     const unlisten: Array<() => void> = [];
-    (async () => {
+    void (async () => {
       // 첫 get_state 응답이 그사이 온 더 새 상태를 덮지 않게 — 이벤트가 먼저 오면 첫 응답은 버림.
       let pushed = false;
       try {

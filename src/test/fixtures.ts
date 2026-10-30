@@ -213,7 +213,7 @@ export function act(over: Partial<Activity> = {}): Activity {
   };
 }
 
-/** 진입 대기(서버 entry_wait 모양) — 변동성 돌파 · 1시간 봉. */
+/** 진입 대기(서버 entry_wait 모양) — 변동성 돌파·1시간 봉. */
 export function makeEntryWait(over: Partial<EntryWait> = {}): EntryWait {
   return {
     rule: "I",

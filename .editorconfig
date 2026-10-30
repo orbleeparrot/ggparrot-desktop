@@ -1,5 +1,5 @@
 # https://editorconfig.org — 편집기마다 같은 공백·줄 끝·인코딩을 씀.
-# 포맷 자체는 Prettier(TS·CSS·JSON·YAML)와 rustfmt(Rust)가 맡음. 줄 폭은 둘 다 120.
+# 포맷 자체는 oxfmt(TS·CSS·JSON·YAML)와 rustfmt(Rust)가 맡음. 줄 폭은 둘 다 120.
 root = true
 
 [*]

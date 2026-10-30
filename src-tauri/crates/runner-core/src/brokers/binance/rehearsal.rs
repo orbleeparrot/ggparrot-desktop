@@ -2,8 +2,8 @@
 use serde_json::Value;
 
 use super::parse::{asset_row, futures_available, parse_filters, spot_free};
-use super::{BinanceBroker, API_RESTRICTIONS_PATH, REHEARSE_OK};
-use crate::brokers::{py_truthy, Broker, BrokerError};
+use super::{API_RESTRICTIONS_PATH, BinanceBroker, REHEARSE_OK};
+use crate::brokers::{Broker, BrokerError, py_truthy};
 use crate::money::price_text;
 
 /// 선물 첫 주문에 더 남겨 두는 몫(주문 금액 대비) — 시장가 수수료(0.05%)와 체결가 차이.

@@ -1,17 +1,17 @@
 //! 서버 연동 클라이언트 — 회원 키로 인증하고 구동 상태·명령 결과·실행 기록만 보냄(거래소 키는 절대 안 보냄).
 //! 세션 시작·heartbeat·종료 보고, 서버 오류 문장·재시도 대기 읽기, 티켓 교환·다운로드 정보.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::SERVER_LINK_LEVEL;
 use crate::brokers::LogFn;
 use crate::outbox::{self, EventOutbox};
 use crate::protocol::PROTOCOL_CLAIM_PATH;
-use crate::SERVER_LINK_LEVEL;
 
 pub const START_ATTEMPTS: usize = 4;
 pub const MAX_RETRIES: usize = 3;
@@ -103,8 +103,8 @@ pub struct HeartbeatReply {
     pub rejected: u16,
     /// 서버가 종료를 지시한 이유(세션이 없어짐·이미 끝남 등). 비어 있으면 웹에서 누른 종료임.
     pub reason: String,
-    /// 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보내는 '무엇을 · 얼마나 · 언제'
-    /// (조건 문장 · 거리 · 막대 · 사는 선 · 다음 확인 · 확인 기록). 산 뒤·해당 없는 매크로·옛 서버면 None.
+    /// 진입 대기 — 조건을 기다리는 매크로가 아직 안 샀을 때 서버가 보내는 '무엇을·얼마나·언제'
+    /// (조건 문장·거리·막대·사는 선·다음 확인·확인 기록). 산 뒤·해당 없는 매크로·서버가 안 보내면 None.
     pub entry_wait: Option<Value>,
     /// 구동 중 설정(투자 금액·안전망)과 그 지문. 이 기능을 모르는 서버·옛 세션이면 None.
     pub settings: Option<Value>,
@@ -173,7 +173,7 @@ struct Inner {
     namespace: String,
     session_id: Mutex<Option<i64>>,
     macro_origin: Mutex<String>,
-    /// 이 세션의 판단을 누가 하는가 — 서버가 시작 응답으로 정한다. 모르면 "server".
+    /// 이 세션의 판단을 누가 하는지 — 서버가 시작 응답으로 정함. 모르면 "server".
     decides: Mutex<String>,
     state: Mutex<EventState>,
     on_event_warning: Mutex<Option<LogFn>>,
@@ -230,7 +230,7 @@ impl ServerClient {
     pub fn session_id(&self) -> Option<i64> {
         *self.inner.session_id.lock().unwrap()
     }
-    /// 이 세션을 실행기가 직접 판단하는가. 서버가 시작 응답으로 정한 값이다.
+    /// 이 세션을 실행기가 직접 판단하는지. 서버가 시작 응답으로 정한 값임.
     pub fn decides_locally(&self) -> bool {
         self.inner.decides.lock().unwrap().as_str() == "local"
     }
@@ -580,7 +580,7 @@ impl ServerClient {
             Some(Value::String(s)) => s.clone(),
             _ => String::new(),
         };
-        // 판단 주체. 모르면 서버 — 가장 보수적인 쪽(지금까지의 동작)이다.
+        // 판단 주체. 모르면 서버 — 가장 보수적인 쪽임.
         *self.inner.decides.lock().unwrap() = match data.get("decides") {
             Some(Value::String(s)) if s == "local" => "local".to_string(),
             _ => "server".to_string(),
@@ -754,7 +754,7 @@ fn is_loopback(base: &str) -> bool {
 
 /// 구동 중 설정 변경을 서버에 요청함 — 실행기 화면이 부름.
 ///
-/// **실행기가 혼자 바꾸지 않는다.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
+/// **실행기가 혼자 바꾸지 않음.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤, 다음
 /// heartbeat의 `settings`로 바뀐 값이 돌아옴(그때 봇이 반영함). 여기서 바로 고치면 서버
 /// 전략과 실행기 설정이 갈라져 어느 쪽이 진짜인지 알 수 없게 됨.
 ///
@@ -768,8 +768,8 @@ pub async fn change_settings(
     apply_mode: &str,
 ) -> Result<Value, String> {
     let base = secure_base(base)?;
-    // 세션 번호는 **본문**에 담는다 — 주소는 중계 서버·접근 기록에 그대로 남는다.
-    // start·heartbeat·stopped 도 같은 이유로 본문에 담는다.
+    // 세션 번호는 **본문**에 담음 — 주소는 중계 서버·접근 기록에 그대로 남음.
+    // start·heartbeat·stopped도 같은 이유로 본문에 담음.
     let body = json!({
         "session_id": session_id, "changes": changes, "apply_mode": apply_mode, "source": "runner",
     });
@@ -793,7 +793,7 @@ pub async fn change_settings(
 mod claim;
 mod preview;
 mod recovery;
-pub use claim::{claim_ticket, ClaimError, ClaimedLaunch};
+pub use claim::{ClaimError, ClaimedLaunch, claim_ticket};
 pub use preview::{entry_preview, is_waiting_macro};
 
 #[cfg(test)]

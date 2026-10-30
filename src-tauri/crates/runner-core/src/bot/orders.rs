@@ -162,7 +162,9 @@ impl Bot {
             }
         } else {
             let why = if message.is_empty() { String::new() } else { format!("({message})") };
-            format!("바이낸스에서 주문을 거절했어요{why}. 잔고 · 최소 주문 금액 · 키 권한을 확인하세요. 주문은 들어가지 않았어요.")
+            format!(
+                "바이낸스에서 주문을 거절했어요{why}. 잔고 · 최소 주문 금액 · 키 권한을 확인하세요. 주문은 들어가지 않았어요."
+            )
         };
         (text, code.to_string(), no_funds)
     }

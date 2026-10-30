@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::BinanceBroker;
-use crate::brokers::{cool, cooling, network_error, py_str, retry_after_secs, BrokerError};
+use crate::brokers::{BrokerError, cool, cooling, network_error, py_str, retry_after_secs};
 use crate::clock::unix_ms;
 
 /// 바이낸스 요청 하나의 제한 — 멈춘 연결이 손절·하트비트·정지를 붙잡지 않게.
@@ -17,11 +17,11 @@ impl BinanceBroker {
     pub(super) async fn sync_time(&self) {
         let path = if self.futures() { "/fapi/v1/time" } else { "/api/v3/time" };
         let before = unix_ms() as i64;
-        if let Ok(v) = self.call_once(reqwest::Method::GET, self.futures(), path, &[], false).await {
-            if let Some(server) = v.get("serverTime").and_then(Value::as_i64) {
-                let local = (before + unix_ms() as i64) / 2;
-                self.time_offset.store(server - local, Ordering::Relaxed);
-            }
+        if let Ok(v) = self.call_once(reqwest::Method::GET, self.futures(), path, &[], false).await
+            && let Some(server) = v.get("serverTime").and_then(Value::as_i64)
+        {
+            let local = (before + unix_ms() as i64) / 2;
+            self.time_offset.store(server - local, Ordering::Relaxed);
         }
     }
 

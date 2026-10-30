@@ -35,6 +35,7 @@ describe("명령 목록", () => {
   });
 
   it("Rust generate_handler!와 ipc.ts CommandMap의 이름이 같음", () => {
-    expect([...ts].sort()).toEqual([...rust].sort());
+    // 순서는 보지 않음 — 중복은 위 시험이 따로 봄.
+    expect(new Set(ts)).toEqual(new Set(rust));
   });
 });
