@@ -14,8 +14,8 @@ use runner_core::protocol::{Environment, parse_protocol_url};
 use runner_core::server::{self, ServerClient, StartError};
 use runner_core::setup_progress::SetupProgressReporter;
 use runner_core::types::{
-    Credentials, Exchange, KeyPair, KeySlot, LOCAL_SERVER_BASE, RunMode, exchange_label, macro_side, server_base,
-    session_payload,
+    Credentials, Exchange, KeyPair, KeySlot, LOCAL_SERVER_BASE, RunMode, exchange_label, macro_has_bundle_risk,
+    macro_leg_symbols, macro_side, server_base, session_payload,
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ pub const WEB_URL: &str = "https://gg-parrot.vercel.app/";
 
 use crate::state::{
     CAPITAL_LOCKED, CLAIM_BUSY_WAIT, Core, GuideStep, KeyCheckRecord, MEMBER_KEY_NEEDED, Notice, Run, RunData,
-    SavedRun, SlotStatus, StartReply, WizardTarget, now_ms,
+    RunBundle, SavedRun, SlotStatus, StartReply, WizardTarget, now_ms,
 };
 
 pub const EV_STATE: &str = "runner:state";

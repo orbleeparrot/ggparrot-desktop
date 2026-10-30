@@ -288,6 +288,20 @@ pub struct Run {
     pub data: Option<RunData>,
     pub activity: Vec<ActivityDto>,
     pub reporter: Option<Arc<SetupProgressReporter>>,
+    /// 묶음(포트폴리오)의 한 레그로 시작된 줄이면 어느 묶음의 몇 번째인지 (2026-10-30).
+    /// 묶음은 레그마다 **세션 하나 · 봇 하나 · 줄 하나**로 돈다 — 레그 하나는 지금까지
+    /// 돌려 온 단일 종목 실행과 똑같다. 이 값은 목록에서 같은 묶음끼리 붙여 보이고,
+    /// 종료를 묶음 단위로 걸 때만 쓴다.
+    pub bundle: Option<RunBundle>,
+}
+
+/// 한 묶음에서 갈라져 나온 줄의 자리표.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct RunBundle {
+    /// 한 번의 시작 묶음에 같은 값. 실행기가 만들어 서버에 보낸다.
+    pub key: String,
+    pub index: usize,
+    pub size: usize,
 }
 
 /// runs.json 한 줄 — 키는 들어가지 않음.
@@ -314,6 +328,9 @@ pub struct SavedRun {
     /// 실행 중에 저장됐으면 시작 시각. 다음에 켰을 때 남아 있으면 앱이 실행 도중 꺼진 것임.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_since: Option<i64>,
+    /// 묶음에서 갈라져 나온 줄이면 그 자리표 — 앱을 다시 켜도 같은 묶음으로 보이게.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle: Option<RunBundle>,
 }
 
 impl Run {
@@ -344,6 +361,7 @@ impl Run {
             data: None,
             activity: vec![],
             reporter: None,
+            bundle: None,
         }
     }
 
@@ -358,6 +376,7 @@ impl Run {
         r.original_capital = s.original_capital;
         r.web_linked = s.web_linked;
         r.mode = s.mode;
+        r.bundle = s.bundle;
         if r.mode == RunMode::Testnet && !r.exchange().is_some_and(Exchange::has_testnet) {
             r.mode = RunMode::Mock;
         }
@@ -384,6 +403,7 @@ impl Run {
             server_base: self.server_base.clone(),
             mode: self.mode,
             active_since: self.running().then(|| self.data.as_ref().map_or(0, |d| d.started_at)),
+            bundle: self.bundle.clone(),
         }
     }
 

@@ -19,7 +19,14 @@ pub(crate) struct LaunchJob {
     pub base: String,
     pub generation: u64,
     pub preflight: PreflightResult,
+    /// 묶음의 한 레그로 시작하는 경우 그 자리표. 단일 종목은 None — 그 길은 한 글자도 안 바뀜.
+    pub leg: Option<RunBundle>,
 }
+
+/// 묶음 한도가 걸린 묶음 — 서버도 같은 이유로 거절한다(app/runner_legs.py).
+pub(crate) const BUNDLE_RISK_HEAD: &str = "이 묶음은 아직 돌릴 수 없어요";
+pub(crate) const BUNDLE_RISK_BODY: &str =
+    "묶음 한도(한 번에 n종목 · 총 노출)를 건 묶음은 종목마다 갈라 돌릴 수 없어요. 한도를 빼고 다시 시작해 주세요.";
 
 /// 세션을 만든 뒤 봇을 띄우지 않고 끝내는 이유.
 #[derive(Debug, PartialEq)]
@@ -144,8 +151,15 @@ impl Shared {
         self.launch(id)
     }
 
-    /// 서버에 세션을 만들고 봇을 띄움.
+    /// 서버에 세션을 만들고 봇을 띄움. 묶음이면 레그마다 한 줄씩 갈라 띄움.
     pub(crate) fn launch(self: &S, id: &str) -> StartReply {
+        let legs = {
+            let c = self.lock();
+            c.run(id).map(|r| macro_leg_symbols(&r.macro_)).unwrap_or_default()
+        };
+        if legs.len() > 1 {
+            return self.launch_bundle(id, legs);
+        }
         let job = match self.lock().launch_job(id) {
             Ok(job) => job,
             Err(reply) => return reply,
@@ -154,6 +168,97 @@ impl Shared {
         let me = self.clone();
         tauri::async_runtime::spawn(async move { me.launch_async(job).await });
         StartReply::Started
+    }
+
+    /// 묶음 — 레그마다 **줄 하나 · 세션 하나 · 봇 하나**. 레그 하나는 지금까지 돌려 온
+    /// 단일 종목 실행과 똑같다.
+    ///
+    /// 서버에는 **원본 매크로를 그대로** 보내고 몇 번째 레그인지만 덧붙인다. 여기서
+    /// 쪼개 보내면 서명이 깨져 모든 묶음이 "고쳐서 돌린 파일" 로 기록된다. 봇을 세울
+    /// 레그 매크로는 시작 응답이 준다 — 자금 비중 셈을 양쪽에서 하면 레그 금액의 합이
+    /// 묶음 금액과 어긋난다.
+    pub(crate) fn launch_bundle(self: &S, id: &str, legs: Vec<String>) -> StartReply {
+        let base_job = match self.lock().launch_job(id) {
+            Ok(job) => job,
+            Err(reply) => return reply,
+        };
+        if macro_has_bundle_risk(&base_job.macro_) {
+            self.lock().start_failed(id, BUNDLE_RISK_HEAD, BUNDLE_RISK_BODY);
+            self.emit();
+            return StartReply::Blocked { message: format!("{BUNDLE_RISK_HEAD}
+{BUNDLE_RISK_BODY}") };
+        }
+        let key = format!("bun-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
+        let size = legs.len();
+        // 부모 줄은 여기서 '시작하는 중'을 푼다 — 실제로 도는 것은 아래 레그 줄들이다.
+        {
+            let mut c = self.lock();
+            if let Some(r) = c.run_mut(id) {
+                r.start_pending = false;
+            }
+            c.push_activity(
+                id,
+                "info",
+                "묶음을 나눠 시작해요",
+                &format!("{size}종목을 종목마다 한 줄씩 돌려요."),
+                &format!("묶음 {size}종목 — 종목마다 한 줄씩 시작해요: {}", legs.join(" · ")),
+                false,
+                "info",
+            );
+        }
+        for (index, symbol) in legs.iter().enumerate() {
+            let bundle = RunBundle { key: key.clone(), index, size };
+            let leg_id = match self.add_leg_run(&base_job, symbol, &bundle) {
+                Some(leg_id) => leg_id,
+                None => continue,
+            };
+            let mut payload = base_job.payload.clone();
+            payload["leg_index"] = json!(index);
+            payload["bundle_key"] = json!(key);
+            // 요청의 종목도 레그로 — 서버가 요청과 매크로가 어긋나면 막는다.
+            payload["symbol"] = json!(symbol);
+            let job = LaunchJob {
+                id: leg_id,
+                payload,
+                leg: Some(bundle),
+                macro_: base_job.macro_.clone(),
+                mode: base_job.mode,
+                creds: base_job.creds.clone(),
+                fp: base_job.fp.clone(),
+                base: base_job.base.clone(),
+                generation: base_job.generation,
+                preflight: base_job.preflight.clone(),
+            };
+            let me = self.clone();
+            tauri::async_runtime::spawn(async move { me.launch_async(job).await });
+        }
+        self.emit();
+        StartReply::Started
+    }
+
+    /// 레그 한 줄을 목록에 더한다. 매크로는 일단 원본 — 시작 응답이 레그 매크로를 주면
+    /// 그때 바꾼다(`launch_async`). 제목만 레그 종목으로 둬 목록이 헷갈리지 않게 한다.
+    fn add_leg_run(self: &S, base: &LaunchJob, symbol: &str, bundle: &RunBundle) -> Option<String> {
+        let leg_id = format!("run-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
+        let mut c = self.lock();
+        let parent = c.run(&base.id)?;
+        let mut run = Run::new(
+            leg_id.clone(),
+            base.macro_.clone(),
+            format!("{} · {}/{}", symbol, bundle.index + 1, bundle.size),
+            &parent.source.clone(),
+            base.base.clone(),
+        );
+        run.sig = parent.sig.clone();
+        run.user_macro_id = parent.user_macro_id;
+        run.library_file = parent.library_file.clone();
+        run.web_linked = parent.web_linked;
+        run.mode = base.mode;
+        run.preflight = Some(base.preflight.clone());
+        run.bundle = Some(bundle.clone());
+        run.start_pending = true;
+        c.runs.push(run);
+        Some(leg_id)
     }
 
     /// 세션 시작 → (실패면 알림) → 세션 기록 → 그사이 바뀌었으면 세션만 취소 → 봇 띄우기.
@@ -198,7 +303,13 @@ impl Shared {
             self.emit();
             return;
         }
+        // 묶음이면 봇이 돌릴 것은 **서버가 준 레그 매크로**다 — 비중 셈은 서버가 한다.
+        let leg_macro = started.get("leg_macro").filter(|v| v.is_object()).cloned();
         let LaunchJob { id, macro_, mode, creds, preflight, .. } = job;
+        let macro_ = leg_macro.unwrap_or(macro_);
+        if let Some(r) = self.lock().run_mut(&id) {
+            r.macro_ = macro_.clone();
+        }
         let symbol = runner_core::types::macro_symbol(&macro_);
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let handle = spawn_bot(macro_, creds, mode, server, Some(preflight), self.http.clone(), tx);
@@ -288,6 +399,7 @@ impl Core {
             base: run.server_base.clone(),
             generation: run.generation,
             preflight,
+            leg: None,
         };
         let r = self.run_mut(id).unwrap();
         r.start_pending = true;
