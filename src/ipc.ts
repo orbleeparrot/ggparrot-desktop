@@ -60,6 +60,7 @@ export interface CommandMap {
    *  쓰면 args·ret까지 명령으로 읽힘. */
   change_run_settings: { args: ChangeSettingsArgs; ret: ChangeSettingsReply };
   stop_run: { args: RunArg & { mode: StopMode }; ret: void };
+  stop_bundle: { args: { bundleKey: string; mode: StopMode }; ret: number };
   copy_activity: { args: RunArg; ret: void };
   open_market_page: { args: RunArg; ret: void };
   /** 껄무새 웹의 이 실행 기록 화면을 기본 브라우저로 엶. */

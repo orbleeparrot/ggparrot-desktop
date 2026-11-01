@@ -75,6 +75,7 @@ export function makeSlot(over: Partial<RunSlot> = {}): RunSlot {
     status: { text: "대기 중", tone: "muted" },
     attention: false,
     waits: false,
+    bundle: null,
     ...over,
   };
 }

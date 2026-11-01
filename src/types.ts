@@ -248,6 +248,21 @@ export interface RunSlot {
   attention: boolean;
   /** 조건을 기다리는 매크로(바로 사지 않음) — 시작 전 화면의 '바로 사지 않아요' 줄. */
   waits: boolean;
+  /**
+   * 묶음(포트폴리오)에서 갈라져 나온 줄이면 그 자리표. 단일 종목 실행은 null.
+   *
+   * 묶음은 레그마다 **세션 하나·봇 하나·줄 하나**로 돎 — 레그 하나는 지금까지
+   * 돌려 온 단일 종목 실행과 똑같음. 이 값은 목록에서 같은 묶음끼리 붙여 보이고,
+   * 종료를 묶음 단위로 걸 때만 씀.
+   */
+  bundle: RunBundle | null;
+}
+
+export interface RunBundle {
+  /** 한 번의 시작 묶음에 같은 값. */
+  key: string;
+  index: number;
+  size: number;
 }
 
 export interface SlotCard {
