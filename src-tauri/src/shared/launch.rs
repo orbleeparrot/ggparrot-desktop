@@ -19,8 +19,6 @@ pub(crate) struct LaunchJob {
     pub base: String,
     pub generation: u64,
     pub preflight: PreflightResult,
-    /// 묶음의 한 레그로 시작하는 경우 그 자리표. 단일 종목은 None — 그 길은 한 글자도 안 바뀜.
-    pub leg: Option<RunBundle>,
 }
 
 /// 레그 하나의 시작 요청 본문. **매크로는 원본 그대로 둠** — 쪼개서 보내면 서명이
@@ -231,7 +229,6 @@ impl Shared {
             let job = LaunchJob {
                 id: leg_id,
                 payload,
-                leg: Some(bundle),
                 macro_: base_job.macro_.clone(),
                 mode: base_job.mode,
                 creds: base_job.creds.clone(),
@@ -410,7 +407,6 @@ impl Core {
             base: run.server_base.clone(),
             generation: run.generation,
             preflight,
-            leg: None,
         };
         let r = self.run_mut(id).unwrap();
         r.start_pending = true;
