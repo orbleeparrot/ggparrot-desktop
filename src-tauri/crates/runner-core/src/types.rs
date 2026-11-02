@@ -408,6 +408,25 @@ pub fn macro_symbol(m: &Value) -> String {
     }
 }
 
+/// 묶음 매크로를 **레그 하나짜리 단일 종목 매크로**로 — 종목만 갈아끼우고 묶음 표시를 지움.
+///
+/// 목록에 올리는 줄이 쓸 매크로임. 서버에 보내는 본문은 **원본 그대로**여야 하므로
+/// (서명) 여기서 만든 것을 보내면 안 됨 — `leg_payload`가 따로 만듦.
+///
+/// 왜 필요한가: 레그 다섯 줄이 모두 묶음의 대표 종목을 들고 있으면 서로 "같은 거래소 ·
+/// 같은 종목이 이미 돈다"로 막혀 **다섯 줄이 전부 시작에 실패함**(실측 2026-11-02:
+/// "시작 중 설정이 바뀌어 매매를 시작하지 않았어요"). 자금 쪼개기는 서버가 하므로
+/// 여기서는 종목만 바꿈.
+pub fn leg_run_macro(base: &Value, symbol: &str) -> Value {
+    let mut m = base.clone();
+    if let Some(obj) = m.as_object_mut() {
+        obj.insert("symbol".into(), Value::String(symbol.trim().to_uppercase()));
+        obj.insert("symbols".into(), Value::Null);
+        obj.insert("legs".into(), Value::Null);
+    }
+    m
+}
+
 /// 묶음(포트폴리오) 매크로의 레그 종목들. 묶음이 아니면 빈 목록.
 ///
 /// **여기서 자금을 쪼개지 않음.** 비중 셈은 서버가 하고 실행기는 시작 응답의
@@ -579,5 +598,41 @@ mod bundle_tests {
         assert!(macro_has_bundle_risk(&json!({"bundle_risk": {"max_positions": 1}})));
         assert!(!macro_has_bundle_risk(&json!({"bundle_risk": null})));
         assert!(!macro_has_bundle_risk(&json!({"symbol": "BTCUSDT"})));
+    }
+}
+
+#[cfg(test)]
+mod leg_run_macro_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn bundle() -> Value {
+        json!({"symbol": "KRW-BTC", "exchange": "upbit", "rule_type": "I",
+               "symbols": ["KRW-BTC", "KRW-ETH", "KRW-XRP"], "legs": null})
+    }
+
+    /// 레그마다 제 종목을 들어야 함 — 다 같으면 서로 '같은 종목이 이미 돈다'로 막힘.
+    #[test]
+    fn each_leg_carries_its_own_symbol() {
+        let a = leg_run_macro(&bundle(), "KRW-ETH");
+        let b = leg_run_macro(&bundle(), "KRW-XRP");
+        assert_eq!(macro_symbol(&a), "KRW-ETH");
+        assert_eq!(macro_symbol(&b), "KRW-XRP");
+        assert_ne!(macro_symbol(&a), macro_symbol(&b));
+    }
+
+    /// 줄 하나는 더 이상 묶음이 아님 — 묶음으로 남으면 그 줄을 또 쪼개려 함.
+    #[test]
+    fn a_leg_is_no_longer_a_bundle() {
+        let leg = leg_run_macro(&bundle(), "KRW-ETH");
+        assert!(macro_leg_symbols(&leg).is_empty());
+    }
+
+    /// 나머지 칸은 그대로 — 자금 쪼개기는 서버가 함.
+    #[test]
+    fn everything_else_is_left_alone() {
+        let leg = leg_run_macro(&bundle(), "KRW-ETH");
+        assert_eq!(leg["exchange"], json!("upbit"));
+        assert_eq!(leg["rule_type"], json!("I"));
     }
 }
