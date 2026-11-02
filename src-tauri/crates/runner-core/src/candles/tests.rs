@@ -293,3 +293,57 @@ fn 다음_마감_시각은_공유_격자를_따른다() {
         }
     }
 }
+
+// --- 요청 한도 -------------------------------------------------------------
+//
+// 묶음은 레그마다 봉을 받음. 7종목이면 지표를 세우는 데만 21번을 보내는데, 업비트 시세
+// 한도는 초당 10건임 — 한꺼번에 보내면 열 개만 통과하고 나머지는 429로 죽음. 실제로
+// 0.23.2에서 7종목 묶음 중 4종목이 "거래소가 봉 요청을 거절했어요(HTTP 429)"로 끝났음.
+
+#[tokio::test]
+async fn 한꺼번에_와도_요청이_간격을_두고_나간다() {
+    let server = MockServer::start().await;
+    mount(&server, "/api/v3/klines", json!(binance_rows(7 * HOUR, 4, HOUR))).await;
+    let started = std::time::Instant::now();
+    let mut running = Vec::new();
+    for _ in 0..21 {
+        let one = source(&server, "binance", "1h");
+        running.push(tokio::spawn(async move { one.recent_closed(3, 10 * HOUR).await }));
+    }
+    for task in running {
+        task.await.expect("작업").expect("봉");
+    }
+    // 스물한 번이면 적어도 스무 칸만큼은 걸려야 함 — 동시에 나갔다는 뜻이 아니어야 함.
+    let least = crate::brokers::QUOTE_GAP * 20;
+    assert!(started.elapsed() >= least, "너무 빨리 나갔다: {:?} < {least:?}", started.elapsed());
+}
+
+#[tokio::test]
+async fn 한도에_걸려도_다시_받아_온다() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v3/klines"))
+        .respond_with(ResponseTemplate::new(429))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    mount(&server, "/api/v3/klines", json!(binance_rows(7 * HOUR, 4, HOUR))).await;
+    let candles = source(&server, "binance", "1h").recent_closed(3, 10 * HOUR).await.expect("봉");
+    assert_eq!(candles.len(), 3);
+}
+
+#[test]
+fn 다시_보내기_전에_기다릴_시간() {
+    let mut headers = reqwest::header::HeaderMap::new();
+    // 머리에 `Retry-After`가 있으면 그만큼 — 거래소가 말한 시간을 우리 셈보다 믿음.
+    headers.insert("retry-after", "3".parse().unwrap());
+    assert_eq!(retry_wait(&headers, 0), std::time::Duration::from_secs(3));
+    // 터무니없이 길면 잘라냄 — 봉 하나 때문에 매크로가 몇 분을 멈추지 않게.
+    headers.insert("retry-after", "600".parse().unwrap());
+    assert_eq!(retry_wait(&headers, 0), std::time::Duration::from_secs(10));
+    // 없으면 0.25초에서 두 배씩.
+    let empty = reqwest::header::HeaderMap::new();
+    assert_eq!(retry_wait(&empty, 0), std::time::Duration::from_millis(250));
+    assert_eq!(retry_wait(&empty, 1), std::time::Duration::from_millis(500));
+}

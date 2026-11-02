@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use super::{
     Broker, BrokerError, DOMESTIC_BID_FEE_FALLBACK, FeePaid, LOOKUP_ATTEMPTS, LogFn, Order, OrderRules, OrderSide,
-    SubmitRequest, TERMINAL_STATUSES, cool, cooling, fee_inclusive, get_pos, is_close, lookup_delay, network_error,
-    positive_f64, positive_number, py_str, py_truthy, retry_after_secs,
+    QUOTE_GAP, SubmitRequest, TERMINAL_STATUSES, cool, cooling, fee_inclusive, get_pos, is_close, lookup_delay,
+    network_error, positive_f64, positive_number, py_str, py_truthy, retry_after_secs, space,
 };
 use crate::money::{grouped, plain_number, price_text, qty_text};
 use crate::types::{Exchange, Market, Side};
@@ -432,6 +432,12 @@ impl DomesticBroker {
                 name: "too_many_requests".into(),
                 message: format!("{} 요청 한도로 {left}초 쉬는 중이에요", self.label()),
             });
+        }
+        // 시세는 줄을 서서 나감 — 봉과 같은 통을 쓰므로, 묶음처럼 여럿이 한꺼번에
+        // 시작하면 줄 없이는 한도(초당 10건)를 그냥 넘김. 주문·조회는 다른 통이고
+        // 늦으면 매매 시점이 밀리므로 줄에 세우지 않음.
+        if !private {
+            space(&self.base, QUOTE_GAP).await;
         }
         let mut req = self.http.get(self.url(path, params));
         if private {

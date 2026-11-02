@@ -20,7 +20,7 @@ mod pacing;
 #[cfg(test)]
 pub(crate) mod test_keys;
 pub use pacing::{LOOKUP_ATTEMPTS, lookup_delay};
-pub(crate) use pacing::{cool, cool_key, cooling, retry_after_secs};
+pub(crate) use pacing::{QUOTE_GAP, cool, cool_key, cooling, retry_after_secs, space};
 
 /// 아무것도 하지 않는 로그 — 연결 검사처럼 기록이 필요 없는 곳.
 pub fn null_log() -> LogFn {
