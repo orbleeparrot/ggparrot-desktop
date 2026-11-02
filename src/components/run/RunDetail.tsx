@@ -11,7 +11,7 @@ import { ActivityFeed } from "../activity/ActivityFeed";
 import { CapitalRow } from "./CapitalRow";
 import { DetailHeader } from "./DetailHeader";
 import { FinishedCard } from "./FinishedCard";
-import { BundleBar } from "./BundleBar";
+import { BundlePanel } from "./BundlePanel";
 import { LiveSettings } from "./LiveSettings";
 import { MacroNotes } from "./MacroNotes";
 import { ModeSegment } from "./ModeSegment";
@@ -28,6 +28,8 @@ interface Props {
   onBack?: () => void;
   loadActivity(runId: string): void;
   activityFailed?: boolean;
+  /** 모든 실행의 시세 — 묶음 판이 안 열어 본 레그의 등락률도 그려야 함. */
+  allPrices?: Record<string, { points: number[]; times?: number[] }>;
 }
 
 function Controls({ slot }: { slot: RunSlot }) {
@@ -103,10 +105,13 @@ export function RunDetail({
   activity,
   prices,
   priceTimes = [],
+  allPrices = {},
   onBack,
   loadActivity,
   activityFailed = false,
 }: Props) {
+  const { state, select } = useRunnerContext();
+  const runs = state.runs;
   const m = slot.macro;
   const r = slot.readiness;
   const idle = isIdle(slot.phase);
@@ -144,8 +149,8 @@ export function RunDetail({
           />
         )}
 
-        {/* 묶음의 한 레그라는 안내 + 묶음 전체 종료 — 반만 남는 것이 가장 나쁨. */}
-        <BundleBar slot={slot} />
+        {/* 묶음 전체 — 합산 손익·종목 탭 차트·종목별 표·전체 종료. 반만 남는 것이 가장 나쁨. */}
+        <BundlePanel slot={slot} runs={runs} prices={allPrices} onOpen={select} />
         <MacroNotes slot={slot} blockerShown={blockerShown} />
         {/* 돌고 있는 그대로 금액·조건 바꾸기 — 실행 중에만 보임(끝난 실행은 서버가 칸을 주지 않음). */}
         <LiveSettings slot={slot} />

@@ -271,6 +271,8 @@ export interface MockKey {
 export interface MockRun {
   id: string;
   macro: MacroInfo;
+  /** 묶음의 한 레그면 그 자리표 — 묶음 판(?demo=bundle)을 보려고 둠. 단일 종목은 없음. */
+  bundle?: RunSlot["bundle"];
   fileName: string | null;
   mode: RunMode;
   phase: RunSlot["phase"];

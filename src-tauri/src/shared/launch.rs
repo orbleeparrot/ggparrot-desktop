@@ -687,13 +687,15 @@ mod tests {
             ),
             ("kraken", json!({"symbol": "XBTUSD", "exchange": "kraken", "rule_type": "A"})),
         ]);
-        for id in ["dca", "sar", "multi"] {
+        for id in ["dca", "sar"] {
             let why = blocked_text(c.start_gate(id));
             let expected = runner_core::macro_info::unsupported_reason(&c.run(id).unwrap().macro_).unwrap();
             assert_eq!(why, expected, "{id}: 화면의 막힌 이유와 같은 문구");
         }
         assert!(blocked_text(c.start_gate("kraken")).contains("kraken"));
         assert_eq!(blocked_text(c.start_gate("nope")), "매크로를 찾지 못했어요.");
+        // 묶음은 더 이상 막지 않음 — `launch`가 레그마다 한 줄로 가름(0.23.1).
+        assert!(c.start_gate("multi").is_none(), "묶음이 시작 관문에서 막히면 launch_bundle 에 닿지 못함");
     }
 
     /// 확인을 마친 실전 실행 하나(바이낸스 BTCUSDT).
