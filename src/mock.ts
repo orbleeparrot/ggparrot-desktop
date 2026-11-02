@@ -608,6 +608,7 @@ export function createMockBackend(
   // 디자인 검토용 바로가기
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
+  if (demo === "bundle") seedBundle();
   if (demo === "pnl") seedPnl();
   if (demo === "wait") seedWait();
   if (demo === "wait-rsi") seedWait("rsi");
@@ -623,6 +624,25 @@ export function createMockBackend(
     const slot = sites[site];
     m.keys[slot] = emptyKey();
     wizard.open(slotTarget("binance", slot), "ask");
+  }
+
+  /** ?demo=bundle — 묶음 판 검토용. 앞 세 줄을 한 묶음으로 묶어 돌리고 둘만 들고 있게 함
+   *  (하나는 진입 대기라 손익 자리가 비는 모습을 봄). */
+  function seedBundle() {
+    const now = Date.now();
+    const legs = m.runs.slice(0, 3);
+    if (legs.length < 2) return; // 둘부터 묶음임 — 기본 견본은 두 줄뿐임
+    legs.forEach((r, index) => {
+      r.bundle = { key: "demo-bundle", index, size: legs.length };
+      const t0 = now - (10 - index) * 60_000;
+      start(r, t0);
+      goLive(r);
+      for (let k = 1; k <= 12; k += 1) tickRun(say, r, t0 + k * 30_000);
+      if (r.run) r.run.online = true;
+    });
+    // 하나는 안 들고 있게 둠 — 손익 자리가 비는 모습을 봐야 함.
+    holdAt(legs[0], 100, 103.1);
+    if (legs.length > 2) holdAt(legs[1], 50, 49.5);
   }
 
   function seedRunning() {
