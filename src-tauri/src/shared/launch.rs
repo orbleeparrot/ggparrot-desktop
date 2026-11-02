@@ -32,6 +32,31 @@ pub(crate) fn leg_payload(base: &Value, symbol: &str, bundle: &RunBundle) -> Val
     payload
 }
 
+/// 목록에 넣을 레그 한 줄. **순수 함수로 둠** — `Shared`는 Tauri 손잡이가 있어야 해서
+/// 시험이 못 만듦. 이 자리를 시험이 지나지 못하면 아래 규칙이 또 조용히 깨짐.
+///
+/// 레그 줄은 **제 종목**을 듦. 다섯 줄이 모두 묶음의 대표 종목을 들면 서로 "같은 거래소 ·
+/// 같은 종목이 이미 돈다"에 걸려 전부 시작에 실패함(실측 2026-11-02). 서버에 보내는
+/// 본문은 원본 그대로임 — `leg_payload`가 따로 만듦.
+pub(crate) fn new_leg_run(id: String, base: &LaunchJob, parent: &Run, symbol: &str, bundle: &RunBundle) -> Run {
+    let mut run = Run::new(
+        id,
+        runner_core::types::leg_run_macro(&base.macro_, symbol),
+        format!("{} · {}/{}", symbol, bundle.index + 1, bundle.size),
+        &parent.source.clone(),
+        base.base.clone(),
+    );
+    run.sig = parent.sig.clone();
+    run.user_macro_id = parent.user_macro_id;
+    run.library_file = parent.library_file.clone();
+    run.web_linked = parent.web_linked;
+    run.mode = base.mode;
+    run.preflight = Some(base.preflight.clone());
+    run.bundle = Some(bundle.clone());
+    run.start_pending = true;
+    run
+}
+
 /// 묶음 한도가 걸린 묶음 — 서버도 같은 이유로 거절함(app/runner_legs.py).
 pub(crate) const BUNDLE_RISK_HEAD: &str = "이 묶음은 아직 돌릴 수 없어요";
 pub(crate) const BUNDLE_RISK_BODY: &str =
@@ -225,16 +250,24 @@ impl Shared {
                 Some(leg_id) => leg_id,
                 None => continue,
             };
+            // 판(generation)과 지문(fp)은 **그 레그 줄**의 것이어야 함. 부모 것을 쓰면
+            // 갓 만든 줄(판 0)과 어긋나 `launch_cancel`이 '설정이 바뀌었다'로 막음.
+            let Some((leg_macro, fp, generation)) = ({
+                let c = self.lock();
+                c.run(&leg_id).map(|r| (r.macro_.clone(), c.run_fingerprint(r), r.generation))
+            }) else {
+                continue;
+            };
             let payload = leg_payload(&base_job.payload, symbol, &bundle);
             let job = LaunchJob {
                 id: leg_id,
                 payload,
-                macro_: base_job.macro_.clone(),
+                macro_: leg_macro,
                 mode: base_job.mode,
                 creds: base_job.creds.clone(),
-                fp: base_job.fp.clone(),
+                fp,
                 base: base_job.base.clone(),
-                generation: base_job.generation,
+                generation,
                 preflight: base_job.preflight.clone(),
             };
             let me = self.clone();
@@ -250,21 +283,7 @@ impl Shared {
         let leg_id = format!("run-{}", &uuid::Uuid::new_v4().simple().to_string()[..12]);
         let mut c = self.lock();
         let parent = c.run(&base.id)?;
-        let mut run = Run::new(
-            leg_id.clone(),
-            base.macro_.clone(),
-            format!("{} · {}/{}", symbol, bundle.index + 1, bundle.size),
-            &parent.source.clone(),
-            base.base.clone(),
-        );
-        run.sig = parent.sig.clone();
-        run.user_macro_id = parent.user_macro_id;
-        run.library_file = parent.library_file.clone();
-        run.web_linked = parent.web_linked;
-        run.mode = base.mode;
-        run.preflight = Some(base.preflight.clone());
-        run.bundle = Some(bundle.clone());
-        run.start_pending = true;
+        let run = new_leg_run(leg_id.clone(), base, parent, symbol, bundle);
         c.runs.push(run);
         Some(leg_id)
     }
@@ -674,6 +693,55 @@ mod tests {
             Some(_) => panic!("막힘이 아닌 다른 답"),
             None => panic!("막히지 않았다"),
         }
+    }
+
+    /// 묶음 레그 줄들이 서로 막지 않아야 함.
+    ///
+    /// 2026-11-02 실측: 레그 다섯 줄이 모두 묶음의 **대표 종목**을 들고 있어 서로 "같은
+    /// 거래소·같은 종목이 이미 돈다"에 걸렸고, 다섯 줄이 전부 "시작 중 설정이 바뀌어
+    /// 매매를 시작하지 않았어요"로 끝났음. 0.23.0 에서는 빗장이 묶음을 아예 막아 이 길을
+    /// 아무도 지나지 않았고, 묶음 시험은 `launch_bundle`을 직접 불러 통과했음.
+    #[test]
+    fn bundle_legs_do_not_block_each_other() {
+        let base = json!({"symbol": "KRW-BTC", "exchange": "upbit", "rule_type": "I",
+                          "symbols": ["KRW-BTC", "KRW-ETH", "KRW-XRP"]});
+        // **실제로 줄을 만드는 함수를 지남.** 시험이 제 손으로 줄을 만들면 고치기 전에도
+        // 통과해 버림 — 이 버그가 그렇게 빠져나갔음.
+        let mut c = core_with(&[]);
+        // 부모 줄은 손으로 만듦 — `Run`은 `Clone`이 아니라 판에서 빌려 오면 빌림이 걸림.
+        let parent = Run::new("parent".into(), base.clone(), "parent".into(), "file", "https://example.test".into());
+        let job = LaunchJob {
+            id: "parent".into(),
+            payload: json!({}),
+            macro_: base.clone(),
+            mode: parent.mode,
+            creds: c.run_credentials(&parent),
+            fp: String::new(),
+            base: "https://example.test".into(),
+            generation: parent.generation,
+            preflight: PreflightResult::new(true, String::new(), String::new()),
+        };
+        for (i, symbol) in ["KRW-BTC", "KRW-ETH", "KRW-XRP"].iter().enumerate() {
+            let bundle = RunBundle { key: "bun-1".into(), index: i, size: 3 };
+            c.runs.push(new_leg_run(format!("leg{i}"), &job, &parent, symbol, &bundle));
+        }
+        for i in 0..3 {
+            let r = c.run(&format!("leg{i}")).unwrap();
+            assert!(c.conflicting_run(r).is_none(), "leg{i} 가 형제 레그에 막힘");
+        }
+    }
+
+    /// 같은 종목이면 여전히 막아야 함 — 관문을 통째로 걷어낸 것이 아님.
+    #[test]
+    fn two_runs_on_one_symbol_still_conflict() {
+        let m = json!({"symbol": "KRW-BTC", "exchange": "upbit", "rule_type": "I"});
+        let mut c = core_with(&[]);
+        for id in ["a", "b"] {
+            let mut r = Run::new(id.into(), m.clone(), id.into(), "file", "https://example.test".into());
+            r.start_pending = true;
+            c.runs.push(r);
+        }
+        assert!(c.conflicting_run(c.run("a").unwrap()).is_some());
     }
 
     #[test]
