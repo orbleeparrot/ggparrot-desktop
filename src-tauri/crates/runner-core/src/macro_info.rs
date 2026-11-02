@@ -45,11 +45,10 @@ pub fn unsupported_reason(m: &Value) -> Option<&'static str> {
     if domestic && (crate::types::macro_side(m) != crate::types::Side::Long || leveraged) {
         return Some(DOMESTIC_SPOT_ONLY);
     }
-    let many_symbols = m.get("symbols").and_then(Value::as_array).is_some_and(|s| s.len() > 1);
-    let legs = m.get("legs").and_then(Value::as_array).is_some_and(|l| !l.is_empty());
-    if many_symbols || legs {
-        return Some("이 앱은 아직 여러 종목을 묶은 매크로를 지원하지 않아요. 종목 하나씩 나눠 실행하세요.");
-    }
+    // 2026-11-02: 여러 종목 묶음을 막던 빗장을 뺌. 쪼개는 코드(`launch_bundle`)는 0.23.0에
+    // 들어왔는데 이 빗장이 그 앞에 서 있어 한 번도 닿지 못했음 — 목록에 넣는 것조차 막혀
+    // 사용자는 "지원하지 않아요" 만 봤음. 묶음 한도(`bundle_risk`)를 건 묶음은 여기가 아니라
+    // 쪼갤 때 가려냄(`launch_bundle`의 `macro_has_bundle_risk`) — 그쪽이 한도를 읽는 자리임.
     None
 }
 
@@ -200,8 +199,9 @@ mod tests {
     fn unsupported_matches_the_server() {
         assert!(unsupported_reason(&json!({"rule_type": "C"})).unwrap().contains("정기 분할매수"));
         assert!(unsupported_reason(&json!({"rule_type": "K"})).is_some());
-        assert!(unsupported_reason(&json!({"rule_type": "A", "symbols": ["BTCUSDT", "ETHUSDT"]})).is_some());
-        assert!(unsupported_reason(&json!({"rule_type": "A", "legs": [{"symbol": "X"}]})).is_some());
+        // 묶음은 이제 안 막음(0.23.1) — `launch_bundle`이 레그마다 한 줄로 가름.
+        assert!(unsupported_reason(&json!({"rule_type": "A", "symbols": ["BTCUSDT", "ETHUSDT"]})).is_none());
+        assert!(unsupported_reason(&json!({"rule_type": "A", "legs": [{"symbol": "X"}]})).is_none());
         assert!(unsupported_reason(&json!({"rule_type": "A", "symbols": ["BTCUSDT"]})).is_none());
         assert!(unsupported_reason(&json!({"rule_type": "F", "legs": null})).is_none());
         let upbit = |extra: Value| {
@@ -241,5 +241,33 @@ mod tests {
         assert!(set_initial_capital(&mut m, 0.0).is_err());
         assert!(set_initial_capital(&mut m, f64::NAN).is_err());
         assert_eq!(initial_capital(&json!({"params": {"initial_capital": "0"}})), None);
+    }
+}
+
+#[cfg(test)]
+mod bundle_gate_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 묶음을 막던 빗장을 뺌(0.23.1). 쪼개는 코드(`launch_bundle`)는 0.23.0에 들어왔는데
+    /// 이 빗장이 그 앞에 서 있어 한 번도 닿지 못했음 — 목록에 넣는 것조차 막혔음.
+    #[test]
+    fn a_bundle_is_no_longer_refused() {
+        let legs = json!({"symbol": "KRW-BTC", "exchange": "upbit", "rule_type": "A",
+                          "legs": [{"symbol": "KRW-BTC", "weight": 50}, {"symbol": "KRW-ETH", "weight": 50}]});
+        let symbols = json!({"symbol": "BTCUSDT", "exchange": "binance", "rule_type": "A",
+                             "symbols": ["BTCUSDT", "ETHUSDT"]});
+        assert_eq!(unsupported_reason(&legs), None);
+        assert_eq!(unsupported_reason(&symbols), None);
+    }
+
+    /// 막는 까닭이 남아 있는 것들은 그대로 막아야 함 — 빗장을 통째로 걷어낸 것이 아님.
+    #[test]
+    fn the_other_refusals_stay() {
+        let dca = json!({"symbol": "BTCUSDT", "exchange": "binance", "rule_type": "C"});
+        let short_krw = json!({"symbol": "KRW-BTC", "exchange": "upbit", "rule_type": "A",
+                               "position_side": "short"});
+        assert!(unsupported_reason(&dca).is_some());
+        assert_eq!(unsupported_reason(&short_krw), Some(DOMESTIC_SPOT_ONLY));
     }
 }

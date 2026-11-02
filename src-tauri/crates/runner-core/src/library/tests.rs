@@ -27,6 +27,7 @@ fn content_needs_a_rule_type_and_server_refusals_are_flagged() {
     assert!(parse_macro(r#"{"symbol":"BTCUSDT"}"#).is_err(), "유형 없는 JSON 은 매크로가 아니다");
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("dca.ggm.json"), r#"{"symbol":"BTCUSDT","rule_type":"C"}"#).unwrap();
+    // 묶음 파일은 0.23.1부터 그냥 열림 — 거절 표시가 붙으면 안 됨.
     fs::write(
         dir.path().join("multi.ggm.json"),
         r#"{"symbol":"BTCUSDT","rule_type":"A","symbols":["BTCUSDT","ETHUSDT"]}"#,
@@ -37,7 +38,8 @@ fn content_needs_a_rule_type_and_server_refusals_are_flagged() {
     assert_eq!(scan.files.len(), 3);
     for f in &scan.files {
         assert!(f.valid, "{}", f.file_name);
-        assert!(!f.unsupported.is_empty(), "{} 는 서버가 거절한다", f.file_name);
+        let refused = !f.unsupported.is_empty();
+        assert_eq!(refused, f.file_name != "multi.ggm.json", "{} 의 거절 표시", f.file_name);
     }
 }
 
