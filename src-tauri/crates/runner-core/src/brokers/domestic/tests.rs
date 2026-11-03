@@ -1036,6 +1036,48 @@ async fn a_rate_limit_pauses_public_requests_but_not_order_lookups() {
     assert_eq!(server.received_requests().await.unwrap().len(), before, "다른 실행의 시세 요청도 쉰다");
 }
 
+#[tokio::test]
+async fn public_price_requests_queue_up_so_a_burst_cannot_break_the_limit() {
+    // 시세 한도는 봉과 **같은 통**을 씀 — 여기만 줄을 안 세우면 묶음이 또 429를 맞음.
+    // 주문·조회는 다른 통이라 줄에 세우지 않음(아래 `orders_are_not_held_back`).
+    let server = MockServer::start().await;
+    mount(
+        &server,
+        "GET",
+        "/v1/ticker",
+        ResponseTemplate::new(200).set_body_json(json!([{"trade_price": "100", "prev_closing_price": "100"}])),
+    )
+    .await;
+    let started = std::time::Instant::now();
+    let mut running = Vec::new();
+    for _ in 0..7 {
+        let (b, _) = make(Exchange::Upbit, &server.uri());
+        running.push(tokio::spawn(async move { b.price().await }));
+    }
+    for task in running {
+        task.await.expect("작업").expect("시세");
+    }
+    let least = crate::brokers::QUOTE_GAP * 6;
+    assert!(started.elapsed() >= least, "너무 빨리 나갔다: {:?} < {least:?}", started.elapsed());
+}
+
+#[tokio::test]
+async fn orders_are_not_held_back_by_the_price_queue() {
+    // 주문이 시세 줄 뒤에 서면 매매 시점이 밀림 — 못 산 것도 귀책임.
+    let server = MockServer::start().await;
+    mount(&server, "GET", "/v1/orders/chance", ResponseTemplate::new(200).set_body_json(json!({}))).await;
+    let started = std::time::Instant::now();
+    let mut running = Vec::new();
+    for _ in 0..7 {
+        let (b, _) = make(Exchange::Upbit, &server.uri());
+        running.push(tokio::spawn(async move { b.order_rules().await }));
+    }
+    for task in running {
+        let _ = task.await.expect("작업");
+    }
+    assert!(started.elapsed() < crate::brokers::QUOTE_GAP * 6, "{:?}", started.elapsed());
+}
+
 // --- 화면 정보: 수수료·잔고·전일 대비 -----------------------------------------
 
 #[test]

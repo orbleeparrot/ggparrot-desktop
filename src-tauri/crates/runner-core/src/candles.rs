@@ -17,6 +17,7 @@
 use serde_json::Value;
 use std::time::Duration;
 
+use crate::brokers::{QUOTE_GAP, retry_after_secs, space};
 use crate::intervals::{grid_offset, is_grid_aligned, step_ms};
 
 /// 국내 거래소는 한 번에 200개까지 줌. 그보다 많이 필요하면 커서로 거슬러 올라감.
@@ -26,6 +27,11 @@ const MAX_PAGES: usize = 10;
 /// 업비트·빗썸이 지원하는 분봉 단위.
 const KRW_MINUTES: &[i64] = &[1, 3, 5, 10, 15, 30, 60, 240];
 const TIMEOUT: Duration = Duration::from_secs(10);
+/// 한도(429)에 걸렸을 때 보내는 횟수(처음 것 포함).
+///
+/// 줄서기([`space`])가 앞에서 막아 주지만 한도는 우리 요청만 세지 않음 — 같은 IP의
+/// 다른 창·다른 프로그램도 같은 통을 씀. 한 번 거절당했다고 매크로를 못 켜면 안 됨.
+const QUOTE_ATTEMPTS: usize = 3;
 const KST_SHIFT_MS: i64 = 9 * 3_600_000;
 
 /// 봉 하나. `t`는 봉이 **열린** 시각(ms, UTC). `v`(거래량)는 모르면 None —
@@ -72,6 +78,17 @@ fn num(value: Option<&Value>) -> Option<f64> {
         Value::Number(n) => n.as_f64(),
         Value::String(s) => s.parse().ok(),
         _ => None,
+    }
+}
+
+/// 429를 받고 다시 보내기 전에 기다릴 시간.
+///
+/// 거래소가 `Retry-After`로 말해 주면 그 값을 믿되 10초까지만 — 봉 하나 때문에 매크로가
+/// 몇 분을 멈추지 않게. 말해 주지 않으면(업비트가 그럼) 0.25초에서 두 배씩.
+fn retry_wait(headers: &reqwest::header::HeaderMap, sent: usize) -> Duration {
+    match retry_after_secs(headers) {
+        Some(secs) => Duration::from_secs(secs.clamp(1, 10)),
+        None => Duration::from_millis(250u64 << sent),
     }
 }
 
@@ -217,18 +234,31 @@ impl CandleSource {
     }
 
     async fn get(&self, query: &[(String, String)]) -> Result<Value, CandleError> {
-        let response = self
-            .http
-            .get(self.url(query))
-            .timeout(TIMEOUT)
-            .send()
-            .await
-            .map_err(|e| CandleError::Fetch(format!("봉을 받지 못했어요: {e}")))?;
-        let status = response.status();
-        if !status.is_success() {
-            return Err(CandleError::Fetch(format!("거래소가 봉 요청을 거절했어요(HTTP {}).", status.as_u16())));
+        let mut sent = 0;
+        loop {
+            // 차례를 기다림. 묶음은 레그마다 봉을 받으므로, 줄을 세우지 않으면 지표를
+            // 세우는 것만으로 한도를 넘음(7종목 = 21번, 업비트 시세 한도는 초당 10건).
+            space(&self.base, QUOTE_GAP).await;
+            let response = self
+                .http
+                .get(self.url(query))
+                .timeout(TIMEOUT)
+                .send()
+                .await
+                .map_err(|e| CandleError::Fetch(format!("봉을 받지 못했어요: {e}")))?;
+            let status = response.status();
+            sent += 1;
+            // 429만 다시 보냄. 418(바이낸스 IP 차단)은 다시 두드리면 차단이 길어지고,
+            // 다른 4xx는 기다려도 같음.
+            if status.as_u16() == 429 && sent < QUOTE_ATTEMPTS {
+                tokio::time::sleep(retry_wait(response.headers(), sent - 1)).await;
+                continue;
+            }
+            if !status.is_success() {
+                return Err(CandleError::Fetch(format!("거래소가 봉 요청을 거절했어요(HTTP {}).", status.as_u16())));
+            }
+            return response.json().await.map_err(|_| CandleError::Fetch("거래소 봉 응답을 읽지 못했어요.".into()));
         }
-        response.json().await.map_err(|_| CandleError::Fetch("거래소 봉 응답을 읽지 못했어요.".into()))
     }
 
     async fn fetch_binance(&self, limit: usize) -> Result<Vec<Candle>, CandleError> {
