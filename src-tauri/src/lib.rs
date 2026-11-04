@@ -217,6 +217,7 @@ pub fn run() {
             commands::add_run_from_library,
             commands::move_run,
             commands::remove_run,
+            commands::remove_runs,
             commands::set_run_mode,
             commands::start_run,
             commands::start_run_confirmed,

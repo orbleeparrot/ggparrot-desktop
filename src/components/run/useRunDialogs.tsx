@@ -26,14 +26,28 @@ export interface RunDialogs {
   startRun(runId: string): void;
   askStop(runId: string, mode: StopMode): void;
   askRemove(runId: string): void;
+  askRemoveMany(runIds: string[]): void;
   dialogs: ReactNode;
+}
+
+/** 여러 개 빼기 확인 창에 이름을 적는 줄 수 — 넘으면 '외 N개'. */
+export const REMOVE_NAMES_SHOWN = 5;
+
+/** 여러 개 빼기 확인 창의 설명 — 하나씩 빼기 창의 두 문장을 고른 매크로의 출처에 맞춰 이어 붙임. */
+export function removeManyText(sources: string[]): string {
+  const parts = [];
+  if (sources.some((s) => s !== "web")) parts.push("매크로 파일은 지우지 않아요.");
+  if (sources.some((s) => s === "web")) parts.push("웹에 저장한 매크로는 그대로예요.");
+  parts.push("고른 매크로의 활동 기록은 지워져요.");
+  return parts.join(" ");
 }
 
 export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDialogs {
   const [live, setLive] = useState<ConfirmPayload | null>(null);
   const [blocked, setBlocked] = useState<{ runId: string; message: string } | null>(null);
   const [stopAsk, setStopAsk] = useState<{ runId: string; mode: StopMode } | null>(null);
-  const [removeAsk, setRemoveAsk] = useState<string | null>(null);
+  // 빼기 확인 — 하나(× 단추)든 여러 개(목록에서 고르기)든 같은 창.
+  const [removeAsk, setRemoveAsk] = useState<string[] | null>(null);
   const [waitAsk, setWaitAsk] = useState<{ runId: string; preview: EntryPreview } | null>(null);
   // 실전 시작 확인 시트에 함께 보일 '바로 사지 않아요' — [시작] 때 물어 둔 답(매크로마다).
   const [previews, setPreviews] = useState<Record<string, EntryPreview>>({});
@@ -110,7 +124,15 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
     [act, send],
   );
   const askStop = useCallback((runId: string, mode: StopMode) => setStopAsk({ runId, mode }), []);
-  const askRemove = useCallback((runId: string) => setRemoveAsk(runId), []);
+  const askRemove = useCallback((runId: string) => setRemoveAsk([runId]), []);
+  const askRemoveMany = useCallback((runIds: string[]) => setRemoveAsk(runIds.length ? runIds : null), []);
+  const removeMany = useCallback(
+    async (runIds: string[]) => {
+      const reply = await act("remove_runs", { runIds });
+      if (reply?.kept) toast(`실행 중인 ${reply.kept}개는 남겼어요.`);
+    },
+    [act, toast],
+  );
 
   const find = (id: string | undefined) => state?.runs.find((r) => r.id === id);
   const name = (id: string | undefined) => {
@@ -118,6 +140,8 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
     return m ? `${m.symbol} · ${m.exchangeLabel || m.exchangeName}` : "";
   };
   // 확인 창은 지금 상태로 다시 고름 — 창을 연 사이 포지션이 생기거나 없어져도 문구가 맞게.
+  // 빼기 창도 지금 목록 기준 — 창을 연 사이 없어진 매크로는 셈하지 않음.
+  const removeIds = (removeAsk ?? []).filter((id) => find(id));
   const stopSlot = stopAsk ? find(stopAsk.runId) : undefined;
   const stopChoice = stopAsk && stopSlot ? stopChoices(stopSlot).find((c) => c.mode === stopAsk.mode) : undefined;
   const blockedTarget = blocked ? settingsTargetOf(find(blocked.runId)?.readiness.needs ?? null) : null;
@@ -202,7 +226,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
         </ConfirmDialog>
       )}
 
-      {removeAsk && (
+      {removeAsk && removeIds.length === 1 && (
         <ConfirmDialog
           title="목록에서 뺄까요?"
           icon={<Trash2 size={18} />}
@@ -211,19 +235,41 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
           confirm={{
             label: "목록에서 빼기",
             className: "btn-danger-solid",
-            run: () => void act("remove_run", { runId: removeAsk }),
+            run: () => void act("remove_run", { runId: removeIds[0] }),
           }}
         >
           <p>
-            {find(removeAsk)?.macro.source === "web"
+            {find(removeIds[0])?.macro.source === "web"
               ? "웹에 저장한 매크로는 그대로예요. 이 매크로의 활동 기록은 지워져요."
               : "매크로 파일은 지우지 않아요. 이 매크로의 활동 기록은 지워져요."}
           </p>
-          <p className="dialog-meta num">{name(removeAsk)}</p>
+          <p className="dialog-meta num">{name(removeIds[0])}</p>
+        </ConfirmDialog>
+      )}
+
+      {removeAsk && removeIds.length > 1 && (
+        <ConfirmDialog
+          title={`${removeIds.length}개를 목록에서 뺄까요?`}
+          icon={<Trash2 size={18} />}
+          onClose={() => setRemoveAsk(null)}
+          cancel={{ label: "취소" }}
+          confirm={{
+            label: "목록에서 빼기",
+            className: "btn-danger-solid",
+            run: () => void removeMany(removeIds),
+          }}
+        >
+          <p>{removeManyText(removeIds.map((id) => find(id)?.macro.source ?? ""))}</p>
+          <p className="dialog-meta dialog-names num">
+            {removeIds.slice(0, REMOVE_NAMES_SHOWN).map((id) => (
+              <span key={id}>{name(id)}</span>
+            ))}
+            {removeIds.length > REMOVE_NAMES_SHOWN && <span>외 {removeIds.length - REMOVE_NAMES_SHOWN}개</span>}
+          </p>
         </ConfirmDialog>
       )}
     </>
   );
 
-  return { startRun, askStop, askRemove, dialogs };
+  return { startRun, askStop, askRemove, askRemoveMany, dialogs };
 }

@@ -120,6 +120,22 @@ impl Shared {
         }
     }
 
+    /// 여러 개 목록에서 빼기 — 한 번 잠그고 한 번 저장함(하나씩 부르면 줄마다 저장·화면 보내기).
+    /// 실행 중·시작하는 중인 것은 남기고 그 수를 돌려줌(화면이 토스트로 알림).
+    pub fn remove_runs(self: &S, ids: &[String]) -> RemoveRunsReply {
+        let out = self
+            .edit_runs_rechecking(|c| {
+                let out = c.remove_runs(ids);
+                // 뺀 것이 없으면 바꾼 것도 없음 — 저장·화면 보내기 없이 돌려줌.
+                if out.removed == 0 { Err(out) } else { Ok(out) }
+            })
+            .unwrap_or_else(|same| same);
+        for (rep, payload) in out.closing {
+            tauri::async_runtime::spawn(lifecycle::finish_report(rep, payload));
+        }
+        RemoveRunsReply { removed: out.removed, kept: out.kept }
+    }
+
     pub fn set_run_mode(self: &S, id: &str, mode: RunMode) {
         let _ = self.edit_runs_rechecking(|c| {
             let r = c.run_mut(id).filter(|r| !r.busy()).ok_or(())?;

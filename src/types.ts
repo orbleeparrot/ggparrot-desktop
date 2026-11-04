@@ -473,6 +473,12 @@ export interface AppLogEntry {
   detail: string;
 }
 
+/** 여러 개 목록에서 빼기의 답 — 뺀 수와, 실행 중·시작 중이라 남긴 수. */
+export interface RemoveRunsReply {
+  removed: number;
+  kept: number;
+}
+
 export type StartReply =
   | { kind: "started" }
   | { kind: "confirm_live"; title: string; message: string }

@@ -8,6 +8,7 @@ import type {
   KeyField,
   KeySlot,
   Notice,
+  RemoveRunsReply,
   RunMode,
   StartReply,
   StateEvent,
@@ -51,6 +52,8 @@ export interface CommandMap {
   move_run: { args: RunArg & { index: number }; ret: void };
   /** 실행 중이면 거절. */
   remove_run: { args: RunArg; ret: void };
+  /** 여러 개 — 실행 중·시작 중인 것은 남기고 그 수를 돌려줌(거절하지 않음). */
+  remove_runs: { args: { runIds: string[] }; ret: RemoveRunsReply };
   set_run_mode: { args: RunArg & { mode: RunMode }; ret: void };
   start_run: { args: RunArg; ret: StartReply };
   start_run_confirmed: { args: RunArg; ret: StartReply };
