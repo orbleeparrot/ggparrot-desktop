@@ -553,6 +553,14 @@ pub struct Notice {
     pub log_id: Option<u64>,
 }
 
+/// 여러 개 목록에서 빼기의 답 — 뺀 수와, 실행 중·시작 중이라 남긴 수.
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveRunsReply {
+    pub removed: usize,
+    pub kept: usize,
+}
+
 #[derive(Serialize, Clone)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StartReply {

@@ -84,9 +84,22 @@ export default function App() {
             startRun: flows.startRun,
             askStop: flows.askStop,
             askRemove: flows.askRemove,
+            askRemoveMany: flows.askRemoveMany,
           }
         : null,
-    [state, act, ok, toast, nav.openSettings, openLibrary, nav.select, flows.startRun, flows.askStop, flows.askRemove],
+    [
+      state,
+      act,
+      ok,
+      toast,
+      nav.openSettings,
+      openLibrary,
+      nav.select,
+      flows.startRun,
+      flows.askStop,
+      flows.askRemove,
+      flows.askRemoveMany,
+    ],
   );
 
   if (!ctx || !state) {

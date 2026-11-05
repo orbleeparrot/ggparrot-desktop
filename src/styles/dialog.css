@@ -105,6 +105,12 @@
   font-size: var(--fs-small);
   font-weight: var(--fw-bold);
 }
+/* 여러 개 빼기 창의 이름 — 한 줄에 하나. */
+.dialog-names {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .dialog-body p + p:not(.dialog-meta) {
   margin-top: 6px;
 }

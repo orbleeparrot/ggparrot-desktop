@@ -26,6 +26,8 @@ export interface RunnerContextValue {
   askStop(runId: string, mode: StopMode): void;
   /** 목록에서 빼기 — 먼저 물음. */
   askRemove(runId: string): void;
+  /** 여러 개 목록에서 빼기 — 먼저 물음. 실행 중인 것은 남기고 토스트로 알림. */
+  askRemoveMany(runIds: string[]): void;
 }
 
 export const RunnerContext = createContext<RunnerContextValue | null>(null);

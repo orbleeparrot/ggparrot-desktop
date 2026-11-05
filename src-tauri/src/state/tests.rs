@@ -642,6 +642,43 @@ fn activity_copy_keeps_the_error_code_line_indented_under_its_entry() {
     assert_eq!(lines[3], "                     오류 코드: insufficient_funds_bid", "{text}");
 }
 
+// 실행 중 표시(BotHandle::idle_for_tests)가 Tokio 런타임을 씀.
+#[tokio::test]
+async fn removing_many_keeps_running_and_starting_runs() {
+    let mut c = core();
+    for (id, sym) in [("a", "BTCUSDT"), ("b", "ETHUSDT"), ("c", "XRPUSDT"), ("d", "SOLUSDT")] {
+        c.runs.push(run(id, sym, "binance"));
+    }
+    running(&mut c, 1);
+    c.runs[2].start_pending = true;
+    let rev = c.library_rev;
+    let ids: Vec<String> = ["a", "b", "c", "d", "a", "gone"].iter().map(|s| s.to_string()).collect();
+    let out = c.remove_runs(&ids);
+    assert_eq!((out.removed, out.kept), (2, 2), "실행 중 b · 시작 중 c는 남김, 같은 id 두 번 · 없는 id는 건너뜀");
+    assert_eq!(c.runs.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["b", "c"]);
+    assert_eq!(c.library_rev, rev + 1, "뺀 것이 있으면 목록이 바뀐 것");
+    let again = c.remove_runs(&["b".to_string()]);
+    assert_eq!((again.removed, again.kept), (0, 1));
+    assert_eq!(c.library_rev, rev + 1, "아무것도 안 뺐으면 그대로");
+}
+
+#[test]
+fn removing_many_hands_each_web_run_a_closed_stage() {
+    let mut c = core();
+    c.runs.push(with_macro("w1", json!({"symbol": "BTCUSDT", "exchange": "binance"}), RunMode::Mock));
+    c.runs.push(with_macro("f", json!({"symbol": "ETHUSDT", "exchange": "binance"}), RunMode::Mock));
+    c.runs.push(with_macro("w2", json!({"symbol": "KRW-BTC", "exchange": "upbit"}), RunMode::Live));
+    c.runs[0].reporter = Some(reporter());
+    c.runs[2].reporter = Some(reporter());
+    let out = c.remove_runs(&["w1".to_string(), "f".to_string(), "w2".to_string()]);
+    assert_eq!(out.removed, 3);
+    assert_eq!(out.closing.len(), 2, "웹으로 들어온 둘만 '닫힘'을 보냄");
+    for (rep, payload) in out.closing {
+        assert_eq!(payload.unwrap()["stage"], json!("closed"));
+        rep.close();
+    }
+}
+
 #[test]
 fn removing_or_closing_hands_the_guide_a_closed_stage() {
     let mut r = with_macro("demo", json!({"symbol": "BTCUSDT", "exchange": "binance", "leverage": 5}), RunMode::Mock);

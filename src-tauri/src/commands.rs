@@ -8,7 +8,7 @@ use tauri::State;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::shared::S;
-use crate::state::{ActivityDto, AppLogEntry, StartReply};
+use crate::state::{ActivityDto, AppLogEntry, RemoveRunsReply, StartReply};
 
 type R<T> = Result<T, String>;
 
@@ -66,6 +66,11 @@ pub fn move_run(s: State<'_, S>, run_id: String, index: usize) {
 #[tauri::command]
 pub fn remove_run(s: State<'_, S>, run_id: String) -> R<()> {
     s.inner().remove_run(&run_id)
+}
+
+#[tauri::command]
+pub fn remove_runs(s: State<'_, S>, run_ids: Vec<String>) -> RemoveRunsReply {
+    s.inner().remove_runs(&run_ids)
 }
 
 #[tauri::command]

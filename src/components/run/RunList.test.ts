@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dropIndex, edgeScrollSpeed } from "./RunList";
+import { dropIndex } from "./RunList";
+import { edgeScrollSpeed } from "./listScroll";
 
 describe("dropIndex", () => {
   it("놓을 자리 → 옮긴 뒤 번호(자기 자리를 빼고 셈)", () => {

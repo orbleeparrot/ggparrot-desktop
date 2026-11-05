@@ -3,17 +3,20 @@
 // - 확인 필요: 노란 칸 안의 카드(머리줄 '확인 필요 N개'를 누르면 이 묶음으로 굴러옴)·실행 중: 흰 카드·대기: 회색 칸의 한 줄 행
 // - 대기 묶음은 머리를 눌러 접음(이 PC에 기억). 찾는 중에는 모두 펼침.
 // 순서 바꾸기: 카드 왼쪽 손잡이를 끌거나 Alt+↑·↓ — 같은 묶음 안에서만. 순서는 Rust가 저장함(move_run).
+// 여러 개 빼기: 줄 위에서 눌러 끌면 지나간 줄이 골라지고(useRunPicking), 고르는 동안 머리가 'N개 선택 [취소] [목록에서 빼기]'로 바뀜.
 // - HTML 끌어 놓기(draggable)는 쓰지 않음 — Windows에서 창의 파일 끌어 놓기와 겹쳐 이벤트가 오지 않음. 포인터로 직접 처리.
 // 목록이 길 때:
 // - 머리('내 매크로 · N개')와 [+ 매크로 추가]는 위·아래에 붙어 있음(sticky). 가려진 카드가 있으면 그쪽 가장자리에 그림자.
 // - 고른 카드는 늘 보이게 가장 가까운 만큼만 스크롤함. 끄는 중 위·아래 가장자리에 가까우면 저절로 스크롤함.
 // - 넓은 창은 이 패널이, 좁은 창(한 열)은 문서가 스크롤함 — 둘 다 같은 계산(화면상 위치)으로 다룸.
-import { ChevronDown, Pause, Plus, Search, TriangleAlert } from "lucide-react";
+import { ChevronDown, Pause, Plus, Search, Trash2, TriangleAlert } from "lucide-react";
 import { SwapLabel } from "../SwapLabel";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useRunnerContext } from "../../state/context";
 import { GROUP_LABELS, globalIndex, groupOf, groupRuns, matches, type GroupKey } from "../../state/runGroups";
 import { RunCard } from "./RunCard";
+import { edgeScrollSpeed, scrollBy, visibleBand } from "./listScroll";
+import { useRunPicking } from "./useRunPicking";
 
 interface Drag {
   id: string;
@@ -45,13 +48,6 @@ export function dropIndex(from: number, slot: number): number {
   return slot > from ? slot - 1 : slot;
 }
 
-/** 끄는 중 자동 스크롤 속도(px/프레임). 보이는 영역 [top, bottom]의 가장자리 zone 안으로 들어갈수록 빨라짐. 밖이면 0. */
-export function edgeScrollSpeed(y: number, top: number, bottom: number, zone = 48, max = 14): number {
-  if (y < top + zone) return -Math.ceil(max * Math.min(1, (top + zone - y) / zone));
-  if (y > bottom - zone) return Math.ceil(max * Math.min(1, (y - (bottom - zone)) / zone));
-  return 0;
-}
-
 /** 포인터 위치 → 놓을 자리. 한 줄 목록은 위아래, 여러 칸(좁은 창의 격자)은 좌우 절반으로 앞뒤를 가름. */
 function slotAt(list: HTMLElement | null, x: number, y: number): number | null {
   const cards = Array.from(list?.querySelectorAll<HTMLElement>(":scope > .run-card") ?? []);
@@ -67,26 +63,14 @@ function slotAt(list: HTMLElement | null, x: number, y: number): number | null {
   return cards.length;
 }
 
-/** 목록이 실제로 보이는 세로 범위 — 붙어 있는 머리 아래 ~ 붙어 있는 [+ 매크로 추가] 위. */
-function visibleBand(head: HTMLElement | null, panel: HTMLElement | null): [number, number] {
-  const bottom = panel ? Math.min(panel.getBoundingClientRect().bottom, window.innerHeight) : window.innerHeight;
-  return [head?.getBoundingClientRect().bottom ?? 0, bottom];
-}
-
 /** 카드 전체가 보이게 가장 가까운 만큼만 스크롤(시험 환경 jsdom에는 scrollIntoView가 없음). */
 function nearest(button: HTMLElement) {
   const card = button.closest<HTMLElement>(".run-card");
   if (card && typeof card.scrollIntoView === "function") card.scrollIntoView({ block: "nearest" });
 }
 
-/** 넓은 창은 패널이 스크롤하고, 좁은 창은 문서가 스크롤함. */
-function scrollBy(panel: HTMLElement | null, dy: number) {
-  if (panel && panel.scrollHeight > panel.clientHeight + 1) panel.scrollTop += dy;
-  else window.scrollBy(0, dy);
-}
-
 export function RunList({ selectedId }: { selectedId: string | null }) {
-  const { state, select, openLibrary, act } = useRunnerContext();
+  const { state, select, openLibrary, act, askRemoveMany } = useRunnerContext();
   const refs = useRef(new Map<string, HTMLButtonElement>());
   const panel = useRef<HTMLElement>(null);
   const head = useRef<HTMLDivElement>(null);
@@ -116,6 +100,20 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
   const visible = groups.flatMap((g) => shownOf(g));
   const canMove = runs.length > 1 && !searching;
   const dragging = drag !== null;
+  const pick = useRunPicking({
+    runs,
+    visible,
+    all: groups.flatMap((g) => g.items),
+    selectedId,
+    panel,
+    head,
+    body,
+    revealIdle: () => {
+      setIdleOpen(true);
+      setIdleAll(true);
+    },
+    askRemoveMany,
+  });
 
   /** 카드를 보이게 — 가장 가까운 만큼만(붙어 있는 머리·아래 단추 높이는 run.css scroll-margin으로 비움). */
   function reveal(id: string, focus = false) {
@@ -271,15 +269,41 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
       ref={panel}
       className={`run-list-panel ${more.above ? "has-more-above" : ""} ${more.below ? "has-more-below" : ""}`}
       aria-label="내 매크로"
+      onKeyDown={pick.onKeyDown}
     >
+      {/* 고르는 동안은 같은 머리 자리가 'N개 선택'과 일괄 빼기로 바뀜 — 새 줄을 두지 않아 목록이 밀리지 않음. */}
       <div ref={head} className="panel-head">
-        <h2 className="panel-title">내 매크로</h2>
-        <button type="button" className="btn btn-ghost btn-sm panel-add" aria-label="매크로 추가" onClick={openLibrary}>
-          <Plus size={14} aria-hidden="true" />
-          추가
-        </button>
+        {pick.count > 0 ? (
+          <>
+            <h2 className="panel-title num" aria-live="polite">
+              {pick.count}개 선택
+            </h2>
+            <div className="panel-pick-actions">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={pick.clear}>
+                취소
+              </button>
+              <button type="button" className="btn btn-danger-solid btn-sm" onClick={pick.removePicked}>
+                <Trash2 size={14} aria-hidden="true" />
+                목록에서 빼기
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 className="panel-title">내 매크로</h2>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm panel-add"
+              aria-label="매크로 추가"
+              onClick={openLibrary}
+            >
+              <Plus size={14} aria-hidden="true" />
+              추가
+            </button>
+          </>
+        )}
       </div>
-      <div ref={body} className="run-groups">
+      <div ref={body} className={`run-groups ${pick.picking ? "is-picking" : ""}`} {...pick.handlers}>
         {searchable && (
           <label className="run-search">
             <Search size={14} aria-hidden="true" />
@@ -316,6 +340,7 @@ export function RunList({ selectedId }: { selectedId: string | null }) {
                   }}
                   slot={slot}
                   selected={slot.id === selectedId}
+                  picked={pick.picked.has(slot.id)}
                   onKeyNav={onKeyNav}
                   compact={g.key === "idle"}
                   grab={

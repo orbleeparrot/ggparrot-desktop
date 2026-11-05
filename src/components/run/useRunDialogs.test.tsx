@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Act } from "../../state/context";
-import { makeSlot, makeState } from "../../test/fixtures";
+import { binanceMacro, makeSlot, makeState, upbitMacro } from "../../test/fixtures";
 import type { EntryPreview } from "../../types";
-import { useRunDialogs } from "./useRunDialogs";
+import { REMOVE_NAMES_SHOWN, removeManyText, useRunDialogs } from "./useRunDialogs";
 
 vi.mock("../../ipc", () => ({ on: () => Promise.resolve(() => undefined) }));
 
@@ -66,5 +66,78 @@ describe("시작 전 진입 대기 안내", () => {
       expect(screen.queryByText("이 매크로는 바로 사지 않아요")).toBeNull();
       cleanup();
     }
+  });
+});
+
+describe("목록에서 빼기 — 여러 개", () => {
+  function ManyHarness({ act, toast, ids }: { act: Act; toast: (m: string) => void; ids: string[] }) {
+    const runs = [
+      makeSlot({ id: "a", macro: { ...binanceMacro, symbol: "BTCUSDT" } }),
+      makeSlot({ id: "b", macro: { ...upbitMacro, symbol: "KRW-ETH" } }),
+      ...["c", "d", "e", "f", "g"].map((id) =>
+        makeSlot({ id, macro: { ...binanceMacro, symbol: `${id.toUpperCase()}USDT` } }),
+      ),
+    ];
+    const flows = useRunDialogs({ state: makeState({ runs }), act, toast, openSettings: vi.fn() });
+    return (
+      <>
+        <button type="button" onClick={() => flows.askRemoveMany(ids)}>
+          빼기
+        </button>
+        {flows.dialogs}
+      </>
+    );
+  }
+
+  it("여럿이면 '{N}개를 목록에서 뺄까요?' — 한 번에 remove_runs, 남긴 것은 토스트", async () => {
+    const act = vi.fn(async () => ({ removed: 1, kept: 1 })) as unknown as Act & ReturnType<typeof vi.fn>;
+    const toast = vi.fn();
+    render(<ManyHarness act={act} toast={toast} ids={["a", "b"]} />);
+    fireEvent.click(screen.getByText("빼기"));
+    expect(screen.getByText("2개를 목록에서 뺄까요?")).toBeTruthy();
+    expect(screen.getByText("BTCUSDT · 바이낸스")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "목록에서 빼기" }));
+    await waitFor(() => expect(act).toHaveBeenCalledWith("remove_runs", { runIds: ["a", "b"] }));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("실행 중인 1개는 남겼어요."));
+  });
+
+  it("다 뺐으면 토스트 없음", async () => {
+    const act = vi.fn(async () => ({ removed: 2, kept: 0 })) as unknown as Act & ReturnType<typeof vi.fn>;
+    const toast = vi.fn();
+    render(<ManyHarness act={act} toast={toast} ids={["a", "c"]} />);
+    fireEvent.click(screen.getByText("빼기"));
+    fireEvent.click(screen.getByRole("button", { name: "목록에서 빼기" }));
+    await waitFor(() => expect(act).toHaveBeenCalledTimes(1));
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("하나면 지금의 '목록에서 뺄까요?' 창 그대로(remove_run)", async () => {
+    const act = vi.fn(async () => undefined) as unknown as Act & ReturnType<typeof vi.fn>;
+    render(<ManyHarness act={act} toast={vi.fn()} ids={["a"]} />);
+    fireEvent.click(screen.getByText("빼기"));
+    expect(screen.getByText("목록에서 뺄까요?")).toBeTruthy();
+    expect(screen.getByText("매크로 파일은 지우지 않아요. 이 매크로의 활동 기록은 지워져요.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "목록에서 빼기" }));
+    await waitFor(() => expect(act).toHaveBeenCalledWith("remove_run", { runId: "a" }));
+  });
+
+  it(`이름은 ${REMOVE_NAMES_SHOWN}줄까지, 넘으면 '외 N개' · 없어진 매크로는 셈하지 않음`, () => {
+    render(
+      <ManyHarness act={vi.fn() as unknown as Act} toast={vi.fn()} ids={["a", "b", "c", "d", "e", "f", "g", "gone"]} />,
+    );
+    fireEvent.click(screen.getByText("빼기"));
+    expect(screen.getByText("7개를 목록에서 뺄까요?")).toBeTruthy();
+    expect(screen.getByText("외 2개")).toBeTruthy();
+    expect(screen.queryByText("GUSDT · 바이낸스")).toBeNull();
+  });
+});
+
+describe("removeManyText", () => {
+  it("고른 매크로의 출처에 맞는 문장만", () => {
+    expect(removeManyText(["file", "file"])).toBe("매크로 파일은 지우지 않아요. 고른 매크로의 활동 기록은 지워져요.");
+    expect(removeManyText(["web"])).toBe("웹에 저장한 매크로는 그대로예요. 고른 매크로의 활동 기록은 지워져요.");
+    expect(removeManyText(["file", "web"])).toBe(
+      "매크로 파일은 지우지 않아요. 웹에 저장한 매크로는 그대로예요. 고른 매크로의 활동 기록은 지워져요.",
+    );
   });
 });

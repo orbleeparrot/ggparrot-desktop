@@ -524,6 +524,14 @@ pub struct UpdateData {
     pub updated_from: String,
 }
 
+/// [`Core::remove_runs`]의 결과 — 뺀 수·남긴 수와 보낼 '닫힘' 보고.
+#[derive(Default)]
+pub struct RemovedRuns {
+    pub removed: usize,
+    pub kept: usize,
+    pub closing: Vec<(Arc<SetupProgressReporter>, Option<Value>)>,
+}
+
 pub struct Core {
     pub runs: Vec<Run>,
     pub slots: BTreeMap<KeySlot, SlotState>,
@@ -629,6 +637,26 @@ impl Core {
     }
     pub fn run_mut(&mut self, id: &str) -> Option<&mut Run> {
         self.runs.iter_mut().find(|r| r.id == id)
+    }
+    /// 여러 개 목록에서 빼기 — 실행 중·시작하는 중인 것은 남김(하나씩 빼기와 같은 기준).
+    /// - 이미 없는 id·같은 id 두 번은 건너뜀.
+    /// - 웹으로 들어온 실행은 '닫힘' 보고를 떼어 돌려줌 — 보내기는 잠금 밖에서(`Shared::remove_runs`).
+    pub fn remove_runs(&mut self, ids: &[String]) -> RemovedRuns {
+        let mut out = RemovedRuns::default();
+        for id in ids {
+            let Some(r) = self.run_mut(id) else { continue };
+            if r.running() || r.start_pending {
+                out.kept += 1;
+                continue;
+            }
+            out.closing.extend(r.take_closing_report());
+            self.runs.retain(|r| r.id != *id);
+            out.removed += 1;
+        }
+        if out.removed > 0 {
+            self.library_rev += 1;
+        }
+        out
     }
     pub fn running_count(&self) -> usize {
         self.runs.iter().filter(|r| r.running()).count()
@@ -890,7 +918,7 @@ pub use app_log::{AppLogEntry, SUPPORT_APP_LOG_LINES, app_log_copy_text};
 mod health;
 mod render;
 pub(crate) use render::finish_label;
-pub use render::{Notice, StartReply};
+pub use render::{Notice, RemoveRunsReply, StartReply};
 
 #[cfg(test)]
 mod tests;

@@ -44,6 +44,7 @@ import type {
   KeySlot,
   Market,
   Notice,
+  RemoveRunsReply,
   RunMode,
   StartReply,
   StopMode,
@@ -389,6 +390,15 @@ export function createMockBackend(
       if (isActive(r)) throw "실행 중인 매크로는 목록에서 뺄 수 없어요. 먼저 종료하세요.";
       m.runs = m.runs.filter((x) => x !== r);
       activity.delete(r.id);
+    },
+    remove_runs: ({ runIds }): RemoveRunsReply => {
+      const ids = new Set(Array.isArray(runIds) ? runIds.map(String) : []);
+      const picked = m.runs.filter((r) => ids.has(r.id));
+      const kept = picked.filter(isActive);
+      const gone = new Set(picked.filter((r) => !isActive(r)).map((r) => r.id));
+      m.runs = m.runs.filter((r) => !gone.has(r.id));
+      for (const id of gone) activity.delete(id);
+      return { removed: gone.size, kept: kept.length };
     },
     set_run_mode: ({ runId, mode }) => {
       const r = findRun(runId);
