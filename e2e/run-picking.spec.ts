@@ -91,12 +91,10 @@ test.describe("1100x760 — 한 줄 목록", () => {
     await page.mouse.down();
     await page.mouse.move(start.x, box.y + box.height - 6, { steps: 8 });
     const near = (await pickedIds(page)).length;
-    await page.waitForTimeout(600);
-    await page.mouse.move(start.x, box.y + box.height - 5);
-    const far = (await pickedIds(page)).length;
+    // 프레임마다 조금씩 내려감 — 화면 없는 WebKit(CI)은 프레임이 드물어 정해진 시간 대신 늘어날 때까지 봄.
+    await expect.poll(async () => (await pickedIds(page)).length, { timeout: 5000 }).toBeGreaterThan(near);
     await page.mouse.up();
     expect(await panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(top0);
-    expect(far).toBeGreaterThan(near);
   });
 
   test("[목록에서 빼기] → 확인 → 고른 줄이 목록에서 빠짐", async ({ page }) => {

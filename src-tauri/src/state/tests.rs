@@ -642,8 +642,9 @@ fn activity_copy_keeps_the_error_code_line_indented_under_its_entry() {
     assert_eq!(lines[3], "                     오류 코드: insufficient_funds_bid", "{text}");
 }
 
-#[test]
-fn removing_many_keeps_running_and_starting_runs() {
+// 실행 중 표시(BotHandle::idle_for_tests)가 Tokio 런타임을 씀.
+#[tokio::test]
+async fn removing_many_keeps_running_and_starting_runs() {
     let mut c = core();
     for (id, sym) in [("a", "BTCUSDT"), ("b", "ETHUSDT"), ("c", "XRPUSDT"), ("d", "SOLUSDT")] {
         c.runs.push(run(id, sym, "binance"));
