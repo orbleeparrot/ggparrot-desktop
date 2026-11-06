@@ -19,6 +19,8 @@ pub type LogFn = Arc<dyn Fn(String) + Send + Sync>;
 mod pacing;
 #[cfg(test)]
 pub(crate) mod test_keys;
+#[cfg(test)]
+pub(crate) use pacing::reserved as quote_turn_reserved;
 pub use pacing::{LOOKUP_ATTEMPTS, lookup_delay};
 pub(crate) use pacing::{QUOTE_GAP, cool, cool_key, cooling, retry_after_secs, space};
 
