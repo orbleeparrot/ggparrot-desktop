@@ -15,7 +15,7 @@
 // - 좁을 때 줄이는 순서는 run.css(.run-card-head·.run-card-meta)에서 정함 — 글자 길이를 재는 스크립트는 없음.
 //   전략은 세 글자쯤 보일 자리가 없으면 앞의 구분점(·)과 함께 통째로 숨음('· …'만 남지 않게).
 // - 주 단추·×는 고르기 버튼 밖의 형제 — 비워 둔 자리를 네모난 감싸개가 통째로 덮어 모서리를 눌러도 카드가 골라지지 않음.
-// - 여러 개 고른 줄(picked)은 코인 표시 자리에 노란 체크 — 지금 보고 있는 줄(노란 테두리)과 따로 보임.
+// - 선택 모드에서 고를 수 있는 줄(pickable)은 코인 표시 자리에 빈 원, 고른 줄(picked)은 노란 체크 — 지금 보고 있는 줄(노란 테두리)과 따로 보임.
 import { Check, GripVertical, X } from "lucide-react";
 import { forwardRef, type KeyboardEvent, type PointerEventHandler } from "react";
 import { useRunnerContext } from "../../state/context";
@@ -47,6 +47,8 @@ interface Grab {
 interface Props {
   slot: RunSlot;
   selected: boolean;
+  /** 선택 모드에서 고를 수 있는 줄 — 코인 표시 대신 빈 원(고르면 노란 체크). */
+  pickable?: boolean;
   /** 여러 개 빼기로 고른 줄. */
   picked?: boolean;
   onKeyNav(e: KeyboardEvent<HTMLButtonElement>): void;
@@ -84,11 +86,13 @@ function Coin({
   m,
   compact,
   serverBase,
+  pickable,
   picked,
 }: {
   m: MacroInfo;
   compact: boolean;
   serverBase: string;
+  pickable: boolean;
   picked: boolean;
 }) {
   const tag = futuresTag(m);
@@ -99,6 +103,8 @@ function Coin({
           <Check size={compact ? 13 : 18} strokeWidth={3.2} aria-hidden="true" />
           <span className="sr-only">선택됨 </span>
         </span>
+      ) : pickable ? (
+        <span className="run-card-ring" aria-hidden="true" />
       ) : (
         <CoinMark
           base={coinTicker(m)}
@@ -135,7 +141,7 @@ function Badges({ slot }: { slot: RunSlot }) {
 }
 
 export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
-  { slot, selected, picked = false, onKeyNav, grab, sorting = "", compact = false },
+  { slot, selected, pickable = false, picked = false, onKeyNav, grab, sorting = "", compact = false },
   ref,
 ) {
   const { state, select, askRemove } = useRunnerContext();
@@ -150,7 +156,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
   // 전략이 없으면 매크로 이름 — 전체(전략·파일 이름)는 마우스를 올리면 보이고, 상세 머리줄에도 있음.
   const strategy = m.strategy || m.title;
   const strategyTitle = m.strategy && m.strategy !== m.title ? `${m.strategy} · ${m.title}` : m.title;
-  const cls = `run-card mode-${slot.mode} act-${actionKind} ${compact ? "is-compact" : ""} ${idle ? "has-remove" : ""} ${selected ? "is-selected" : ""} ${picked ? "is-picked" : ""} ${live ? "is-live" : ""} ${sorting}`;
+  const cls = `run-card mode-${slot.mode} act-${actionKind} ${compact ? "is-compact" : ""} ${idle ? "has-remove" : ""} ${selected ? "is-selected" : ""} ${pickable ? "is-pickable" : ""} ${picked ? "is-picked" : ""} ${live ? "is-live" : ""} ${sorting}`;
 
   const grip = grab && (
     <span className="run-card-grip" title="끌어서 순서 바꾸기 (Alt+↑·↓)" aria-hidden="true" {...grab}>
@@ -175,6 +181,8 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
     className: "run-card-select",
     "data-run-id": slot.id,
     "aria-current": selected ? ("true" as const) : undefined,
+    // 선택 모드에서는 누르면 체크·해제되는 단추.
+    "aria-pressed": pickable ? picked : undefined,
     "aria-controls": "run-detail",
     "aria-keyshortcuts": grab ? "Alt+ArrowUp Alt+ArrowDown" : undefined,
     tabIndex: selected ? 0 : -1,
@@ -188,7 +196,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
       <li className={cls}>
         {grip}
         <button type="button" {...selectProps}>
-          <Coin m={m} compact serverBase={serverBase} picked={picked} />
+          <Coin m={m} compact serverBase={serverBase} pickable={pickable} picked={picked} />
           <Badges slot={slot} />
           <span className="run-row-line" title={`${slot.status.text} · ${strategyTitle}`}>
             {word && <span className={`run-row-status tone-${word.tone}`}>{word.text}</span>}
@@ -211,7 +219,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
       <button type="button" {...selectProps}>
         <span className="run-card-top">
           <span className="run-card-head">
-            <Coin m={m} compact={false} serverBase={serverBase} picked={picked} />
+            <Coin m={m} compact={false} serverBase={serverBase} pickable={pickable} picked={picked} />
             <Badges slot={slot} />
           </span>
           <End slot={slot} />
