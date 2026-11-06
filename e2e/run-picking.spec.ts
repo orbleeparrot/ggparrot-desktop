@@ -144,3 +144,52 @@ test.describe("720x600 — 두 칸 격자", () => {
     expect(new Set(xs).size, "두 칸에 둘씩").toBe(2);
   });
 });
+
+test.describe("1100x760 — 왼쪽 끝(손잡이 · 로고)", () => {
+  test.use({ viewport: { width: 1100, height: 760 } });
+
+  test("가리켜도 순서 손잡이가 코인 표시를 덮지 않음 — 한 줄 행 · 두 줄 카드", async ({ page }) => {
+    await open(page);
+    for (const group of ["is-idle", "is-running"]) {
+      const row = page.locator(`.run-group.${group} .run-card`).nth(2);
+      await center(row);
+      await row.hover();
+      const grip = (await row.locator(".run-card-grip").boundingBox())!;
+      const coin = (await row.locator(".coin-mark").boundingBox())!;
+      expect(grip.x + grip.width, `${group}: 손잡이 오른쪽 끝 ≤ 코인 왼쪽`).toBeLessThanOrEqual(coin.x + 0.5);
+      const dots = await row
+        .locator(".run-card-grip svg circle")
+        .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().right)));
+      expect(dots, `${group}: 점과 코인 사이 틈`).toBeLessThan(coin.x - 1);
+    }
+  });
+
+  test("고른 줄은 가리켜도 손잡이 · [▶] · [×]가 안 보임", async ({ page }) => {
+    await open(page);
+    const rows = idleRows(page);
+    await center(rows.nth(2));
+    await drag(page, await inside(rows.nth(1)), await inside(rows.nth(3)));
+    await rows.nth(2).hover();
+    for (const part of [".run-card-grip", ".run-card-action", ".run-card-remove-slot"]) {
+      await expect(rows.nth(2).locator(part)).toHaveCSS("visibility", "hidden");
+    }
+  });
+
+  test("로고 위에서 끌어도 순서 바꾸기가 아니라 고르기", async ({ page }) => {
+    await open(page);
+    const rows = idleRows(page);
+    const ids = await rows
+      .locator(".run-card-select")
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
+    await center(rows.nth(3));
+    const logo = (await rows.nth(1).locator(".coin-mark").boundingBox())!;
+    // 로고 왼쪽 끝 가까이 — 손잡이가 넓을 때 순서 바꾸기가 잡던 자리
+    const from = { x: logo.x + 2, y: logo.y + logo.height / 2 };
+    await drag(page, from, { x: from.x, y: (await inside(rows.nth(3))).y });
+    expect(await pickedIds(page)).toEqual(ids.slice(1, 4));
+    const after = await rows
+      .locator(".run-card-select")
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
+    expect(after, "순서는 그대로").toEqual(ids);
+  });
+});

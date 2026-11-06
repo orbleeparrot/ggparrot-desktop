@@ -596,6 +596,21 @@
 .run-groups.is-picking {
   user-select: none;
 }
+/* 로고 그림을 끌어 놓기로 집지 않음(WebKit) — 그림 위에서 시작해도 고르기. */
+.run-groups img {
+  -webkit-user-drag: none;
+}
+/* 끄는 동안·고른 줄 — 순서 손잡이와 [▶]·[×]를 감춤.
+   지나가는 줄마다 단추가 떠서 고르기가 다른 동작처럼 보이지 않게, 고른 줄 왼쪽을 눌러도 순서 바꾸기가 아니라 고르기가 되게.
+   자리는 그대로 둠(visibility) — 글자가 움직이지 않게. */
+.run-groups.is-picking .run-card-grip,
+.run-groups.is-picking .run-card-action,
+.run-groups.is-picking .run-card-remove-slot,
+.run-card.is-picked .run-card-grip,
+.run-card.is-picked .run-card-action,
+.run-card.is-picked .run-card-remove-slot {
+  visibility: hidden;
+}
 .run-card.is-compact .run-card-select {
   display: flex;
   grid-template-rows: none;
@@ -715,14 +730,23 @@
   bottom: 0;
   left: 0;
   z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
   color: var(--faint);
   cursor: grab;
   opacity: 0;
   touch-action: none;
   transition: opacity 120ms var(--ease);
+}
+/* 손잡이 칸은 카드 왼쪽 여백만큼(두 줄 12px·한 줄 8px) — 넓으면 코인 표시·체크의 왼쪽을 덮어 잘려 보이고,
+   안 보일 때도 로고 왼쪽을 누르면 고르기 대신 순서 바꾸기가 됨. 아이콘은 칸보다 넓어도 크기 그대로 가운데. */
+.run-card-grip svg {
+  flex: none;
+}
+.run-card.is-compact .run-card-grip {
+  width: 8px;
 }
 .run-card:hover .run-card-grip,
 .run-card:has(:focus-visible) .run-card-grip,

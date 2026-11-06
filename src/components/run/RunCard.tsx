@@ -154,7 +154,7 @@ export const RunCard = forwardRef<HTMLButtonElement, Props>(function RunCard(
 
   const grip = grab && (
     <span className="run-card-grip" title="끌어서 순서 바꾸기 (Alt+↑·↓)" aria-hidden="true" {...grab}>
-      <GripVertical size={14} />
+      <GripVertical size={compact ? 12 : 14} />
     </span>
   );
   const remove = idle && (

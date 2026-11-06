@@ -123,6 +123,12 @@ describe("내 매크로 — 여러 개 고르기", () => {
     expect(picked()).toEqual([]);
   });
 
+  it("목록 안에서 그림 끌어 놓기가 시작되지 않음 — 로고 위에서도 끌어 고르기", () => {
+    const { row } = renderList();
+    // fireEvent는 기본 동작이 막히면 false
+    expect(fireEvent.dragStart(row("i1"))).toBe(false);
+  });
+
   it("고르는 동안 머리는 [취소]·[목록에서 빼기] — 새 줄 없이 같은 자리", () => {
     const { ctx, row, picked, head, container } = renderList();
     fireEvent.click(row("i2"), { ctrlKey: true });

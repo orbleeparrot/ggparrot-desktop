@@ -5,11 +5,13 @@
 // - Shift+클릭: 마지막으로 고른 줄부터 여기까지(보이는 차례). Ctrl(⌘)+클릭: 한 줄 넣기·빼기.
 // - Ctrl(⌘)+A: 뺄 수 있는 줄 전부(접힌 대기 묶음은 펼침). Delete·Backspace: 빼기 확인 창. Esc: 비움.
 // - 순서 손잡이·[▶]·[×]·접기 단추를 누른 것은 고르기가 아님.
+// - 로고(그림) 위에서 시작해도 고르기 — 브라우저의 그림 끌어 놓기를 막음(시작되면 포인터가 끊겨 고르기가 멈춤).
 // - 끄는 동안 위·아래 끝에 가까우면 저절로 스크롤(순서 바꾸기와 같은 속도) — 누른 자리는 스크롤한 만큼 옮겨 셈.
 import {
   useEffect,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
@@ -222,6 +224,11 @@ export function useRunPicking(o: Options) {
     setPicking(false);
   }
 
+  /** 그림 끌어 놓기가 시작되면 브라우저가 포인터를 가져가(pointercancel) 끌어 고르기가 끊김. */
+  function onDragStart(e: DragEvent<HTMLElement>) {
+    e.preventDefault();
+  }
+
   function onClickCapture(e: MouseEvent<HTMLElement>) {
     if (skipClick.current) {
       skipClick.current = false;
@@ -290,6 +297,6 @@ export function useRunPicking(o: Options) {
     clear,
     removePicked,
     onKeyDown,
-    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture },
+    handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture, onDragStart },
   };
 }
