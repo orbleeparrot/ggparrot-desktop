@@ -48,7 +48,35 @@
   font-weight: var(--fw-bold);
   color: var(--ink);
 }
-/* 고르는 동안 머리 오른쪽 — [취소]·[목록에서 빼기]. [+ 추가]와 같은 높이라 머리 높이가 바뀌지 않음. */
+/* 평소 머리 오른쪽 — [선택]·[+ 추가]. */
+.panel-head-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+}
+.panel-head-actions .panel-add {
+  margin-left: 0;
+}
+/* 선택 모드 머리 왼쪽 — 전체 선택 동그라미 + 'N개 선택'(누르면 전체 선택·해제).
+   제목 안에서 블록으로 둠 — 인라인이면 글자 기준선에 붙어 옆 단추보다 2px 남짓 올라감. */
+.panel-pick-all {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.panel-pick-all .run-card-ring,
+.panel-pick-all .run-card-check {
+  width: 18px;
+  height: 18px;
+}
+/* 선택 모드 머리 오른쪽 — [취소]·[목록에서 빼기]. [+ 추가]와 같은 높이라 머리 높이가 바뀌지 않음. */
 .panel-pick-actions {
   display: flex;
   flex: none;
@@ -592,9 +620,32 @@
   width: 20px;
   height: 20px;
 }
-/* 끌어 고르는 동안 글자가 긁혀 골라지지 않게. */
-.run-groups.is-picking {
-  user-select: none;
+/* 선택 모드에서 고를 수 있는 줄 — 코인 표시 자리에 빈 원(고르면 위의 노란 체크). */
+.run-card-ring {
+  box-sizing: border-box;
+  display: inline-block;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid color-mix(in srgb, var(--ink) 32%, var(--border));
+  border-radius: 999px;
+  background: var(--card);
+}
+.run-card.is-compact .run-card-ring {
+  width: 20px;
+  height: 20px;
+}
+/* 선택 모드 — 순서 손잡이와 [▶]·[×]를 감춤(자리는 그대로 — 글자가 움직이지 않게). 고를 수 없는 줄(실행 중·시작 중)은 흐리게. */
+.run-groups.is-selecting .run-card-grip,
+.run-groups.is-selecting .run-card-action,
+.run-groups.is-selecting .run-card-remove-slot {
+  visibility: hidden;
+}
+.run-groups.is-selecting .run-card:not(.is-pickable) {
+  opacity: 0.42;
+}
+.run-groups.is-selecting .run-card:not(.is-pickable) .run-card-select {
+  cursor: default;
 }
 .run-card.is-compact .run-card-select {
   display: flex;
@@ -715,14 +766,23 @@
   bottom: 0;
   left: 0;
   z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
   color: var(--faint);
   cursor: grab;
   opacity: 0;
   touch-action: none;
   transition: opacity 120ms var(--ease);
+}
+/* 손잡이 칸은 카드 왼쪽 여백만큼(두 줄 12px·한 줄 8px) — 넓으면 코인 표시·체크의 왼쪽을 덮어 잘려 보이고,
+   안 보일 때도 로고 왼쪽을 누르면 고르기 대신 순서 바꾸기가 됨. 아이콘은 칸보다 넓어도 크기 그대로 가운데. */
+.run-card-grip svg {
+  flex: none;
+}
+.run-card.is-compact .run-card-grip {
+  width: 8px;
 }
 .run-card:hover .run-card-grip,
 .run-card:has(:focus-visible) .run-card-grip,

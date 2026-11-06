@@ -1,7 +1,7 @@
-// 내 매크로 목록 — 끌어서 여러 개 고르기·한 번에 빼기(useRunPicking). 실제 배치가 있어야 하는 것만 여기서 봄.
-// - 한 줄 목록(넓은 창): 위아래로 끈 범위, 실행 중 카드는 지나가도 안 골라짐, 머리 높이 그대로.
-// - 끝에 가까이 끌면 저절로 스크롤하며 계속 고름.
-// - 두 칸 격자(720): 끈 사각형에 닿은 덩어리만.
+// 내 매크로 목록 — [선택]으로 선택 모드에 들어가 고르고 한 번에 빼기(useRunPicking). 실제 배치가 있어야 하는 것만 여기서 봄.
+// - 머리: [선택]·[+ 추가]와 선택 모드의 '○ N개 선택 [취소] [목록에서 빼기]'가 한 줄·같은 높이·패널 안.
+// - 선택 모드: 고를 수 있는 줄은 빈 원·노란 체크, 실행 중은 흐림, 손잡이·[▶]·[×] 감춤.
+// - 순서 손잡이는 카드 왼쪽 여백 안 — 코인 표시를 덮지 않음.
 // - 클릭·키 동작은 vitest(RunList.picking.test.tsx)에서 봄.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
@@ -11,136 +11,113 @@ async function open(page: Page) {
   await page.goto("/?demo=many", { waitUntil: "networkidle" });
   await page.addStyleTag({ content: NO_MOTION });
   await page.locator(".run-group.is-idle").waitFor();
-  const more = page.getByRole("button", { name: /모두 보기/ });
-  if (await more.count()) await more.click();
 }
 
+const head = (page: Page) => page.locator(".panel-head");
 const idleRows = (page: Page) => page.locator(".run-group.is-idle .run-card");
-const pickedIds = (page: Page) =>
-  page
-    .locator(".run-card.is-picked .run-card-select")
-    .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
+const ids = (rows: Locator) =>
+  rows.locator(".run-card-select").evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
+const pickedIds = (page: Page) => ids(page.locator(".run-card.is-picked"));
 
-/** 끌 줄을 화면 가운데로 — 위·아래 끝 가까이에서 끌면 자동 스크롤이 켜져 더 골라짐(그건 따로 봄). */
 async function center(row: Locator) {
   await row.evaluate((el) => el.scrollIntoView({ block: "center" }));
 }
 
-/** 줄 안쪽 왼편(순서 손잡이·오른쪽 단추를 피한 자리). */
-async function inside(row: Locator, dx = 80) {
-  const box = (await row.boundingBox())!;
-  return { x: box.x + Math.min(dx, box.width / 2), y: box.y + box.height / 2 };
+/** 머리의 단추들이 한 줄·패널 안에 있는지. */
+async function oneLine(page: Page, names: string[]) {
+  const box = (await head(page).boundingBox())!;
+  const tops: number[] = [];
+  for (const name of names) {
+    const b = (await head(page).getByRole("button", { name }).boundingBox())!;
+    tops.push(b.y);
+    expect(b.x + b.width, `${name}: 패널 안`).toBeLessThanOrEqual(box.x + box.width);
+  }
+  expect(Math.max(...tops) - Math.min(...tops), "한 줄").toBeLessThanOrEqual(1);
 }
 
-async function drag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 8 });
-  await page.mouse.up();
+for (const vp of [
+  { width: 1100, height: 760 },
+  { width: 720, height: 600 },
+]) {
+  test.describe(`${vp.width}x${vp.height} — 선택 모드`, () => {
+    test.use({ viewport: vp });
+
+    test("[선택] → 줄을 눌러 고르면 머리가 'N개 선택'으로 — 같은 높이 · 한 줄 · 상세 그대로", async ({ page }) => {
+      await open(page);
+      const before = (await head(page).boundingBox())!;
+      await oneLine(page, ["선택", "매크로 추가"]);
+      const viewing = await page.locator(".run-card.is-selected .run-card-select").getAttribute("data-run-id");
+      await head(page).getByRole("button", { name: "선택" }).click();
+      const rows = idleRows(page);
+      const all = await ids(rows);
+      expect(all.length, "대기 묶음을 다 펼침").toBeGreaterThan(3);
+      await center(rows.nth(2));
+      for (const i of [1, 2, 4]) await rows.nth(i).locator(".run-card-select").click();
+      expect(await pickedIds(page)).toEqual([all[1], all[2], all[4]]);
+      await expect(head(page).getByRole("heading")).toHaveText("3개 선택");
+      await oneLine(page, ["취소", "목록에서 빼기"]);
+      const after = (await head(page).boundingBox())!;
+      expect(Math.abs(after.height - before.height), "머리 높이 그대로").toBeLessThanOrEqual(1);
+      expect(await page.locator(".run-card.is-selected .run-card-select").getAttribute("data-run-id")).toBe(viewing);
+    });
+
+    test("선택 모드: 빈 원 · 노란 체크, 실행 중은 흐리고 안 골라짐, 손잡이 · [▶] · [×] 감춤", async ({ page }) => {
+      await open(page);
+      await head(page).getByRole("button", { name: "선택" }).click();
+      const rows = idleRows(page);
+      await center(rows.nth(1));
+      await rows.nth(1).locator(".run-card-select").click();
+      await expect(rows.nth(1).locator(".run-card-check")).toBeVisible();
+      await expect(rows.nth(2).locator(".run-card-ring")).toBeVisible();
+      await rows.nth(2).hover();
+      for (const part of [".run-card-grip", ".run-card-action", ".run-card-remove-slot"]) {
+        await expect(rows.nth(2).locator(part)).toHaveCSS("visibility", "hidden");
+      }
+      const running = page.locator(".run-group.is-running .run-card").first();
+      await center(running);
+      expect(Number(await running.evaluate((el) => getComputedStyle(el).opacity))).toBeLessThan(0.6);
+      await running.locator(".run-card-select").click();
+      expect((await pickedIds(page)).length).toBe(1);
+    });
+
+    test("[목록에서 빼기] → 확인 → 고른 줄이 빠지고 선택 모드가 끝남", async ({ page }) => {
+      await open(page);
+      const count = page.locator(".run-group.is-idle .run-group-count");
+      const total = Number(await count.textContent());
+      await head(page).getByRole("button", { name: "선택" }).click();
+      const remove = head(page).getByRole("button", { name: "목록에서 빼기" });
+      await expect(remove).toBeDisabled();
+      const rows = idleRows(page);
+      await center(rows.nth(1));
+      for (const i of [0, 1, 2]) await rows.nth(i).locator(".run-card-select").click();
+      await remove.click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("heading")).toHaveText("3개를 목록에서 뺄까요?");
+      await dialog.getByRole("button", { name: "목록에서 빼기" }).click();
+      await expect(count).toHaveText(String(total - 3));
+      await expect(head(page).getByRole("heading")).toHaveText("내 매크로");
+    });
+  });
 }
 
-test.describe("1100x760 — 한 줄 목록", () => {
+test.describe("1100x760 — 순서 손잡이", () => {
   test.use({ viewport: { width: 1100, height: 760 } });
 
-  test("대기 줄을 위아래로 끌면 지나간 줄만 골라지고 머리가 'N개 선택'으로 바뀜", async ({ page }) => {
+  test("가리켜도 순서 손잡이가 코인 표시를 덮지 않음 — 한 줄 행 · 두 줄 카드", async ({ page }) => {
     await open(page);
-    const head = page.locator(".panel-head");
-    const before = (await head.boundingBox())!;
-    const selected = await page.locator(".run-card.is-selected .run-card-select").getAttribute("data-run-id");
-    const rows = idleRows(page);
-    const ids = await rows
-      .locator(".run-card-select")
-      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
-    await center(rows.nth(2));
-    await drag(page, await inside(rows.nth(1)), await inside(rows.nth(4)));
-    expect(await pickedIds(page)).toEqual(ids.slice(1, 5));
-    await expect(head.getByRole("heading")).toHaveText("4개 선택");
-    // 끌어 고르기는 상세를 바꾸지 않음
-    expect(await page.locator(".run-card.is-selected .run-card-select").getAttribute("data-run-id")).toBe(selected);
-    // 새 줄 없이 같은 자리 — 머리 높이 그대로, 두 단추가 한 줄·패널 안
-    const after = (await head.boundingBox())!;
-    expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
-    const cancel = (await head.getByRole("button", { name: "취소" }).boundingBox())!;
-    const remove = (await head.getByRole("button", { name: "목록에서 빼기" }).boundingBox())!;
-    expect(Math.abs(cancel.y - remove.y)).toBeLessThanOrEqual(1);
-    expect(remove.x + remove.width).toBeLessThanOrEqual(before.x + before.width);
-  });
-
-  test("실행 중 카드에서 시작해 대기까지 끌어도 실행 중은 안 골라짐", async ({ page }) => {
-    await open(page);
-    const running = page.locator(".run-group.is-running .run-card");
-    const runningIds = await running
-      .locator(".run-card-select")
-      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
-    await center(running.last());
-    await drag(page, await inside(running.last()), await inside(idleRows(page).nth(1)));
-    const picked = await pickedIds(page);
-    expect(picked.length).toBe(2);
-    expect(picked.some((id) => runningIds.includes(id))).toBe(false);
-  });
-
-  test("목록 아래 끝 가까이 끌고 있으면 저절로 스크롤하며 더 고름", async ({ page }) => {
-    await open(page);
-    const panel = page.locator(".run-list-panel");
-    const rows = idleRows(page);
-    await rows.first().scrollIntoViewIfNeeded();
-    const top0 = await panel.evaluate((el) => el.scrollTop);
-    const start = await inside(rows.first());
-    const box = (await panel.boundingBox())!;
-    await page.mouse.move(start.x, start.y);
-    await page.mouse.down();
-    await page.mouse.move(start.x, box.y + box.height - 6, { steps: 8 });
-    const near = (await pickedIds(page)).length;
-    // 프레임마다 조금씩 내려감 — 화면 없는 WebKit(CI)은 프레임이 드물어 정해진 시간 대신 늘어날 때까지 봄.
-    await expect.poll(async () => (await pickedIds(page)).length, { timeout: 5000 }).toBeGreaterThan(near);
-    await page.mouse.up();
-    expect(await panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(top0);
-  });
-
-  test("[목록에서 빼기] → 확인 → 고른 줄이 목록에서 빠짐", async ({ page }) => {
-    await open(page);
-    const count = page.locator(".run-group.is-idle .run-group-count");
-    const total = Number(await count.textContent());
-    const rows = idleRows(page);
-    await center(rows.nth(1));
-    await drag(page, await inside(rows.nth(0)), await inside(rows.nth(2)));
-    await page.locator(".panel-head").getByRole("button", { name: "목록에서 빼기" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("heading")).toHaveText("3개를 목록에서 뺄까요?");
-    await dialog.getByRole("button", { name: "목록에서 빼기" }).click();
-    await expect(count).toHaveText(String(total - 3));
-    await expect(page.locator(".panel-head").getByRole("heading")).toHaveText("내 매크로");
-  });
-});
-
-test.describe("720x600 — 두 칸 격자", () => {
-  test.use({ viewport: { width: 720, height: 600 } });
-
-  test("왼쪽 칸만 세로로 끌면 왼쪽 줄만 — 읽는 차례로 번지지 않음", async ({ page }) => {
-    await open(page);
-    const rows = idleRows(page);
-    const ids = await rows
-      .locator(".run-card-select")
-      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
-    // 격자 차례: 0 1 / 2 3 / 4 5 — 0에서 4로 왼쪽 칸만 끌면 0·2·4(차례 범위라면 0~4 다섯 줄)
-    await center(rows.nth(2));
-    await drag(page, await inside(rows.nth(0), 40), await inside(rows.nth(4), 40));
-    expect(await pickedIds(page)).toEqual([ids[0], ids[2], ids[4]]);
-  });
-
-  test("2×2로 끌면 그 네 줄", async ({ page }) => {
-    await open(page);
-    const rows = idleRows(page);
-    const ids = await rows
-      .locator(".run-card-select")
-      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.runId));
-    // 2(왼쪽 둘째 줄)에서 5(오른쪽 셋째 줄)로
-    await center(rows.nth(3));
-    await drag(page, await inside(rows.nth(2), 40), await inside(rows.nth(5), 40));
-    expect(await pickedIds(page)).toEqual(ids.slice(2, 6));
-    const xs = await page
-      .locator(".run-card.is-picked")
-      .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
-    expect(new Set(xs).size, "두 칸에 둘씩").toBe(2);
+    const more = page.getByRole("button", { name: /모두 보기/ });
+    if (await more.count()) await more.click();
+    for (const group of ["is-idle", "is-running"]) {
+      const row = page.locator(`.run-group.${group} .run-card`).nth(2);
+      await center(row);
+      await row.hover();
+      const grip = (await row.locator(".run-card-grip").boundingBox())!;
+      const coin = (await row.locator(".coin-mark").boundingBox())!;
+      expect(grip.x + grip.width, `${group}: 손잡이 오른쪽 끝 ≤ 코인 왼쪽`).toBeLessThanOrEqual(coin.x + 0.5);
+      const dots = await row
+        .locator(".run-card-grip svg circle")
+        .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().right)));
+      expect(dots, `${group}: 점과 코인 사이 틈`).toBeLessThan(coin.x - 1);
+    }
   });
 });

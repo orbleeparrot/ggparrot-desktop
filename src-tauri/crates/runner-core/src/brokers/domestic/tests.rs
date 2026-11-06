@@ -1064,9 +1064,16 @@ async fn public_price_requests_queue_up_so_a_burst_cannot_break_the_limit() {
 #[tokio::test]
 async fn orders_are_not_held_back_by_the_price_queue() {
     // 주문이 시세 줄 뒤에 서면 매매 시점이 밀림 — 못 산 것도 귀책임.
+    // 걸린 시간으로 재지 않음 — 시험이 한꺼번에 돌면 줄 없이도 넘쳐 흔들림. 시세 차례를 예약했는지를 직접 봄.
     let server = MockServer::start().await;
     mount(&server, "GET", "/v1/orders/chance", ResponseTemplate::new(200).set_body_json(json!({}))).await;
-    let started = std::time::Instant::now();
+    mount(
+        &server,
+        "GET",
+        "/v1/ticker",
+        ResponseTemplate::new(200).set_body_json(json!([{"trade_price": "100", "prev_closing_price": "100"}])),
+    )
+    .await;
     let mut running = Vec::new();
     for _ in 0..7 {
         let (b, _) = make(Exchange::Upbit, &server.uri());
@@ -1075,7 +1082,11 @@ async fn orders_are_not_held_back_by_the_price_queue() {
     for task in running {
         let _ = task.await.expect("작업");
     }
-    assert!(started.elapsed() < crate::brokers::QUOTE_GAP * 6, "{:?}", started.elapsed());
+    assert!(!crate::brokers::quote_turn_reserved(&server.uri()), "주문은 시세 차례를 예약하지 않음");
+    // 같은 주소의 시세는 예약함 — 위 확인이 엉뚱한 주소를 보고 있지 않다는 것.
+    let (b, _) = make(Exchange::Upbit, &server.uri());
+    b.price().await.expect("시세");
+    assert!(crate::brokers::quote_turn_reserved(&server.uri()));
 }
 
 // --- 화면 정보: 수수료·잔고·전일 대비 -----------------------------------------
