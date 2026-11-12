@@ -293,6 +293,7 @@ pub struct Run {
     /// 돌려 온 단일 종목 실행과 똑같음. 이 값은 목록에서 같은 묶음끼리 붙여 보이고,
     /// 종료를 묶음 단위로 걸 때만 씀.
     pub bundle: Option<RunBundle>,
+    pub recovery: Option<SavedRecovery>,
 }
 
 /// 한 묶음에서 갈라져 나온 줄의 자리표.
@@ -302,6 +303,14 @@ pub struct RunBundle {
     pub key: String,
     pub index: usize,
     pub size: usize,
+}
+
+/// 서버 세션과 이 PC의 복구 체크포인트를 묶는 식별자 — 키 값 없음.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SavedRecovery {
+    pub session_id: i64,
+    pub recovery_id: String,
+    pub generation: u64,
 }
 
 /// runs.json 한 줄 — 키는 들어가지 않음.
@@ -331,6 +340,10 @@ pub struct SavedRun {
     /// 묶음에서 갈라져 나온 줄이면 그 자리표 — 앱을 다시 켜도 같은 묶음으로 보이게.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle: Option<RunBundle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recovery: Option<SavedRecovery>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<Value>,
 }
 
 impl Run {
@@ -362,6 +375,7 @@ impl Run {
             activity: vec![],
             reporter: None,
             bundle: None,
+            recovery: None,
         }
     }
 
@@ -377,12 +391,14 @@ impl Run {
         r.web_linked = s.web_linked;
         r.mode = s.mode;
         r.bundle = s.bundle;
+        r.recovery = s.recovery;
         if r.mode == RunMode::Testnet && !r.exchange().is_some_and(Exchange::has_testnet) {
             r.mode = RunMode::Mock;
         }
         if let Some(since) = s.active_since {
             // 실행 중에 앱이 꺼짐 — 포지션·서버 세션이 남았을 수 있으니 '확인 필요'로 보임.
-            let mut d = RunData::started(since, None);
+            let mut d = RunData::started(since, r.recovery.as_ref().map(|v| v.session_id));
+            d.snapshot = s.snapshot.unwrap_or_else(|| Value::Object(Default::default()));
             d.finished = Some(("error".into(), INTERRUPTED_NOTE.into(), now_ms()));
             r.data = Some(d);
         }
@@ -402,8 +418,11 @@ impl Run {
             web_linked: self.web_linked,
             server_base: self.server_base.clone(),
             mode: self.mode,
-            active_since: self.running().then(|| self.data.as_ref().map_or(0, |d| d.started_at)),
+            active_since: (self.running() || self.interrupted() || (self.start_pending && self.recovery.is_some()))
+                .then(|| self.data.as_ref().map_or(0, |d| d.started_at)),
             bundle: self.bundle.clone(),
+            recovery: self.recovery.clone(),
+            snapshot: self.data.as_ref().map(|d| d.snapshot.clone()),
         }
     }
 
@@ -415,6 +434,9 @@ impl Run {
     }
     pub fn symbol(&self) -> String {
         macro_symbol(&self.macro_)
+    }
+    pub fn interrupted(&self) -> bool {
+        self.data.as_ref().and_then(|d| d.finished.as_ref()).is_some_and(|(_, note, _)| note == INTERRUPTED_NOTE)
     }
     pub fn running(&self) -> bool {
         self.bot.is_some()

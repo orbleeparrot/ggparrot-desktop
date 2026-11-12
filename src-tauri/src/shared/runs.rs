@@ -138,7 +138,7 @@ impl Shared {
 
     pub fn set_run_mode(self: &S, id: &str, mode: RunMode) {
         let _ = self.edit_runs_rechecking(|c| {
-            let r = c.run_mut(id).filter(|r| !r.busy()).ok_or(())?;
+            let r = c.run_mut(id).filter(|r| !r.busy() && !r.interrupted()).ok_or(())?;
             let allowed = r.exchange().is_none_or(Exchange::has_testnet);
             r.mode = if mode == RunMode::Testnet && !allowed { RunMode::Mock } else { mode };
             r.invalidate_preflight();
@@ -238,7 +238,7 @@ impl Shared {
         let fail = |m: &str| Err(Err(m.to_string()));
         let edited = self.edit_runs(|c| {
             let Some(r) = c.run_mut(id) else { return fail("매크로를 찾지 못했어요.") };
-            if r.busy() {
+            if r.busy() || r.interrupted() {
                 return fail("실행 중에는 투자 금액을 바꿀 수 없어요. 종료한 뒤 바꾸세요.");
             }
             if r.capital_locked() {

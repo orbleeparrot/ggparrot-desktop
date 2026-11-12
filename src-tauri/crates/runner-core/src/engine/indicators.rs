@@ -10,7 +10,7 @@
 use std::collections::VecDeque;
 
 /// 고정 길이 창. 서버의 `deque(maxlen=period)`와 같음.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct Window {
     period: usize,
     values: VecDeque<f64>,
@@ -43,7 +43,7 @@ impl Window {
 }
 
 /// Wilder의 RSI. 과매도·과매수를 재는 0~100 값.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Rsi {
     period: usize,
     prev: Option<f64>,
@@ -104,7 +104,7 @@ impl Rsi {
 }
 
 /// 볼린저 밴드 — 중심선과 위·아래 선.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Bollinger {
     num_std: f64,
     window: Window,
@@ -140,7 +140,7 @@ impl Bollinger {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum MaType {
     /// 단순 평균.
     Sma,
@@ -149,7 +149,7 @@ pub enum MaType {
 }
 
 /// 이동평균.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Ma {
     kind: MaType,
     window: Window,

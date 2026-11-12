@@ -13,14 +13,14 @@
 
 /// 포지션 방향. 지금 실행기가 받는 매크로는 전부 롱이지만(국내 현물은 롱 1배만),
 /// 장부 식은 숏도 서버와 같게 둠 — 한쪽만 옮기면 나중에 갈림.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Side {
     Long,
     Short,
 }
 
 /// 진입 한 번이 만든 묶음. 그리드·마틴게일은 여러 개가 쌓임.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Lot {
     /// 이 묶음을 가리키는 번호. 그리드는 "몇 번 칸에서 산 묶음"을 기억했다가 그 묶음만
     /// 팖. 자리(인덱스)로 기억하면
@@ -35,7 +35,7 @@ pub struct Lot {
 }
 
 /// 체결 하나. 서버 `stepper.Fill`과 같은 칸을 가짐.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Fill {
     /// `buy` | `sell` | `short` | `cover`.
     pub side: &'static str,
@@ -69,7 +69,7 @@ pub fn sell_fill(close: f64, slippage_pct: f64) -> f64 {
 }
 
 /// 수수료·슬리피지·레버리지 — 매크로의 `fees`·`leverage`에서 옴.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Costs {
     /// 한쪽 수수료(%).
     pub commission_pct: f64,
@@ -88,7 +88,7 @@ impl Default for Costs {
 }
 
 /// 현금·보유 묶음·실현손익을 셈.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Ledger {
     pub side: Side,
     pub costs: Costs,
@@ -315,3 +315,35 @@ impl Ledger {
 
 #[cfg(test)]
 mod tests;
+
+impl<'de> serde::Deserialize<'de> for Fill {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Owned {
+            side: String,
+            price: f64,
+            qty: f64,
+            equity_after: f64,
+            return_pct: f64,
+            reason: String,
+            qty_before: f64,
+        }
+        let o = Owned::deserialize(d)?;
+        let side = match o.side.as_str() {
+            "buy" => "buy",
+            "sell" => "sell",
+            "short" => "short",
+            "cover" => "cover",
+            _ => return Err(serde::de::Error::custom("잘못된 체결 방향")),
+        };
+        Ok(Self {
+            side,
+            price: o.price,
+            qty: o.qty,
+            equity_after: o.equity_after,
+            return_pct: o.return_pct,
+            reason: o.reason,
+            qty_before: o.qty_before,
+        })
+    }
+}

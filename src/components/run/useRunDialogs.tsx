@@ -43,6 +43,7 @@ export function removeManyText(sources: string[]): string {
 }
 
 export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDialogs {
+  const [resumeAsk, setResumeAsk] = useState<string | null>(null);
   const [live, setLive] = useState<ConfirmPayload | null>(null);
   const [blocked, setBlocked] = useState<{ runId: string; message: string } | null>(null);
   const [stopAsk, setStopAsk] = useState<{ runId: string; mode: StopMode } | null>(null);
@@ -86,7 +87,7 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   );
 
   const send = useCallback(
-    async (runId: string, cmd: "start_run" | "start_run_confirmed") => {
+    async (runId: string, cmd: "start_run" | "start_run_confirmed" | "resume_run") => {
       if (sending.current.has(runId)) return;
       sending.current.add(runId);
       try {
@@ -104,6 +105,10 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
     (runId: string) =>
       void (async () => {
         if (sending.current.has(runId)) return;
+        if (latest.current?.runs.find((r) => r.id === runId)?.recovery) {
+          setResumeAsk(runId);
+          return;
+        }
         let preview: EntryPreview | undefined;
         try {
           preview = await act("entry_preview", { runId });
@@ -150,6 +155,18 @@ export function useRunDialogs({ state, act, toast, openSettings }: Deps): RunDia
   const livePreview = live ? previews[live.runId] : undefined;
   const dialogs = (
     <>
+      {resumeAsk && (
+        <ConfirmDialog
+          title="중단된 실행을 이어서 실행할까요?"
+          tone={find(resumeAsk)?.mode === "live" ? "live" : "default"}
+          onClose={() => setResumeAsk(null)}
+          cancel={{ label: "취소" }}
+          confirm={{ label: "이어서 실행", className: "btn-primary", run: () => void send(resumeAsk, "resume_run") }}
+        >
+          <p>이 PC에 저장한 주문 기록과 거래소 보유분을 먼저 확인해요. 상태가 맞으면 같은 세션에서 매매를 이어 가요.</p>
+          {find(resumeAsk)?.mode === "live" && <p>실전 실행이라 실제 자금으로 주문해요.</p>}
+        </ConfirmDialog>
+      )}
       {waitAsk && (
         <ConfirmDialog
           variant="sheet"

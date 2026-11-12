@@ -1023,3 +1023,22 @@ async fn entry_wait_shows_until_the_run_buys() {
     assert_eq!(v["runs"][0]["status"]["text"], "실행 중");
     assert!(v["runs"][0]["run"]["entryWait"].is_null());
 }
+
+#[test]
+fn interrupted_recovery_identity_survives_repeated_app_restarts() {
+    let mut saved = run("recover", "BTCUSDT", "binance").saved();
+    saved.active_since = Some(1234);
+    saved.mode = RunMode::Live;
+    saved.recovery =
+        Some(SavedRecovery { session_id: 41, recovery_id: uuid::Uuid::new_v4().to_string(), generation: 3 });
+    saved.snapshot = Some(json!({"in_position": true, "position_qty": 0.25, "entry_price": 100.0}));
+    let first = Run::from_saved(saved.clone(), "https://example.test");
+    assert!(first.interrupted());
+    assert_eq!(first.data.as_ref().unwrap().session_id, Some(41));
+    assert_eq!(first.data.as_ref().unwrap().snapshot["position_qty"], 0.25);
+    let second = Run::from_saved(first.saved(), "https://example.test");
+    assert!(second.interrupted());
+    assert_eq!(second.recovery, saved.recovery);
+    assert_eq!(second.mode, RunMode::Live);
+    assert_eq!(second.saved().active_since, Some(1234));
+}

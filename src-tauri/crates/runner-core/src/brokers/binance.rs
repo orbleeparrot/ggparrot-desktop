@@ -528,6 +528,120 @@ impl Broker for BinanceBroker {
         Ok(self.normalize(&order, closing).await)
     }
 
+    async fn recovery_position(&self) -> Result<f64, BrokerError> {
+        let path = if self.futures() { "/fapi/v1/openOrders" } else { "/api/v3/openOrders" };
+        let open = self.get(self.futures(), path, &[("symbol", self.symbol.clone())], true).await?;
+        let open = open.as_array().ok_or_else(|| BrokerError::Other("미체결 주문 응답을 읽지 못했어요.".into()))?;
+        if !open.is_empty() {
+            return Err(BrokerError::Other(
+                "이 종목에 미체결 주문이 있어 이어서 실행할 수 없어요. 거래소에서 주문을 확인하세요.".into(),
+            ));
+        }
+        if self.futures() {
+            let algo = self.get(true, "/fapi/v1/openAlgoOrders", &[("symbol", self.symbol.clone())], true).await?;
+            let algo = algo.as_array().ok_or_else(|| BrokerError::Other("예약 주문 응답을 읽지 못했어요.".into()))?;
+            if !algo.is_empty() {
+                return Err(BrokerError::Other(
+                    "이 종목에 예약 주문이 있어 이어서 실행할 수 없어요. 거래소에서 주문을 확인하세요.".into(),
+                ));
+            }
+        }
+        if self.futures() {
+            let rows = self.get(true, "/fapi/v2/positionRisk", &[("symbol", self.symbol.clone())], true).await?;
+            let rows = rows.as_array().ok_or_else(|| BrokerError::Other("선물 보유 응답을 읽지 못했어요.".into()))?;
+            let mut position = 0.0;
+            let mut matched = false;
+            for row in rows.iter().filter(|r| r.get("symbol").and_then(Value::as_str) == Some(self.symbol.as_str())) {
+                matched = true;
+                let qty = row
+                    .get("positionAmt")
+                    .and_then(num_of)
+                    .ok_or_else(|| BrokerError::Other("선물 보유 수량을 읽지 못했어요.".into()))?;
+                if qty != 0.0 && row.get("positionSide").and_then(Value::as_str).is_some_and(|s| s != "BOTH") {
+                    return Err(BrokerError::Other(
+                        "양방향 선물 포지션은 이어서 실행할 수 없어요. 거래소에서 포지션을 확인하세요.".into(),
+                    ));
+                }
+                position += qty;
+            }
+            if !matched {
+                return Err(BrokerError::Other("이 종목의 선물 보유를 확인하지 못했어요.".into()));
+            }
+            Ok(position)
+        } else {
+            let data = self.get(false, "/api/v3/account", &[], true).await?;
+            let rows = data
+                .get("balances")
+                .and_then(Value::as_array)
+                .ok_or_else(|| BrokerError::Other("현물 보유 응답을 읽지 못했어요.".into()))?;
+            let asset = crate::types::base_asset(&self.symbol);
+            let row = rows.iter().find(|r| r.get("asset").and_then(Value::as_str) == Some(asset.as_str()));
+            match row {
+                None => Ok(0.0),
+                Some(row) => {
+                    let free = row
+                        .get("free")
+                        .and_then(num_of)
+                        .ok_or_else(|| BrokerError::Other("사용 가능 보유를 읽지 못했어요.".into()))?;
+                    let locked = row
+                        .get("locked")
+                        .and_then(num_of)
+                        .ok_or_else(|| BrokerError::Other("주문에 묶인 보유를 읽지 못했어요.".into()))?;
+                    if locked != 0.0 {
+                        return Err(BrokerError::Other(
+                            "이 종목에 미체결 주문이 있어 이어서 실행할 수 없어요. 거래소에서 주문을 확인하세요."
+                                .into(),
+                        ));
+                    }
+                    Ok(free)
+                }
+            }
+        }
+    }
+
+    async fn recovery_position_details(&self) -> Result<super::RecoveryPosition, BrokerError> {
+        let qty = self.recovery_position().await?;
+        if !self.futures() {
+            return Ok(super::RecoveryPosition { qty, entry_price: None, leverage: None });
+        }
+        let data = self.get(true, "/fapi/v2/positionRisk", &[("symbol", self.symbol.clone())], true).await?;
+        let rows = data.as_array().ok_or_else(|| BrokerError::Other("선물 보유 응답을 읽지 못했어요.".into()))?;
+        let matching: Vec<_> =
+            rows.iter().filter(|r| r.get("symbol").and_then(Value::as_str) == Some(self.symbol.as_str())).collect();
+        if matching.len() != 1 {
+            return Err(BrokerError::Other(
+                "선물 보유를 한 포지션으로 확인하지 못했어요. 거래소에서 포지션을 확인하세요.".into(),
+            ));
+        }
+        let row = matching[0];
+        let qty = row
+            .get("positionAmt")
+            .and_then(num_of)
+            .filter(|n| n.is_finite())
+            .ok_or_else(|| BrokerError::Other("선물 보유 수량을 읽지 못했어요.".into()))?;
+        let entry_price = row.get("entryPrice").and_then(num_of).filter(|n| n.is_finite() && *n >= 0.0);
+        let leverage = row
+            .get("leverage")
+            .and_then(num_of)
+            .filter(|n| n.is_finite() && n.fract() == 0.0 && *n >= 1.0 && *n <= 125.0)
+            .map(|n| n as u32);
+        if entry_price.is_none() || leverage.is_none() {
+            return Err(BrokerError::Other(
+                "선물 평단과 레버리지를 확인하지 못했어요. 거래소에서 포지션을 확인하세요.".into(),
+            ));
+        }
+        Ok(super::RecoveryPosition { qty, entry_price, leverage })
+    }
+
+    async fn recovery_order(&self, client_id: &str, closing: bool) -> Result<Order, BrokerError> {
+        let futures = self.futures();
+        let path = if futures { "/fapi/v1/order" } else { "/api/v3/order" };
+        let found = self
+            .get(futures, path, &[("symbol", self.symbol.clone()), ("origClientOrderId", client_id.into())], true)
+            .await?;
+        Ok(self.normalize(&found, closing).await)
+    }
+
     /// 현물: 견적 통화 잔고와 보유 기초자산. 선물: 사용 가능 증거금.
     fn balance_note(&self) -> String {
         let Some((rows, available)) = self.quote_funds() else {

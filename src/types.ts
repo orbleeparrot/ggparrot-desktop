@@ -256,6 +256,8 @@ export interface RunSlot {
    * 종료를 묶음 단위로 걸 때만 씀.
    */
   bundle: RunBundle | null;
+  /** 중단된 실행의 복구 가능 여부 — 실제 상태 검증은 Rust에서 수행함. */
+  recovery: null | { available: boolean; reason: string };
 }
 
 export interface RunBundle {

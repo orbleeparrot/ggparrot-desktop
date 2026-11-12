@@ -585,3 +585,44 @@ fn a_local_dev_server_still_works() {
 fn a_hostname_that_merely_starts_with_localhost_is_not_local() {
     assert!(super::secure_base("http://localhost.evil.example").is_err());
 }
+
+#[tokio::test]
+async fn recovery_generation_fences_heartbeat_stop_and_runner_settings() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let c = client(&server.uri(), &dir);
+    c.bind_session(&json!({"session_id":42,"generation":3,"macro_digest":"digest","decides":"local"})).unwrap();
+    for endpoint in ["heartbeat", "stopped", "settings"] {
+        Mock::given(method("POST"))
+            .and(path(format!("/api/runner/{endpoint}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true})))
+            .mount(&server)
+            .await;
+    }
+    c.heartbeat(&json!({"in_position":false}), vec![]).await;
+    c.change_settings(&json!({"risk.stop_loss_pct":2.0}), "now").await.unwrap();
+    assert!(c.stopped("stopped", "fixture", None).await);
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+    for req in requests {
+        let body: Value = req.body_json().unwrap();
+        assert_eq!(body["generation"], 3);
+        assert_eq!(body["session_id"], 42);
+    }
+}
+
+#[tokio::test]
+async fn stale_recovery_owner_is_told_to_stop_without_closing_the_position() {
+    let server = MockServer::start().await;
+    let dir = tempfile::tempdir().unwrap();
+    let c = client(&server.uri(), &dir);
+    c.bind_session(&json!({"session_id":42,"generation":0})).unwrap();
+    Mock::given(method("POST"))
+        .and(path("/api/runner/heartbeat"))
+        .respond_with(ResponseTemplate::new(409).set_body_json(json!({"detail":"generation conflict"})))
+        .mount(&server)
+        .await;
+    let reply = c.heartbeat(&json!({"in_position":true}), vec![]).await;
+    assert_eq!(reply.action, "stop_only");
+    assert!(reply.commands.is_empty());
+}

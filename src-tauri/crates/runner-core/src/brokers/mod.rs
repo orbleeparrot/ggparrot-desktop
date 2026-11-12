@@ -85,6 +85,13 @@ pub struct OrderRules {
     pub min_notional: f64,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecoveryPosition {
+    pub qty: f64,
+    pub entry_price: Option<f64>,
+    pub leverage: Option<u32>,
+}
+
 /// 주문 하나에서 낸 수수료. 화면 표시용(서버로 보내는 값에는 넣지 않음).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FeePaid {
@@ -227,6 +234,19 @@ pub trait Broker: Send + Sync {
     async fn rehearse(&self, notional: f64, spend: Option<f64>) -> (bool, String);
     async fn price(&self) -> Result<f64, BrokerError>;
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError>;
+
+    /// 복구용 읽기 전용 조회. 지원하지 않으면 복구를 거절함.
+    async fn recovery_position(&self) -> Result<f64, BrokerError> {
+        Err(BrokerError::Other("이 거래소 연결은 보유 조회를 지원하지 않아 이어서 실행할 수 없어요.".into()))
+    }
+
+    async fn recovery_position_details(&self) -> Result<RecoveryPosition, BrokerError> {
+        Ok(RecoveryPosition { qty: self.recovery_position().await?, entry_price: None, leverage: None })
+    }
+
+    async fn recovery_order(&self, _client_id: &str, _closing: bool) -> Result<Order, BrokerError> {
+        Err(BrokerError::Other("중단된 주문 결과를 확인하지 못했어요. 거래소에서 주문을 확인하세요.".into()))
+    }
 
     /// 마지막 확인에서 읽은 잔고 한 줄("사용 가능 잔고 1,234.5 USDT · 보유 BTC 0.01"). 읽지 않았으면 "".
     fn balance_note(&self) -> String {

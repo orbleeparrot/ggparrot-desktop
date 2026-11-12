@@ -100,6 +100,7 @@ fn side_of(macro_: &Value) -> Side {
 }
 
 /// 봉 기반 규칙 하나를 돌리는 엔진.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum Engine {
     Grid(CandleSim<Grid>),
     Trailing(CandleSim<Trailing>),
@@ -116,6 +117,37 @@ pub enum Engine {
 }
 
 impl Engine {
+    /// 중단 구간은 지표만 갱신하고, 체결·장부·위험 상태는 보존함.
+    pub fn refresh_market(&mut self, macro_: &Value, bars: &[Bar]) -> Result<(), BuildError> {
+        let mut observed = build(macro_)?;
+        for bar in bars {
+            match &mut observed {
+                Engine::Grid(s) => s.observe_market(bar),
+                Engine::Trailing(s) => s.observe_market(bar),
+                Engine::Breakout(s) => s.observe_market(bar),
+                Engine::Rsi(s) => s.observe_market(bar),
+                Engine::Bollinger(s) => s.observe_market(bar),
+                Engine::MaCross(s) => s.observe_market(bar),
+                Engine::Martingale(s) => s.observe_market(bar),
+                Engine::Sar(s) => s.observe_market(bar),
+                Engine::Tick(_) | Engine::Dca(_) => {}
+            }
+        }
+        match (self, observed) {
+            (Engine::Grid(s), Engine::Grid(o)) => s.adopt_market(&o),
+            (Engine::Trailing(s), Engine::Trailing(o)) => s.adopt_market(&o),
+            (Engine::Breakout(s), Engine::Breakout(o)) => s.adopt_market(&o),
+            (Engine::Rsi(s), Engine::Rsi(o)) => s.adopt_market(&o),
+            (Engine::Bollinger(s), Engine::Bollinger(o)) => s.adopt_market(&o),
+            (Engine::MaCross(s), Engine::MaCross(o)) => s.adopt_market(&o),
+            (Engine::Martingale(s), Engine::Martingale(o)) => s.adopt_market(&o),
+            (Engine::Sar(s), Engine::Sar(o)) => s.adopt_market(&o),
+            (Engine::Tick(_), Engine::Tick(_)) | (Engine::Dca(_), Engine::Dca(_)) => {}
+            _ => return Err(BuildError::BadMacro("저장된 매크로 유형이 달라요.".into())),
+        }
+        Ok(())
+    }
+
     /// 마감봉 하나. 돌려주는 값은 대기 중인 체결 수 — 주문은 [`Engine::tick`]에서 나옴.
     ///
     /// 틱 기반 규칙(A·B·C)는 봉을 보지 않음. 다만 **봉의 시각**은 받아 둠 —

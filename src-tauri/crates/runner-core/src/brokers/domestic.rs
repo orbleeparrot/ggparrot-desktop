@@ -740,6 +740,55 @@ impl Broker for DomesticBroker {
         Ok(value)
     }
 
+    async fn recovery_position(&self) -> Result<f64, BrokerError> {
+        let path = if self.exchange == Exchange::Upbit { "/v1/orders/open" } else { "/v1/orders" };
+        for state in ["wait", "watch"] {
+            let open = self
+                .get(
+                    path,
+                    &[
+                        ("market".into(), self.symbol.clone()),
+                        ("state".into(), state.into()),
+                        ("limit".into(), "1".into()),
+                    ],
+                    true,
+                )
+                .await?;
+            let open = open.as_array().ok_or_else(|| BrokerError::Other("미체결 주문 응답을 읽지 못했어요.".into()))?;
+            if !open.is_empty() {
+                return Err(BrokerError::Other(
+                    "이 종목에 미체결·예약 주문이 있어 이어서 실행할 수 없어요. 거래소에서 주문을 확인하세요.".into(),
+                ));
+            }
+        }
+        let data = self.get("/v1/accounts", &[], true).await?;
+        let rows = data.as_array().ok_or_else(|| BrokerError::Other("거래소 보유 응답을 읽지 못했어요.".into()))?;
+        let asset = crate::types::base_asset(&self.symbol);
+        let row = rows.iter().find(|r| r.get("currency").and_then(Value::as_str) == Some(asset.as_str()));
+        match row {
+            None => Ok(0.0),
+            Some(row) => {
+                let read = |key| {
+                    row.get(key).and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok()).or_else(|| v.as_f64()))
+                };
+                let free = read("balance").ok_or_else(|| BrokerError::Other("보유 수량을 읽지 못했어요.".into()))?;
+                let locked =
+                    read("locked").ok_or_else(|| BrokerError::Other("주문에 묶인 보유를 읽지 못했어요.".into()))?;
+                if locked != 0.0 {
+                    return Err(BrokerError::Other(
+                        "이 종목에 미체결 주문이 있어 이어서 실행할 수 없어요. 거래소에서 주문을 확인하세요.".into(),
+                    ));
+                }
+                Ok(free)
+            }
+        }
+    }
+
+    async fn recovery_order(&self, client_id: &str, _closing: bool) -> Result<Order, BrokerError> {
+        let found = self.get("/v1/order", &[(self.spec.id_key.into(), client_id.into())], true).await?;
+        Ok(normalize_domestic(&found))
+    }
+
     /// 시장가 주문 하나를 넣고 끝난 상태까지 확인해서 돌려줌. POST 뒤에는 어떤 일이 있어도 오류를 내지 않음.
     async fn submit(&self, req: SubmitRequest) -> Result<Order, BrokerError> {
         let body = self.order_body(req.side, req.base_qty, req.notional, req.reduce_only, &req.client_id)?;

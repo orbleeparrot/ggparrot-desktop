@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::levels::Levels;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BandExit {
     /// 가격대를 벗어나면 전부 팔고 멈춤.
     Stop,
@@ -23,7 +23,7 @@ pub enum BandExit {
     Hold,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GridMode {
     /// 같은 **금액** 간격.
     Arithmetic,
@@ -31,7 +31,7 @@ pub enum GridMode {
     Geometric,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Grid {
     pub lower: f64,
     pub upper: f64,

@@ -66,6 +66,30 @@ impl RiskGuard {
         }
     }
 
+    pub fn checkpoint(&self) -> Value {
+        serde_json::json!({"day":self.day,"day_pnl":self.day_pnl,"halted_day":self.halted_day,
+            "entry_time":self.entry_time,"cooldown_until":self.cooldown_until})
+    }
+
+    pub fn restore_checkpoint(&mut self, state: &Value) -> Result<(), String> {
+        #[derive(serde::Deserialize)]
+        struct State {
+            day: Option<String>,
+            day_pnl: f64,
+            halted_day: Option<String>,
+            entry_time: Option<f64>,
+            cooldown_until: f64,
+        }
+        let s: State =
+            serde_json::from_value(state.clone()).map_err(|_| "저장된 안전 설정 상태를 읽지 못했어요.".to_string())?;
+        self.day = s.day;
+        self.day_pnl = s.day_pnl;
+        self.halted_day = s.halted_day;
+        self.entry_time = s.entry_time;
+        self.cooldown_until = s.cooldown_until;
+        Ok(())
+    }
+
     pub fn describe(&self) -> String {
         let mut bits = vec![];
         if let Some((_, raw)) = &self.daily_max_loss {

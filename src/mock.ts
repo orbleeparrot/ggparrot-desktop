@@ -406,8 +406,18 @@ export function createMockBackend(
       const next = mode as RunMode;
       r.mode = next === "testnet" && r.macro.exchange !== "binance" ? "mock" : next;
     },
+    resume_run: ({ runId }): StartReply => {
+      const r = findRun(runId);
+      if (!r.recovery?.available || !r.run)
+        return { kind: "blocked", message: "이 PC의 복구 기록을 확인하지 못했어요." };
+      r.run.finished = null;
+      r.phase = "running";
+      r.recovery = null;
+      return { kind: "started" };
+    },
     start_run: ({ runId }): StartReply => {
       const r = findRun(runId);
+      if (r.recovery) return { kind: "blocked", message: "중단된 실행은 [이어서 실행]으로 복구하세요." };
       if (m.wizard) return { kind: "blocked", message: "연결 도우미를 닫은 뒤 다시 시작하세요." };
       if (isActive(r)) return { kind: "blocked", message: "이미 실행 중이에요." };
       if (!r.macro.exchange)
@@ -618,6 +628,22 @@ export function createMockBackend(
   // 디자인 검토용 바로가기
   const demo = params.get("demo");
   if (demo === "running") seedRunning();
+  if (demo === "recovery" || demo === "recovery-missing") {
+    const r = m.runs[0];
+    if (r) {
+      start(r);
+      if (r.run) {
+        r.run.sessionId = 41;
+        r.run.finished = { status: "error", note: "PC가 꺼져 실행이 중단됐어요", at: Date.now() };
+      }
+      r.phase = "finished";
+      r.recovery = {
+        available: demo === "recovery",
+        reason: "이 PC에 저장한 상태와 거래소 보유분을 확인하고 같은 실행을 이어 가요.",
+      };
+      m.runs = [r];
+    }
+  }
   if (demo === "bundle") seedBundle();
   if (demo === "pnl") seedPnl();
   if (demo === "wait") seedWait();

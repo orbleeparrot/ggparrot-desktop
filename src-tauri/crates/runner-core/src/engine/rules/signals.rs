@@ -23,7 +23,7 @@ fn streak(hit: bool, current: u32) -> u32 {
 // --- F: RSI 문턱 ------------------------------------------------------------
 
 /// **F — RSI.** 과매도에서 사고 과매수에서 팖(숏은 반대).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RsiSignal {
     rsi: Rsi,
     /// 롱이 사는 문턱(아래로 내려오면).
@@ -116,7 +116,7 @@ impl Signal for RsiSignal {
 
 // --- G: 볼린저 밴드 ---------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BandStrategy {
     /// 밴드 밖으로 벗어나면 **되돌아올 것**으로 보고 삼.
     Reversion,
@@ -124,7 +124,7 @@ pub enum BandStrategy {
     Breakout,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BandExitTarget {
     /// 중심선에 닿으면 팖.
     Mid,
@@ -133,7 +133,7 @@ pub enum BandExitTarget {
 }
 
 /// **G — 볼린저 밴드.**
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BollingerSignal {
     bands: Bollinger,
     pub strategy: BandStrategy,
@@ -242,7 +242,7 @@ impl Signal for BollingerSignal {
 // --- J: 이동평균 교차 -------------------------------------------------------
 
 /// **J — 이동평균 교차.** 짧은 평균이 긴 평균을 위로 뚫으면(골든크로스) 삼.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MaCrossSignal {
     fast: Ma,
     slow: Ma,

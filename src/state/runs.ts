@@ -59,7 +59,10 @@ export function statusParts(text: string): [string, string] {
 
 /** 대기 묶음 한 줄 행의 상태 낱말 — 끝난 이유 문장은 상세 결과 카드가 말하므로 목록엔 낱말 하나.
  *  그냥 기다리는 줄('대기 중')은 묶음 이름이 이미 '대기'라 null(전략 이름만). */
-export function rowStatus(slot: Pick<RunSlot, "phase" | "status" | "readiness" | "run">): RunSlot["status"] | null {
+export function rowStatus(
+  slot: Pick<RunSlot, "phase" | "status" | "readiness" | "run"> & Partial<Pick<RunSlot, "recovery">>,
+): RunSlot["status"] | null {
+  if (slot.recovery) return { text: "실행 중단", tone: "warn" };
   if (slot.phase === "finished")
     return { text: slot.run?.finished?.status === "error" ? "오류로 멈춤" : "종료", tone: slot.status.tone };
   if (slot.phase === "idle" && slot.readiness.canStart) return null;

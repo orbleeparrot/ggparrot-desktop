@@ -36,6 +36,7 @@ pub mod outbox;
 pub mod paths;
 pub mod pnl;
 pub mod protocol;
+pub mod recovery;
 pub mod risk;
 pub mod server;
 pub mod setup_progress;

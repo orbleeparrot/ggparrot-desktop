@@ -68,10 +68,11 @@ function Controls({ slot }: { slot: RunSlot }) {
       <button
         type="button"
         className={`btn btn-lg ${slot.mode === "live" ? "btn-live" : "btn-primary"} detail-start`}
+        disabled={slot.recovery?.available === false}
         onClick={() => startRun(slot.id)}
       >
         <Play size={15} fill="currentColor" aria-hidden="true" />
-        {slot.mode === "live" ? "실전으로 시작" : "시작"}
+        {slot.recovery ? "이어서 실행" : slot.mode === "live" ? "실전으로 시작" : "시작"}
       </button>
     );
   }
@@ -118,7 +119,7 @@ export function RunDetail({
   // 키·회원 키 말고 막힌 이유는 '시작 전 확인' 첫 줄이 말함.
   const blockerShown = idle && !r.canStart && !!r.blocker && !r.needs;
   // 시작 전 확인 — 아직 돌린 적 없거나(결과 카드가 없음), 끝났지만 다시 시작할 수 없을 때.
-  const showChecks = idle && (!slot.run?.finished || !r.canStart);
+  const showChecks = idle && !slot.recovery && (!slot.run?.finished || !r.canStart);
 
   useEffect(() => loadActivity(slot.id), [slot.id, loadActivity]);
 
@@ -133,11 +134,13 @@ export function RunDetail({
             <div className="detail-mode-card">
               <div className="detail-controls">
                 <div className="detail-mode">
-                  <ModeSegment slot={slot} />
+                  {slot.recovery ? <strong>중단된 실행</strong> : <ModeSegment slot={slot} />}
                 </div>
                 <Controls slot={slot} />
               </div>
-              <p className={`mode-note mode-${slot.mode}`}>{modeNote(slot.mode, slot.macro.market)}</p>
+              <p className={`mode-note mode-${slot.mode}`}>
+                {slot.recovery?.reason ?? modeNote(slot.mode, slot.macro.market)}
+              </p>
             </div>
           </>
         ) : (
@@ -160,7 +163,7 @@ export function RunDetail({
             {m.summary}
           </p>
         )}
-        {idle && <CapitalRow slot={slot} />}
+        {idle && !slot.recovery && <CapitalRow slot={slot} />}
 
         {slot.run && !slot.run.finished ? (
           <StatusCard
@@ -171,7 +174,7 @@ export function RunDetail({
             prices={prices}
             priceTimes={priceTimes}
           />
-        ) : slot.run?.finished && idle ? (
+        ) : slot.run?.finished && idle && !slot.recovery ? (
           <FinishedCard run={slot.run} macro={m} mode={slot.mode} activity={activity} />
         ) : null}
         {showChecks && <PreStartChecks slot={slot} />}

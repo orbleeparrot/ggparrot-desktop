@@ -1149,3 +1149,42 @@ async fn the_ticker_change_rate_rides_along_with_the_price() {
     assert_eq!(b.day_change(), Some(-0.0123));
     assert_eq!(requests(&server, "GET", "/v1/ticker").await.len(), 1);
 }
+
+#[tokio::test]
+async fn recovery_reads_domestic_balances_and_orders_without_resubmission() {
+    for exchange in [Exchange::Upbit, Exchange::Bithumb] {
+        let server = MockServer::start().await;
+        let (broker, _) = make(exchange, &server.uri());
+        let open_path = if exchange == Exchange::Upbit { "/v1/orders/open" } else { "/v1/orders" };
+        mount(&server, "GET", open_path, ResponseTemplate::new(200).set_body_json(json!([]))).await;
+        mount(
+            &server,
+            "GET",
+            "/v1/accounts",
+            ResponseTemplate::new(200).set_body_json(json!([{"currency":"BTC","balance":"0.015","locked":"0"}])),
+        )
+        .await;
+        mount(&server, "GET", "/v1/order", ResponseTemplate::new(200).set_body_json(filled())).await;
+        assert_eq!(broker.recovery_position().await.unwrap(), 0.015);
+        assert_eq!(broker.recovery_order("recovery-client", false).await.unwrap().executed_qty, 0.01);
+        let seen = server.received_requests().await.unwrap();
+        assert!(seen.iter().all(|r| r.method == "GET"));
+        let order = seen.iter().find(|r| r.url.path() == "/v1/order").unwrap();
+        assert!(order.url.query_pairs().any(|(k, v)| k == broker.spec.id_key && v == "recovery-client"));
+    }
+}
+
+#[tokio::test]
+async fn recovery_refuses_domestic_pending_buy_orders() {
+    let server = MockServer::start().await;
+    let (broker, _) = make(Exchange::Upbit, &server.uri());
+    mount(
+        &server,
+        "GET",
+        "/v1/orders/open",
+        ResponseTemplate::new(200).set_body_json(json!([{"side":"bid","state":"wait","market":"KRW-BTC"}])),
+    )
+    .await;
+    assert!(broker.recovery_position().await.is_err());
+    assert!(requests(&server, "GET", "/v1/accounts").await.is_empty());
+}

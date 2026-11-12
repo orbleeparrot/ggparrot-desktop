@@ -76,6 +76,7 @@ export function makeSlot(over: Partial<RunSlot> = {}): RunSlot {
     attention: false,
     waits: false,
     bundle: null,
+    recovery: null,
     ...over,
   };
 }

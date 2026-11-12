@@ -4,7 +4,7 @@
 //! 락은 await를 넘어 들고 있지 않음. 바뀐 상태는 `emit()`으로 웹뷰에 스냅샷을 보냄.
 
 use runner_core::APP_TITLE;
-use runner_core::bot::{BotEvent, BotHandle, StopMode, spawn_bot};
+use runner_core::bot::{BotEvent, BotHandle, StopMode};
 use runner_core::check::{check_http_client, mock_check, perform_connection_check};
 use runner_core::connection::{self, BeginOutcome, PreflightResult, check_view};
 use runner_core::credentials::{self, LoadStatus, SecretStore};
@@ -180,6 +180,7 @@ mod library_folder;
 mod lifecycle;
 mod output;
 mod persist;
+mod recovery;
 mod run_check;
 mod runs;
 mod updates;

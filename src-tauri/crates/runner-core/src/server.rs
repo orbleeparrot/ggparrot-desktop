@@ -172,6 +172,8 @@ struct Inner {
     outbox: Arc<EventOutbox>,
     namespace: String,
     session_id: Mutex<Option<i64>>,
+    generation: Mutex<Option<u64>>,
+    macro_digest: Mutex<String>,
     macro_origin: Mutex<String>,
     /// 이 세션의 판단을 누가 하는지 — 서버가 시작 응답으로 정함. 모르면 "server".
     decides: Mutex<String>,
@@ -201,6 +203,8 @@ impl ServerClient {
                 http,
                 outbox,
                 session_id: Mutex::new(None),
+                generation: Mutex::new(None),
+                macro_digest: Mutex::new(String::new()),
                 macro_origin: Mutex::new(String::new()),
                 decides: Mutex::new("server".to_string()),
                 state: Mutex::new(EventState {
@@ -574,7 +578,7 @@ impl ServerClient {
                 detail: "서버가 실행 세션 번호를 주지 않았어요. 잠시 뒤 다시 시작해 보세요.".into(),
             }));
         };
-        *self.inner.session_id.lock().unwrap() = Some(session_id);
+        self.bind_session(&data)?;
         self.recovery().live.insert(session_id);
         *self.inner.macro_origin.lock().unwrap() = match data.get("macro_origin") {
             Some(Value::String(s)) => s.clone(),
@@ -614,6 +618,9 @@ impl ServerClient {
         }
         let mut body = snapshot.as_object().cloned().unwrap_or_default();
         body.insert("session_id".into(), json!(session_id));
+        if let Some(generation) = *self.inner.generation.lock().unwrap() {
+            body.insert("generation".into(), json!(generation));
+        }
         let events = self.peek_events(None);
         let mut pending: Vec<Value> = std::mem::take(&mut *self.inner.unsent_acks.lock().unwrap());
         pending.extend(acks);
@@ -662,6 +669,11 @@ impl ServerClient {
                     ..Default::default()
                 }
             }
+            Err(409) if self.inner.generation.lock().unwrap().is_some() => HeartbeatReply {
+                action: "stop_only".into(),
+                reason: "다른 실행기가 이 실행을 이어받았어요. 주문을 멈춰요.".into(),
+                ..Default::default()
+            },
             Err(status) => {
                 *self.inner.unsent_acks.lock().unwrap() = pending;
                 let mut f = self.inner.heartbeat_failures.lock().unwrap();
@@ -682,7 +694,17 @@ impl ServerClient {
     /// 구동 중 설정 변경을 서버에 요청함. 실제 일은 [`change_settings`]가 함.
     pub async fn change_settings(&self, changes: &Value, apply_mode: &str) -> Result<Value, String> {
         let session_id = self.session_id().ok_or("아직 서버 세션이 없어요")?;
-        change_settings(&self.inner.http, &self.inner.base, &self.inner.key, session_id, changes, apply_mode).await
+        let generation = *self.inner.generation.lock().unwrap();
+        change_settings_with_generation(
+            &self.inner.http,
+            &self.inner.base,
+            &self.inner.key,
+            session_id,
+            changes,
+            apply_mode,
+            generation,
+        )
+        .await
     }
 
     pub async fn stopped(&self, status: &str, note: &str, snapshot: Option<&Value>) -> bool {
@@ -695,6 +717,9 @@ impl ServerClient {
             "session_id": session_id, "status": status, "note": note,
             "snapshot": snapshot.cloned().unwrap_or(Value::Null), "events": [],
         });
+        if let Some(generation) = *self.inner.generation.lock().unwrap() {
+            body["generation"] = json!(generation);
+        }
         let mut events = self.peek_events(None);
         for attempt in 0..MAX_RETRIES {
             events = outbox::wire_batch(events, &body);
@@ -767,12 +792,27 @@ pub async fn change_settings(
     changes: &Value,
     apply_mode: &str,
 ) -> Result<Value, String> {
+    change_settings_with_generation(http, base, runner_key, session_id, changes, apply_mode, None).await
+}
+
+pub async fn change_settings_with_generation(
+    http: &reqwest::Client,
+    base: &str,
+    runner_key: &str,
+    session_id: i64,
+    changes: &Value,
+    apply_mode: &str,
+    generation: Option<u64>,
+) -> Result<Value, String> {
     let base = secure_base(base)?;
     // 세션 번호는 **본문**에 담음 — 주소는 중계 서버·접근 기록에 그대로 남음.
     // start·heartbeat·stopped도 같은 이유로 본문에 담음.
-    let body = json!({
+    let mut body = json!({
         "session_id": session_id, "changes": changes, "apply_mode": apply_mode, "source": "runner",
     });
+    if let Some(generation) = generation {
+        body["generation"] = json!(generation);
+    }
     let resp = http
         .post(format!("{base}/api/runner/settings"))
         .header("X-Runner-Key", runner_key)
@@ -793,6 +833,7 @@ pub async fn change_settings(
 mod claim;
 mod preview;
 mod recovery;
+mod resume;
 pub use claim::{ClaimError, ClaimedLaunch, claim_ticket};
 pub use preview::{entry_preview, is_waiting_macro};
 

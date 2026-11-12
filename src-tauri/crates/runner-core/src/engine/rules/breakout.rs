@@ -16,7 +16,7 @@ use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::indicators::{Ma, MaType};
 use crate::engine::levels::{Levels, price};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ExitMode {
     /// 다음 봉 시가에 팖.
     NextOpen,
@@ -26,7 +26,7 @@ pub enum ExitMode {
     TakeProfit,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Breakout {
     /// 직전 봉 변동폭에 곱하는 값. 클수록 더 확실한 돌파만 잡음.
     pub k: f64,
@@ -135,6 +135,16 @@ impl Breakout {
 }
 
 impl Strategy for Breakout {
+    fn observe_market(&mut self, bar: &Bar, _side: crate::engine::ledger::Side) {
+        self.roll(bar);
+    }
+    fn adopt_market(&mut self, observed: &Self) {
+        self.ma = observed.ma.clone();
+        self.ma_value = observed.ma_value;
+        self.prev_range = observed.prev_range;
+        self.exit_next_open = false;
+    }
+
     fn on_bar(&mut self, ctx: &mut SimContext<'_>, bar: &Bar) {
         // 어제 돌파로 들어간 자리의 '다음 봉 시가 청산'을 이 봉의 시가에 실행함.
         self.drain_pending(ctx, bar.o);

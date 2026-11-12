@@ -6,6 +6,7 @@ use super::*;
 #[derive(Clone)]
 pub struct ClaimedLaunch {
     pub macro_: Value,
+    pub recovery_session_id: Option<i64>,
     pub runner_key: String,
     pub user_macro_id: Option<i64>,
     pub launch_id: Option<i64>,
@@ -64,7 +65,18 @@ pub async fn claim_ticket(http: &reqwest::Client, base: &str, ticket: &str) -> R
     }
     let payload: Value = r.json().await.map_err(|_| Failed)?;
     let obj = payload.as_object().ok_or(Failed)?;
-    let macro_ = obj.get("macro").filter(|m| m.is_object()).cloned().ok_or(Failed)?;
+    let recovery_session_id = match obj.get("recovery") {
+        Some(recovery) => Some(recovery.get("session_id").and_then(Value::as_i64).filter(|v| *v > 0).ok_or(Failed)?),
+        None => None,
+    };
+    let macro_ = if recovery_session_id.is_some() {
+        if obj.get("macro").is_some() {
+            return Err(Failed);
+        }
+        Value::Null
+    } else {
+        obj.get("macro").filter(|m| m.is_object()).cloned().ok_or(Failed)?
+    };
     let symbol_ok = match macro_.get("symbol") {
         Some(Value::String(s)) => !s.trim().is_empty(),
         Some(Value::Null) | None => false,
@@ -75,7 +87,7 @@ pub async fn claim_ticket(http: &reqwest::Client, base: &str, ticket: &str) -> R
     // 요청이 나가므로 받지 않음.
     let key_ok = runner_key.chars().count() <= crate::credentials::MAX_KEY_CHARS
         && runner_key.chars().all(|c| c.is_ascii_graphic());
-    if !symbol_ok || runner_key.is_empty() || !key_ok {
+    if (recovery_session_id.is_none() && !symbol_ok) || runner_key.is_empty() || !key_ok {
         return Err(Failed);
     }
     let positive_int = |v: Option<&Value>| -> Result<Option<i64>, ()> {
@@ -92,5 +104,5 @@ pub async fn claim_ticket(http: &reqwest::Client, base: &str, ticket: &str) -> R
     let launch_id = positive_int(obj.get("launch_id")).ok().flatten();
     let name =
         obj.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(|s| truncate_chars(s, 60));
-    Ok(ClaimedLaunch { macro_, runner_key, user_macro_id, launch_id, name })
+    Ok(ClaimedLaunch { macro_, recovery_session_id, runner_key, user_macro_id, launch_id, name })
 }

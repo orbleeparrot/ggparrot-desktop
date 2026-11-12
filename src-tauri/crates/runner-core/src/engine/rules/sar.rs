@@ -28,13 +28,13 @@ use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::ledger::Side;
 use crate::engine::levels::{Levels, price};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Phase {
     Long,
     Short,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Sar {
     /// 롱 익절(%). 없으면 익절하지 않고 방어만 봄.
     pub long_take_profit: Option<f64>,

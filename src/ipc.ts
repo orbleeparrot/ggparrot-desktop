@@ -56,6 +56,7 @@ export interface CommandMap {
   remove_runs: { args: { runIds: string[] }; ret: RemoveRunsReply };
   set_run_mode: { args: RunArg & { mode: RunMode }; ret: void };
   start_run: { args: RunArg; ret: StartReply };
+  resume_run: { args: RunArg; ret: StartReply };
   start_run_confirmed: { args: RunArg; ret: StartReply };
   entry_preview: { args: RunArg; ret: EntryPreview };
   /** 구동 중 설정 변경 — 서버가 받아 전략을 다시 세우고 기록을 남김. 실패하면 이유가 담긴 Error.
