@@ -513,3 +513,54 @@ describe("알림 토스트 [자세히]", () => {
     expect(within(toast).queryByRole("button", { name: "자세히" })).toBeNull();
   });
 });
+
+describe("중단된 실행 복구", () => {
+  it("새 실행 대신 확인 뒤 같은 슬롯을 이어서 실행함", async () => {
+    current = makeState({
+      runs: [
+        makeSlot({
+          phase: "finished",
+          mode: "live",
+          attention: true,
+          recovery: { available: true, reason: "저장된 상태와 거래소 보유분을 확인해요." },
+          run: makeRun({
+            sessionId: 41,
+            inPosition: true,
+            qty: 0.25,
+            finished: { status: "error", note: "전원이 꺼져 실행이 중단됐어요", at: Date.now() },
+          }),
+        }),
+      ],
+    });
+    render(<App />);
+    await ready();
+    fireEvent.click(await screen.findByRole("button", { name: "이어서 실행" }));
+    const dialog = await screen.findByRole("dialog", { name: "중단된 실행을 이어서 실행할까요?" });
+    expect(calledWith("resume_run")).toHaveLength(0);
+    expect(calledWith("entry_preview")).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole("button", { name: "이어서 실행" }));
+    await waitFor(() => expect(calledWith("resume_run")).toEqual([["resume_run", { runId: "run-1" }]]));
+    expect(calledWith("start_run")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "실전으로 시작" })).toBeNull();
+  });
+
+  it("복구 기록이 없으면 새 실행으로 바꾸지 않음", async () => {
+    current = makeState({
+      runs: [
+        makeSlot({
+          phase: "finished",
+          recovery: { available: false, reason: "원래 PC의 복구 기록이 필요해요." },
+          run: makeRun({ finished: { status: "error", note: "중단됐어요", at: Date.now() } }),
+        }),
+      ],
+    });
+    render(<App />);
+    await ready();
+    const button = await screen.findByRole("button", { name: "이어서 실행" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: "시작" })).toBeNull();
+    fireEvent.click(button);
+    expect(calledWith("resume_run")).toHaveLength(0);
+    expect(calledWith("start_run")).toHaveLength(0);
+  });
+});

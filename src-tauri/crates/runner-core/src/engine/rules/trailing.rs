@@ -16,7 +16,7 @@
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::levels::{Levels, price};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EntryMode {
     /// 평평한 상태가 되면 바로 삼.
     Immediate,
@@ -24,7 +24,7 @@ pub enum EntryMode {
     Dip,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Trailing {
     pub entry_mode: EntryMode,
     /// 눌림목 진입 폭(%).

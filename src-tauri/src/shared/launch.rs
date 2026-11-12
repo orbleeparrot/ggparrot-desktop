@@ -27,6 +27,7 @@ pub(crate) fn leg_payload(base: &Value, symbol: &str, bundle: &RunBundle) -> Val
     let mut payload = base.clone();
     payload["leg_index"] = json!(bundle.index);
     payload["bundle_key"] = json!(bundle.key);
+    payload["recovery_id"] = json!(uuid::Uuid::new_v4().to_string());
     // 요청의 종목도 레그로 — 서버가 요청과 매크로가 어긋나면 막음.
     payload["symbol"] = json!(symbol);
     payload
@@ -330,23 +331,82 @@ impl Shared {
             self.emit();
             return;
         }
-        // 묶음이면 봇이 돌릴 것은 **서버가 준 레그 매크로** — 비중 셈은 서버가 함.
-        let leg_macro = started.get("leg_macro").filter(|v| v.is_object()).cloned();
-        let LaunchJob { id, macro_, mode, creds, preflight, .. } = job;
-        let macro_ = leg_macro.unwrap_or(macro_);
+        let macro_ = match canonical_start_macro(&started) {
+            Ok(macro_) => macro_,
+            Err(why) => {
+                server.stopped("error", why, None).await;
+                self.lock().start_failed(&job.id, "서버의 실행 설정을 확인하지 못했어요", why);
+                self.emit();
+                return;
+            }
+        };
+        let recovery_id = job.payload["recovery_id"].as_str().unwrap_or_default().to_string();
+        let server_generation = server.generation();
+        let LaunchJob { id, mode, creds, preflight, generation: local_generation, .. } = job;
         if let Some(r) = self.lock().run_mut(&id) {
             r.macro_ = macro_.clone();
         }
         let symbol = runner_core::types::macro_symbol(&macro_);
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let handle = spawn_bot(macro_, creds, mode, server, Some(preflight), self.http.clone(), tx);
-        let (attached, saved) = {
+        let saved = {
             let mut c = self.lock();
-            let Some(attached) = c.attach_bot(&id, mode, handle, sid, origin, &label, &symbol) else { return };
-            // 실행 중이라는 표시를 저장해 둠 — 앱이 도중에 꺼지면 다음에 켤 때 알 수 있게.
-            (attached, self.save_runs(&c))
+            if let Some(r) = c.run_mut(&id) {
+                r.recovery = sid.map(|session_id| crate::state::SavedRecovery {
+                    session_id,
+                    recovery_id: recovery_id.clone(),
+                    generation: server_generation,
+                });
+                r.data = Some(RunData::started(now_ms(), sid));
+            }
+            self.save_runs(&c)
         };
-        self.warn_save_failed(saved);
+        if !saved {
+            self.warn_save_failed(false);
+            server.stopped("error", "복구 정보를 저장하지 못해 주문 없이 시작을 취소했어요.", None).await;
+            self.lock().start_failed(
+                &id,
+                "실행 정보를 저장하지 못했어요",
+                "디스크 공간과 폴더 권한을 확인하고 다시 시도하세요.",
+            );
+            self.emit();
+            return;
+        }
+        let expected_fingerprint = connection::preflight_fingerprint(&macro_, mode, &creds);
+        let expected_member_key = creds.member_key.clone();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let recovery_context = self.recovery_context(&recovery_id);
+        let server_cleanup = server.clone();
+        let prepared = match runner_core::bot::prepare_bot_recoverable(
+            macro_,
+            creds,
+            mode,
+            server,
+            Some(preflight),
+            self.http.clone(),
+            recovery_context,
+        ) {
+            Ok(prepared) => prepared,
+            Err(why) => {
+                server_cleanup.stopped("error", "복구 상태를 저장하지 못해 주문 없이 시작을 취소했어요.", None).await;
+                self.lock().start_failed(&id, "복구 상태를 저장하지 못해 시작하지 않았어요", &why);
+                self.emit();
+                return;
+            }
+        };
+        let attached = {
+            let mut c = self.lock();
+            if !c.launch_attach_valid(&id, local_generation, &expected_fingerprint, &expected_member_key) {
+                None
+            } else {
+                let handle = prepared.spawn(tx);
+                c.attach_bot(&id, mode, handle, sid, origin, &label, &symbol)
+            }
+        };
+        let Some(attached) = attached else {
+            server_cleanup.stopped("stopped", "시작 중 설정이 바뀌거나 취소해 주문 없이 끝냈어요.", None).await;
+            self.lock().start_failed(&id, "실행 시작을 취소했어요", "설정과 연결 상태를 확인하고 다시 시작하세요.");
+            self.emit();
+            return;
+        };
         if let Some(rep) = attached.reporter {
             if let Ok(p) = GuideStep::bare("started", &exchange, attached.env).payload() {
                 rep.report(p);
@@ -356,6 +416,17 @@ impl Shared {
         self.emit();
         self.pump_bot_events(id, rx);
     }
+}
+
+/// 서버가 정규화한 설정만 봇과 체크포인트에 넣음 — 기본값 차이로 복구가 거절되지 않게 함.
+fn canonical_start_macro(started: &Value) -> Result<Value, &'static str> {
+    started
+        .get("leg_macro")
+        .filter(|v| v.is_object())
+        .or_else(|| started.get("macro").filter(|v| v.is_object()))
+        .filter(|v| !runner_core::types::macro_symbol(v).is_empty())
+        .cloned()
+        .ok_or("서버가 복구에 필요한 실행 설정을 보내지 않았어요. 실행기를 업데이트하고 다시 시도하세요.")
 }
 
 /// 지난 실행이 포지션을 남겼을 수 있으면 그 이유. 이 앱은 시작할 때 보유를 0으로 보므로 실전 확인에 덧붙임.
@@ -400,6 +471,11 @@ impl Core {
             return Err(StartReply::Blocked { message: "매크로를 찾지 못했어요.".into() });
         };
         // 같은 매크로를 두 번 띄우지 않음(검사 끝 자동 시작과 [시작]이 겹칠 때).
+        if run.interrupted() {
+            return Err(StartReply::Blocked {
+                message: "중단된 실행은 [이어서 실행]으로 복구하세요. 새 실행으로 시작할 수 없어요.".into(),
+            });
+        }
         if self.closed || run.start_pending || run.running() {
             return Err(StartReply::Checking);
         }
@@ -416,6 +492,7 @@ impl Core {
             payload["macro_sig"] = sig.clone();
         }
         payload["macro_source"] = json!(run.source);
+        payload["recovery_id"] = json!(uuid::Uuid::new_v4().to_string());
         let job = LaunchJob {
             id: id.to_string(),
             macro_: run.macro_.clone(),
@@ -589,6 +666,9 @@ impl Core {
         }
         if run.running() {
             return blocked("이미 실행 중이에요.");
+        }
+        if run.interrupted() {
+            return blocked("중단된 실행은 [이어서 실행]으로 복구하세요. 새 실행으로 시작할 수 없어요.");
         }
         if self.claim_busy {
             return blocked(CLAIM_BUSY_WAIT);
@@ -904,5 +984,16 @@ mod tests {
 
         c.closed = true;
         assert!(matches!(c.start_gate("a"), Some(StartReply::Checking)), "앱을 닫는 중에는 새로 시작하지 않는다");
+    }
+
+    #[test]
+    fn sparse_input_uses_the_server_canonical_macro_for_the_runtime_and_checkpoint() {
+        let input = json!({"symbol":"BTCUSDT","rule_type":"A"});
+        let canonical = json!({"symbol":"BTCUSDT","rule_type":"A","exchange":"binance",
+            "position_side":"long","leverage":1,"params":{"initial_capital":1000.0},"risk":{}});
+        assert_ne!(input, canonical);
+        assert_eq!(canonical_start_macro(&json!({"macro": canonical})).unwrap(), canonical);
+        assert!(canonical_start_macro(&json!({"session_id":1})).is_err());
+        assert!(canonical_start_macro(&json!({"macro":{}})).is_err());
     }
 }

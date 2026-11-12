@@ -222,7 +222,8 @@ impl Core {
     /// 봇이 소식 없이 사라진 실행을 오류로 끝냄. 다음에 할 일(활동·OS 알림의 설명)을 돌려줌.
     pub(crate) fn bot_vanished(&mut self, id: &str) -> &'static str {
         if let Some(r) = self.run_mut(id) {
-            r.mark_ended("error", VANISHED);
+            let note = if r.recovery.is_some() { crate::state::INTERRUPTED_NOTE } else { VANISHED };
+            r.mark_ended("error", note);
         }
         let mock = self.run(id).is_some_and(|r| r.mode == RunMode::Mock);
         let next = if mock {

@@ -277,6 +277,9 @@ pub fn martingale_min_order_reason(m: &Value, exchange_name: &str, error_name: &
 }
 
 pub struct Bot {
+    recovery_state: Option<recovery::RecoveryRuntime>,
+    restoring: bool,
+    recovery_failed: bool,
     pub macro_: Value,
     credentials: Credentials,
     exchange_name: String,
@@ -458,6 +461,9 @@ impl Bot {
             }));
         }
         Bot {
+            recovery_state: None,
+            restoring: false,
+            recovery_failed: false,
             macro_,
             credentials,
             exchange_name,
@@ -703,6 +709,9 @@ impl Bot {
         }
     }
 }
+
+mod recovery;
+pub use recovery::{PreparedResume, prepare_bot_recoverable, prepare_resume, spawn_bot_recoverable};
 
 mod commands;
 mod entry_guard;

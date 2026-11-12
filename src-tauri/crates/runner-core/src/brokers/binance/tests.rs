@@ -949,3 +949,51 @@ async fn spot_fee_before_ready_uses_the_symbol_split_for_any_known_quote() {
     assert!(!o.fees_known);
     assert_eq!(o.acquired_qty, 2.0);
 }
+
+#[tokio::test]
+async fn recovery_reads_spot_holdings_and_same_client_order_without_submitting() {
+    let server = MockServer::start().await;
+    let (broker, _) = make(&server, Market::Spot, 1);
+    mount(&server, "GET", "/api/v3/openOrders", ok(json!([]))).await;
+    mount(&server, "GET", "/api/v3/account", ok(json!({"balances":[{"asset":"BTC","free":"0.1234","locked":"0"}]})))
+        .await;
+    mount(
+        &server,
+        "GET",
+        "/api/v3/order",
+        ok(json!({"orderId":45,"status":"FILLED","executedQty":"0.1","cummulativeQuoteQty":"10"})),
+    )
+    .await;
+    assert_eq!(broker.recovery_position().await.unwrap(), 0.1234);
+    assert_eq!(broker.recovery_order("recovery-client", false).await.unwrap().executed_qty, 0.1);
+    assert!(server.received_requests().await.unwrap().iter().all(|r| r.method == "GET"));
+    let requests = requests(&server, "GET", "/api/v3/order").await;
+    assert_eq!(param(&requests[0], "origClientOrderId").as_deref(), Some("recovery-client"));
+}
+
+#[tokio::test]
+async fn recovery_refuses_pending_buy_even_when_base_asset_is_not_locked() {
+    let server = MockServer::start().await;
+    let (broker, _) = make(&server, Market::Spot, 1);
+    mount(&server, "GET", "/api/v3/openOrders", ok(json!([{"symbol":"BTCUSDT","side":"BUY","status":"NEW"}]))).await;
+    assert!(broker.recovery_position().await.is_err());
+    assert!(requests(&server, "GET", "/api/v3/account").await.is_empty());
+    assert!(server.received_requests().await.unwrap().iter().all(|r| r.method == "GET"));
+}
+
+#[tokio::test]
+async fn recovery_checks_futures_positions_and_conditional_orders() {
+    let server = MockServer::start().await;
+    let (broker, _) = make(&server, Market::Futures, 1);
+    mount(&server, "GET", "/fapi/v1/openOrders", ok(json!([]))).await;
+    mount(&server, "GET", "/fapi/v1/openAlgoOrders", ok(json!([]))).await;
+    mount(
+        &server,
+        "GET",
+        "/fapi/v2/positionRisk",
+        ok(json!([{"symbol":"BTCUSDT","positionSide":"BOTH","positionAmt":"0.25"}])),
+    )
+    .await;
+    assert_eq!(broker.recovery_position().await.unwrap(), 0.25);
+    assert!(server.received_requests().await.unwrap().iter().all(|r| r.method == "GET"));
+}

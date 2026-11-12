@@ -75,6 +75,10 @@ impl Shared {
     }
 
     pub(crate) fn apply_claim(self: &S, claimed: server::ClaimedLaunch, base: String) {
+        if let Some(session_id) = claimed.recovery_session_id {
+            self.apply_recovery_claim(session_id, &claimed.runner_key, &base);
+            return;
+        }
         let name = claimed.name.clone().unwrap_or_else(|| "웹에서 연결한 내 매크로".into());
         // 지원하지 않는 매크로(정기 분할매수·여러 종목 등)는 다시 시도해도 안 되므로 이유를 그대로 알림.
         // 폴더에 파일을 쓰기 전에 봄 — 열지 못할 매크로를 폴더에 남기지 않게.
@@ -152,6 +156,47 @@ impl Shared {
             self.navigate("settings");
         }
     }
+
+    fn apply_recovery_claim(self: &S, session_id: i64, member_key: &str, base: &str) {
+        let result = self.edit_runs(|c| {
+            let id = recovery_run_id(c, session_id, base).ok_or(())?;
+            let incoming = member_key.trim();
+            let needs_account = c.member_key.trim() != incoming;
+            if needs_account {
+                c.pending_member_key = Some(incoming.into());
+            }
+            c.push_activity(
+                &id,
+                "connection",
+                "중단된 실행을 찾았어요",
+                "[이어서 실행]을 눌러 저장된 상태와 거래소 보유분을 확인하세요.",
+                "",
+                false,
+                "warn",
+            );
+            Ok((id, needs_account))
+        });
+        match result {
+            Ok((id, needs_account)) => {
+                self.navigate(&format!("run:{id}"));
+                if needs_account {
+                    self.navigate("settings");
+                    self.notice_from("web", "info", "설정 › 껄무새 계정에서 내 계정이 맞는지 확인하고 [이 키 쓰기]를 누른 뒤 이어서 실행하세요.");
+                }
+            }
+            Err(()) => self.notice_from("web", "warn", "이 PC에는 해당 실행의 복구 기록이 없어요. 매크로를 실행했던 PC에서 다시 연결하세요. 새 실행으로 대신 시작하지 않았어요."),
+        }
+    }
+}
+
+fn recovery_run_id(c: &Core, session_id: i64, base: &str) -> Option<String> {
+    c.runs
+        .iter()
+        .find(|r| {
+            r.recovery.as_ref().is_some_and(|p| p.session_id == session_id)
+                && r.server_base.trim_end_matches('/') == base.trim_end_matches('/')
+        })
+        .map(|r| r.id.clone())
 }
 
 /// 웹 매크로를 매크로 폴더에 남긴 결과를 실행의 활동 기록과 앱 기록에 적음.
@@ -252,5 +297,28 @@ mod tests {
         let m = super::update_required_message("바이낸스 빠른 실행은 실행기 v19 이상이 필요해요.");
         assert!(m.starts_with("바이낸스 빠른 실행은") && m.contains("업데이트"));
         assert!(super::update_required_message(" ").contains("새 버전의 껄무새 앱"));
+    }
+
+    #[test]
+    fn recovery_tickets_select_only_the_same_session_and_server_without_creating_a_slot() {
+        let mut c = Core::new("https://example.test".into(), true, std::path::PathBuf::new());
+        assert_eq!(super::recovery_run_id(&c, 41, "https://example.test"), None);
+        let mut run = Run::new(
+            "original".into(),
+            serde_json::json!({"symbol":"BTCUSDT"}),
+            "original".into(),
+            "file",
+            "https://example.test".into(),
+        );
+        run.recovery = Some(crate::state::SavedRecovery {
+            session_id: 41,
+            recovery_id: uuid::Uuid::new_v4().to_string(),
+            generation: 0,
+        });
+        c.runs.push(run);
+        assert_eq!(super::recovery_run_id(&c, 41, "https://example.test/"), Some("original".into()));
+        assert_eq!(super::recovery_run_id(&c, 42, "https://example.test"), None);
+        assert_eq!(super::recovery_run_id(&c, 41, "https://other.test"), None);
+        assert_eq!(c.runs.len(), 1);
     }
 }

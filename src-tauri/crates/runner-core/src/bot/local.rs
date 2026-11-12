@@ -57,6 +57,39 @@ pub struct LocalEngine {
 }
 
 impl LocalEngine {
+    pub(super) fn checkpoint(&self) -> Result<Value, String> {
+        Ok(
+            json!({"engine":serde_json::to_value(&self.engine).map_err(|_| "매크로 판단 상태를 저장하지 못했어요.".to_string())?,
+            "last_t":self.stream.last_t,"capital":self.capital,"seq":self.seq,
+            "pending_fills":self.pending_fills,"last_bar":self.last_bar,"recent":self.recent}),
+        )
+    }
+
+    pub(super) async fn refresh_after_resume(&mut self, macro_: &Value) -> Result<(), String> {
+        let rule = macro_.get("rule_type").and_then(Value::as_str).unwrap_or("");
+        if matches!(rule, "A" | "B" | "C") {
+            let interval = crate::macro_info::candle_interval(macro_);
+            let exchange = exchange_name_of(macro_);
+            if let (Some(open), Some(step)) =
+                (crate::intervals::bar_open_ms(&interval, now_ms(), &exchange), crate::intervals::step_ms(&interval))
+            {
+                self.stream.last_t = Some(open - step);
+            }
+            self.engine.set_clock(now_ms());
+            return Ok(());
+        }
+        let history = self.stream.warmup(WARMUP_CANDLES, now_ms()).await.map_err(|_| {
+            "복구에 필요한 최신 봉을 받지 못했어요. 연결을 확인하고 다시 이어서 실행하세요.".to_string()
+        })?;
+        let bars: Vec<Bar> = history.iter().copied().map(Bar::from).collect();
+        self.engine.refresh_market(macro_, &bars).map_err(|e| e.to_string())?;
+        self.recent.clear();
+        for bar in bars {
+            self.remember(bar);
+        }
+        Ok(())
+    }
+
     /// 아직 서버에 못 올린 체결 수.
     pub fn unsent(&self) -> usize {
         self.pending_fills.len()
@@ -129,6 +162,41 @@ impl LocalEngine {
 }
 
 impl Bot {
+    pub(super) fn restore_local_engine(&self, state: &Value) -> Result<LocalEngine, String> {
+        #[derive(serde::Deserialize)]
+        struct Saved {
+            engine: Engine,
+            last_t: Option<i64>,
+            capital: f64,
+            seq: u64,
+            pending_fills: Vec<Value>,
+            last_bar: Option<Bar>,
+            recent: std::collections::VecDeque<Bar>,
+        }
+        let s: Saved = serde_json::from_value(state.clone())
+            .map_err(|_| "저장된 매크로 판단 상태를 읽지 못했어요. 새 주문은 보내지 않았어요.".to_string())?;
+        let source = CandleSource::new(
+            &self.exchange_name,
+            &self.symbol,
+            &crate::macro_info::candle_interval(&self.macro_),
+            self.market.as_str(),
+            self.http.clone(),
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(LocalEngine {
+            engine: s.engine,
+            stream: ClosedCandleStream::new(source, s.last_t),
+            capital: s.capital,
+            seq: s.seq,
+            pending_fills: s.pending_fills,
+            fetch_failures: 0,
+            last_bar: s.last_bar,
+            recent: s.recent,
+            forming: None,
+        })
+    }
+
     /// 이 세션을 실행기가 직접 판단하는지. 서버가 시작 응답으로 정함 —
     /// 서버가 꺼 두었으면 서버 명령만 실행함.
     pub(super) fn decides_locally(&self) -> bool {

@@ -37,6 +37,7 @@ impl Bot {
             &operation_id,
             &request_details,
         );
+        self.record_order_intent(&client_id, closing)?;
         let order = match broker
             .submit(SubmitRequest {
                 side,
@@ -92,6 +93,7 @@ impl Bot {
         );
         let close = self.apply_fill(&order, closing, result_uncertain);
         self.last_close = close;
+        self.persist_recovery_state()?;
         if order.status == "REJECTED" && executed == 0.0 {
             let (text, code, no_funds) = self.rejection_text(&order.raw_status, closing);
             self.order_error_code = code;

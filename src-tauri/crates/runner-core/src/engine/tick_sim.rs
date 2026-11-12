@@ -26,7 +26,7 @@ fn day_index(t_ms: i64) -> i64 {
 pub use super::candle_sim::Risk;
 
 /// 틱 하나에서 할 판단.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum TickRule {
     /// **A** — 평단 대비 `take_profit_pct`% 오르면 팔고, 비면 **바로 다시** 삼.
     TakeProfitReentry,
@@ -35,6 +35,7 @@ pub enum TickRule {
 }
 
 /// A·B를 돌리는 기계. 포지션 하나만 들고 있음.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct TickSim {
     pub side: Side,
     pub costs: Costs,
@@ -278,6 +279,7 @@ impl TickSim {
 /// 같은 봉을 짚으므로 백테스트 결과는 그대로임.
 ///
 /// **시각을 모르면 사지 않음.** 적립식에서는 안 사는 쪽이 잘못 사는 쪽보다 안전함.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DcaSim {
     pub costs: Costs,
     pub stop_loss_pct: Option<f64>,

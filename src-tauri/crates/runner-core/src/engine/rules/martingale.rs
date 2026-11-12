@@ -15,7 +15,7 @@
 use crate::engine::candle_sim::{Bar, SimContext, Strategy};
 use crate::engine::levels::{Levels, price};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Martingale {
     /// 기준 매수 금액.
     pub base_order_size: f64,

@@ -62,7 +62,7 @@ impl Bot {
             // 보유가 없는데 청산 명령 — 주문 없이 ok, executed_qty=0.
             let raw = format!("[신호] {reason} → 보유 없음, 건너뜀");
             self.log(&raw);
-            // 이 앱은 시작할 때 보유를 0으로 봄 — 지난 실행에서 남은 포지션이면 여기서 정리되지 않음.
+            // 새 실행은 보유 0부터 시작함 — 체크포인트로 복구하지 않은 지난 실행의 포지션은 정리 대상이 아님.
             let (detail, tone) = if self.mode == RunMode::Mock {
                 (reason.clone(), "muted")
             } else {

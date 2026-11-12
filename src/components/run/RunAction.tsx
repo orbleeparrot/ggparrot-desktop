@@ -16,8 +16,9 @@ export function RunAction({ slot }: { slot: RunSlot }) {
       <button
         type="button"
         className="btn btn-brand-outline btn-sm is-icon"
-        aria-label={`${name} 시작`}
-        title="시작"
+        aria-label={`${name} ${slot.recovery ? "이어서 실행" : "시작"}`}
+        title={slot.recovery ? "이어서 실행" : "시작"}
+        disabled={slot.recovery?.available === false}
         onClick={() => startRun(slot.id)}
       >
         <Play size={12} fill="currentColor" aria-hidden="true" />

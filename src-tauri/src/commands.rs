@@ -84,6 +84,11 @@ pub fn start_run(s: State<'_, S>, run_id: String) -> StartReply {
 }
 
 #[tauri::command]
+pub fn resume_run(s: State<'_, S>, run_id: String) -> StartReply {
+    s.inner().resume_run(&run_id)
+}
+
+#[tauri::command]
 pub fn start_run_confirmed(s: State<'_, S>, run_id: String) -> StartReply {
     s.inner().start_run_confirmed(&run_id)
 }
@@ -108,7 +113,7 @@ pub async fn entry_preview(s: State<'_, S>, run_id: String) -> R<Value> {
 pub async fn change_run_settings(s: State<'_, S>, run_id: String, changes: Value, apply_mode: String) -> R<Value> {
     // **실행기가 혼자 바꾸지 않음.** 서버가 받아 전략을 다시 세우고 기록을 남긴 뒤,
     // 다음 heartbeat의 `settings`로 바뀐 값이 돌아옴(그때 봇이 반영함).
-    let (session_id, base, key) = {
+    let (session_id, base, key, generation) = {
         let c = s.inner().lock();
         let run = c.run(&run_id).ok_or("실행을 찾을 수 없어요.")?;
         let sid = run.data.as_ref().and_then(|d| d.session_id).filter(|v| *v > 0);
@@ -116,13 +121,23 @@ pub async fn change_run_settings(s: State<'_, S>, run_id: String, changes: Value
             sid.ok_or("아직 서버 세션이 없어요. 잠시 뒤 다시 시도해 주세요.")?,
             run.server_base.clone(),
             c.member_key.trim().to_string(),
+            run.recovery.as_ref().map(|r| r.generation),
         )
     };
     if key.is_empty() {
         return Err("회원 키가 없어요.".into());
     }
     // 오류가 이미 `String`이라 변환하지 않음(R<T> = Result<T, String>).
-    runner_core::server::change_settings(&s.inner().http, &base, &key, session_id, &changes, &apply_mode).await
+    runner_core::server::change_settings_with_generation(
+        &s.inner().http,
+        &base,
+        &key,
+        session_id,
+        &changes,
+        &apply_mode,
+        generation,
+    )
+    .await
 }
 
 #[tauri::command]

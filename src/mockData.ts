@@ -269,6 +269,7 @@ export interface MockKey {
 }
 
 export interface MockRun {
+  recovery?: RunSlot["recovery"];
   id: string;
   macro: MacroInfo;
   /** 묶음의 한 레그면 그 자리표 — 묶음 판(?demo=bundle)을 보려고 둠. 단일 종목은 없음. */

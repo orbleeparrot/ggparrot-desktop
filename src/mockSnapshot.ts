@@ -84,6 +84,7 @@ function readinessOf(m: Model, r: MockRun): RunSlot["readiness"] {
 }
 
 function statusOf(m: Model, r: MockRun): RunSlot["status"] {
+  if (r.recovery) return { text: "실행 중단 · 이어서 실행 필요", tone: "warn" };
   switch (r.phase) {
     case "checking":
       return { text: "연결 확인 중", tone: "warn" };
@@ -243,6 +244,7 @@ export function snapshot(m: Model): AppState {
   return {
     version: MOCK_VERSION,
     runs: m.runs.map((r) => ({
+      recovery: r.recovery ?? null,
       id: r.id,
       macro: r.macro,
       mode: r.mode,

@@ -154,6 +154,14 @@ impl Core {
             attention: r.needs_attention(),
             waits: runner_core::server::is_waiting_macro(m),
             bundle: r.bundle.clone(),
+            recovery: r.interrupted().then(|| RecoveryDto {
+                available: r.recovery.is_some(),
+                reason: if r.recovery.is_some() {
+                    "이 PC에 저장한 상태와 거래소 보유분을 확인하고 같은 실행을 이어 가요.".into()
+                } else {
+                    "이 실행에는 복구 기록이 없어요. 거래소에서 남은 포지션을 직접 확인하세요.".into()
+                },
+            }),
         }
     }
 
@@ -461,6 +469,9 @@ impl Run {
 
     /// 카드의 상태 한 줄과 tone — 단계(`phase`)와 시작 가능 여부로.
     pub(crate) fn status_line(&self, phase: &str, can_start: bool) -> (String, &'static str) {
+        if self.interrupted() {
+            return ("실행 중단 · 이어서 실행 필요".into(), "warn");
+        }
         match phase {
             "running" => match self.degraded() {
                 Some((what, tone)) => (format!("실행 중 · {what}"), tone),
@@ -662,6 +673,13 @@ pub(crate) struct RunDto {
     /// 묶음에서 갈라져 나온 줄이면 그 자리표 — 화면이 같은 묶음끼리 붙여 보이고,
     /// 종료를 묶음 단위로 걸 때 씀. 단일 종목 실행은 None.
     bundle: Option<RunBundle>,
+    recovery: Option<RecoveryDto>,
+}
+
+#[derive(Serialize)]
+struct RecoveryDto {
+    available: bool,
+    reason: String,
 }
 
 #[derive(Serialize)]

@@ -15,7 +15,7 @@ use super::ledger::{Fill, Ledger, Side};
 use super::levels::Levels;
 
 /// 봉 하나. [`crate::candles::Candle`]를 엔진이 쓰는 모양으로 좁힌 것.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Bar {
     /// 봉이 **열린** 시각(ms, UTC).
     pub t: i64,
@@ -33,7 +33,7 @@ impl From<crate::candles::Candle> for Bar {
 }
 
 /// 공통 위험 설정 — 매크로의 `risk`에서 옴. 0·None은 "끔".
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Risk {
     /// 진입 한 번에 쓰는 자본 비율(0 < r ≤ 1).
     pub invest_ratio: f64,
@@ -85,6 +85,14 @@ pub trait Strategy {
     /// 스스로 남기는 값이 있음(E는 판 봉의 종가를 다음 눌림목 기준으로 삼음). 여기서
     /// 지우면 그 값이 사라져 다음 진입 자리가 통째로 달라짐.
     fn on_warmup_reset(&mut self) {}
+
+    /// 복구 중 시장 관측만 반영함. 장부·위험·주문 의도는 바꾸지 않음.
+    fn observe_market(&mut self, _bar: &Bar, _side: Side) {}
+    fn adopt_market(&mut self, _observed: &Self)
+    where
+        Self: Sized,
+    {
+    }
 
     /// 틱에 실행하기로 **예약해 둔** 청산이 있으면 그 가격에 실행함.
     fn execute_pending(&mut self, _ctx: &mut SimContext<'_>, _price: f64) {}
@@ -282,6 +290,7 @@ impl SimContext<'_> {
 }
 
 /// 봉 기계 하나 — 장부 + 공통 위험 + 규칙.
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct CandleSim<S: Strategy> {
     pub ledger: Ledger,
     pub risk: Risk,
@@ -351,6 +360,16 @@ impl<S: Strategy> CandleSim<S> {
 
     pub fn strategy_mut(&mut self) -> &mut S {
         self.strategy.as_mut().expect("전략은 늘 제자리에 있다")
+    }
+
+    pub fn observe_market(&mut self, bar: &Bar) {
+        let side = self.ledger.side;
+        self.strategy_mut().observe_market(bar, side);
+    }
+
+    pub fn adopt_market(&mut self, observed: &Self) {
+        self.strategy_mut().adopt_market(observed.strategy());
+        self.queue.clear();
     }
 
     /// 마감봉 하나. 돌려주는 값은 대기 중인 체결 수 — 주문은 [`CandleSim::tick`]에서 나옴.

@@ -13,14 +13,14 @@ use crate::engine::levels::{Levels, price};
 use crate::engine::series::{Oscillator, Series};
 
 /// 다음 봉에 할 일.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Intent {
     Enter,
     Exit,
 }
 
 /// 지표가 내는 판정. 사유 한 줄이 활동 기록과 주문 명령에 그대로 감.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Pending {
     pub intent: Option<Intent>,
     /// 사람이 읽는 한 줄 — "RSI 23.1 ≤ 30", "골든크로스".
@@ -28,7 +28,7 @@ pub struct Pending {
 }
 
 /// 지표 하나가 구현하는 것.
-pub trait Signal {
+pub trait Signal: Clone {
     /// 이 **종가**를 보고 다음 봉의 의도를 정함.
     ///
     /// `in_position`은 지금 들고 있는지 — 같은 지표라도 보유 중이면 청산 쪽을 봄.
@@ -55,7 +55,7 @@ pub trait Signal {
 }
 
 /// 지표형 규칙 하나 — 판정은 [`Signal`]에 맡기고 실행을 맡음.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct IndicatorRule<S: Signal> {
     pub signal: S,
     /// 평단 대비 익절(%). 있으면 봉 **안에서** 걸림(지표와 무관하게).
@@ -107,6 +107,16 @@ impl<S: Signal> IndicatorRule<S> {
 }
 
 impl<S: Signal> Strategy for IndicatorRule<S> {
+    fn observe_market(&mut self, bar: &Bar, side: Side) {
+        let mut ignored = Pending::default();
+        self.signal.evaluate(bar.c, false, side, &mut ignored);
+        self.pending = Pending::default();
+    }
+    fn adopt_market(&mut self, observed: &Self) {
+        self.signal = observed.signal.clone();
+        self.pending = Pending::default();
+    }
+
     fn on_bar(&mut self, ctx: &mut SimContext<'_>, bar: &Bar) {
         // 1) 직전 마감봉에서 정한 의도를 이 봉의 **시가**에 실행함.
         self.drain(ctx, bar.o, bar.c);

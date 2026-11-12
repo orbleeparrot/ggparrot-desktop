@@ -24,19 +24,39 @@ impl Bot {
         let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(self.snapshot())));
         let _ = self.tx.send(BotEvent::Ending { status: status.clone(), note: note.clone() });
         self.report_end(&status, &mut note).await;
+        if status == "stopped" {
+            let _ = self.complete_recovery();
+        }
         let _ = self.tx.send(BotEvent::Status(self.ui_snapshot(self.snapshot())));
         let _ = self.tx.send(BotEvent::Finished { status, note });
     }
 
     pub(super) async fn run_inner(&mut self) -> Result<(String, String), String> {
-        if !self.connect() || !self.prepare().await? {
+        if !self.restoring && (!self.connect() || !self.prepare().await?) {
             return Ok(("error".into(), "시작 준비에 실패했어요. 활동 기록에서 이유를 확인하세요.".into()));
         }
         let mut guard = self.risk_guard();
+        if self.restoring {
+            let risk = self
+                .recovery_state
+                .as_ref()
+                .and_then(|r| r.checkpoint.runtime.get("risk"))
+                .cloned()
+                .ok_or("저장된 안전 설정 상태가 없어요.")?;
+            guard.restore_checkpoint(&risk)?;
+        }
         let broker = self.broker()?;
         // 서버가 "네가 판단해라"고 한 세션이면 로컬 엔진을 세움. 세우지 못하면
         // **아무도 판단하지 않음** — 서버도 이 세션의 드라이버를 띄우지 않음.
-        let mut local = if self.decides_locally() {
+        let mut local = if self.restoring && self.decides_locally() {
+            let state = self
+                .recovery_state
+                .as_ref()
+                .and_then(|r| r.checkpoint.runtime.get("local"))
+                .cloned()
+                .ok_or("저장된 판단 상태가 없어요.")?;
+            Some(self.restore_local_engine(&state)?)
+        } else if self.decides_locally() {
             match self.start_local_engine().await {
                 Ok(engine) => Some(engine),
                 Err(why) => {
@@ -54,6 +74,7 @@ impl Bot {
         } else {
             None
         };
+        self.initialize_recovery(&guard, local.as_ref()).await?;
         loop {
             let tick = std::time::Instant::now();
             self.check_wall_gap();
@@ -134,6 +155,7 @@ impl Bot {
             } else {
                 self.apply_reply(&reply, &mut guard, price).await?;
             }
+            self.sync_recovery(&guard, local.as_ref(), true)?;
             // 6) 대기(종료 명령 시 즉시 깨어남) — 이번 틱에 걸린 시간을 빼서 5초 주기를 지킴.
             self.sleep_until_next(tick).await;
         }
